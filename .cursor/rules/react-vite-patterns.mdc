@@ -1,0 +1,29 @@
+---
+description: React + Vite patterns for src/
+globs: src/**/*.{jsx,js,css}
+alwaysApply: false
+---
+
+# React (Vite SPA)
+
+- Define components with `function ComponentName()`, not arrow components.
+- Extract reusable logic into `src/hooks/use-*.js`; keep `App.jsx` as composition, not a monolith.
+- Colocate styles in CSS modules or existing `App.css` classes; avoid inline styles except canvas/DOM necessities.
+- `useEffect`: always return cleanup for subscriptions, timers, and `addEventListener`.
+- `useCallback` / `useMemo` only when profiling or stabilizing deps for memoized children — not by default.
+- List keys: stable ids, never array index for mutable lists.
+- File input handlers: `handleFileChange`, not anonymous mega-handlers in JSX when logic is non-trivial.
+
+```jsx
+// Prefer
+function Sidebar({ onFileSelect }) {
+  function handleFileChange(event) {
+    const file = event.target.files?.[0]
+    if (!file) return
+    onFileSelect(file)
+  }
+  return <input type="file" onChange={handleFileChange} />
+}
+```
+
+Pure ArchiMate/XML/diagram math belongs in `src/lib/archimate/`, not in components.

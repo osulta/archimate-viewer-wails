@@ -1,0 +1,241 @@
+import React, { useMemo, useState } from 'react'
+import { applyRelationshipMetaToList } from '../../lib/archimate/relationship-meta'
+import { useDebouncedValue } from '../../hooks/use-debounced-value'
+import { ModelTree } from './model-tree'
+import { ElementPalettePanel } from './element-palette-panel'
+import { RelationshipPalettePanel } from './relationship-palette-panel'
+import { GitSidebarWorkflow } from '../git/git-workflow-blocks'
+import type {
+  ParsedModel,
+  ParsedElement,
+  ParsedRelationship,
+  ParsedDiagram,
+  DiagramNode,
+  ElementOverride,
+  RelationshipMetaOverride,
+} from '../../types/model'
+
+interface GitState {
+  [key: string]: unknown
+}
+
+interface FocusElementResult {
+  diagramId: string | null
+  node: DiagramNode | null
+  pending?: boolean
+}
+
+interface SidebarProps {
+  variant?: 'default' | 'view'
+  git?: GitState | null
+  model: ParsedModel | null
+  error: string | null
+  elementOverrides: Map<string, ElementOverride>
+  relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
+  selectedElementId: string | null
+  selectedRelationshipRef: string | null
+  selectedDiagramId: string | null
+  activeRelationshipType?: string | null
+  linkCreateSourceId?: string | null
+  onSelectRelationshipType?: (type: string) => void
+  onReloadModel?: () => Promise<void> | void
+  onSaveEditedModel?: () => Promise<void> | void
+  canSaveModel?: boolean
+  modelLayoutHint?: string
+  saveTargetPath?: string
+  saveStatusMessage?: string
+  modelActionLoading?: boolean
+  modelLoading?: boolean
+  modelSaving?: boolean
+  focusElementInDiagram?: (elementId: string) => FocusElementResult
+  focusRelationshipInDiagram?: (relationshipId: string) => string | null
+  onSelectElement: (
+    id: string,
+    context: { diagramId: string; node?: DiagramNode; pending?: boolean } | null,
+  ) => void
+  onSelectRelationship: (id: string, diagramId: string | null) => void
+  onSelectDiagram: (id: string) => void
+  onCreateDiagram?: () => void
+}
+
+export function Sidebar({
+  variant = 'default',
+  git,
+  model,
+  error,
+  elementOverrides,
+  relationshipMetaOverrides,
+  selectedElementId,
+  selectedRelationshipRef,
+  selectedDiagramId,
+  activeRelationshipType,
+  linkCreateSourceId,
+  onSelectRelationshipType,
+  onReloadModel,
+  onSaveEditedModel,
+  canSaveModel = true,
+  modelLayoutHint = '',
+  saveTargetPath,
+  saveStatusMessage = '',
+  modelActionLoading = false,
+  modelLoading = false,
+  modelSaving = false,
+  focusElementInDiagram,
+  focusRelationshipInDiagram,
+  onSelectElement,
+  onSelectRelationship,
+  onSelectDiagram,
+  onCreateDiagram,
+}: SidebarProps): React.JSX.Element {
+  const isViewMode = variant === 'view'
+  const [sidebarTreeSearch, setSidebarTreeSearch] = useState('')
+  const debouncedTreeSearch = useDebouncedValue(sidebarTreeSearch, 200)
+  const treeSearchNorm = debouncedTreeSearch.trim().toLowerCase()
+
+  const filteredTreeElements = useMemo(() => {
+    if (!model) {
+      return [] as ParsedElement[]
+    }
+    if (!treeSearchNorm) {
+      return model.elements
+    }
+    return model.elements.filter((item) => {
+      const name = elementOverrides.get(item.id)?.name ?? item.name
+      const hay = [name, item.type, item.id].join(' ').toLowerCase()
+      return hay.includes(treeSearchNorm)
+    })
+  }, [model, treeSearchNorm, elementOverrides])
+
+  const filteredTreeRelationships = useMemo(() => {
+    if (!model) {
+      return [] as ParsedRelationship[]
+    }
+    const relationships = applyRelationshipMetaToList(
+      model.relationships,
+      relationshipMetaOverrides,
+    )
+    if (!treeSearchNorm) {
+      return relationships
+    }
+    return relationships.filter((item: ParsedRelationship) => {
+      const hay = [item.name, item.id, item.type, item.source, item.target]
+        .join(' ')
+        .toLowerCase()
+      return hay.includes(treeSearchNorm)
+    })
+  }, [model, treeSearchNorm, relationshipMetaOverrides])
+
+  const filteredTreeDiagrams = useMemo(() => {
+    if (!model) {
+      return [] as ParsedDiagram[]
+    }
+    if (!treeSearchNorm) {
+      return model.diagrams
+    }
+    return model.diagrams.filter((d) => {
+      const label = d.folderPath ? `${d.folderPath} / ${d.name}` : d.name
+      const hay = [label, d.name, d.folderPath ?? '', d.id, d.type ?? ''].join(' ').toLowerCase()
+      return hay.includes(treeSearchNorm)
+    })
+  }, [model, treeSearchNorm])
+
+  return (
+    <aside className="sidebar">
+      <h1>ArchiMate Viewer</h1>
+      {!isViewMode && model ? (
+        <>
+          <div className="sidebar-model-actions">
+          <button
+            type="button"
+            className="refresh-model-btn"
+            title={
+              saveTargetPath
+                ? `Заново загрузить модель из GIT_REPO_ROOT/${saveTargetPath}`
+                : 'Заново загрузить model.archimate из репозитория Git'
+            }
+            disabled={modelActionLoading || modelLoading}
+            onClick={() => void onReloadModel?.()}
+          >
+            Обновить модель
+          </button>
+          <button
+            type="button"
+            className="save-btn"
+            title={
+              saveTargetPath
+                ? `Перезаписать GIT_REPO_ROOT/${saveTargetPath}`
+                : 'Записать изменения в файл модели в репозитории Git'
+            }
+            disabled={modelActionLoading || modelLoading || modelSaving || !canSaveModel}
+            onClick={() => void onSaveEditedModel?.()}
+          >
+            {modelSaving ? 'Сохранение…' : 'Сохранить модель'}
+          </button>
+          </div>
+          {modelLayoutHint ? (
+            <p className="save-path-hint" title="Формат загрузки модели">
+              {modelLayoutHint}
+            </p>
+          ) : null}
+          {saveTargetPath ? (
+            <p className="save-path-hint" title="Файл на диске (относительно GIT_REPO_ROOT)">
+              → {saveTargetPath}
+            </p>
+          ) : null}
+          {saveStatusMessage && !error ? (
+            <p className="save-status">{saveStatusMessage}</p>
+          ) : null}
+          {git ? <GitSidebarWorkflow git={git} /> : null}
+        </>
+      ) : null}
+      {error ? <p className="error">{error}</p> : null}
+
+      <div
+        className={
+          modelLoading && model ? 'sidebar-tree-section is-loading' : 'sidebar-tree-section'
+        }
+      >
+        {modelLoading ? (
+          <div className="sidebar-model-loader" role="status" aria-live="polite" aria-busy="true">
+            <span className="sidebar-model-loader-spinner" aria-hidden="true" />
+            <span>{model ? 'Обновление модели…' : 'Загрузка модели…'}</span>
+          </div>
+        ) : null}
+        {!(modelLoading && !model) ? (
+          <ModelTree
+            model={model}
+            treeSearchNorm={treeSearchNorm}
+            filteredTreeElements={filteredTreeElements}
+            filteredTreeRelationships={filteredTreeRelationships}
+            filteredTreeDiagrams={filteredTreeDiagrams}
+            elementOverrides={elementOverrides}
+            selectedElementId={selectedElementId}
+            selectedRelationshipRef={selectedRelationshipRef}
+            selectedDiagramId={selectedDiagramId}
+            sidebarTreeSearch={sidebarTreeSearch}
+            onSidebarTreeSearchChange={setSidebarTreeSearch}
+        focusElementInDiagram={focusElementInDiagram}
+        focusRelationshipInDiagram={focusRelationshipInDiagram}
+        onSelectElement={onSelectElement}
+        onSelectRelationship={onSelectRelationship}
+        onSelectDiagram={onSelectDiagram}
+        allowElementDrag={!isViewMode && Boolean(model)}
+        onCreateDiagram={!isViewMode && model ? onCreateDiagram : undefined}
+          />
+        ) : null}
+      </div>
+
+      {!isViewMode && model ? (
+        <ElementPalettePanel />
+      ) : null}
+
+      {!isViewMode && model ? (
+        <RelationshipPalettePanel
+          activeRelationshipType={activeRelationshipType ?? null}
+          hasLinkSource={Boolean(linkCreateSourceId)}
+          onSelectRelationshipType={onSelectRelationshipType ?? (() => {})}
+        />
+      ) : null}
+    </aside>
+  )
+}

@@ -1,0 +1,17 @@
+---
+description: Core frontend philosophy for archimate-viewer (Vite + React)
+alwaysApply: true
+---
+
+# Frontend standards
+
+- **Stack**: Vite, React 19, TypeScript (`.tsx` / `.ts`). Custom CSS in `App.css` — not Next.js or Tailwind unless we add them deliberately.
+- **Principles**: SOLID, KISS, DRY. Prefer functional, declarative code over imperative OOP.
+- **Structure**: `src/components/` for UI, `src/hooks/` for reusable state/effects, `src/lib/` for pure logic (parsing, geometry, drawing).
+- **Naming**: `handle*` for event handlers; `is*` / `has*` / `can*` for booleans; `use*` for hooks; PascalCase components; camelCase functions/variables.
+- **Errors**: Guard clauses and early returns; user-facing messages in UI; avoid empty `catch` blocks.
+- **a11y**: Semantic HTML, keyboard support, `aria-*` only when needed, visible focus, sufficient contrast.
+
+- **Types**: Shared domain types live in `src/types/model.ts`. Prefer importing from there over inline type definitions. Use strict mode (`strict: true` in tsconfig).
+
+When adding Tailwind or Next.js later, update this rule and add a scoped rule for those paths.
