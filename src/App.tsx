@@ -9,6 +9,7 @@ import { ChangesComparePanel } from './components/changes/changes-compare-panel'
 import { LintersPanel } from './components/linters/linters-panel'
 import { AssetsPanel } from './components/assets/assets-panel'
 import { AiArchitectPanel } from './components/ai-architect/ai-architect-panel'
+import { AdrPanel } from './components/adr/adr-panel'
 import { ViewModePanel } from './components/view-mode/view-mode-panel'
 import { ObjectPropertiesPanel } from './components/object-properties-panel'
 import {
@@ -76,7 +77,7 @@ import type {
   Point,
 } from './types/model'
 
-type AppTab = 'modeling' | 'changes' | 'linters' | 'assets' | 'aiArchitect' | 'viewMode' | 'admin'
+type AppTab = 'modeling' | 'changes' | 'linters' | 'assets' | 'aiArchitect' | 'adr' | 'viewMode' | 'admin'
 
 function App() {
   const [model, setModel] = useState<ParsedModel | null>(null)
@@ -2412,6 +2413,7 @@ function App() {
         {appTab === 'linters' ? <LintersPanel model={model} /> : null}
         {appTab === 'assets' ? <AssetsPanel /> : null}
         {appTab === 'aiArchitect' ? <AiArchitectPanel /> : null}
+        {appTab === 'adr' ? <AdrPanel /> : null}
         {appTab === 'viewMode' ? (
           <ViewModePanel
             model={model}

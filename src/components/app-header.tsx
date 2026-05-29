@@ -13,6 +13,7 @@ const TABS: Tab[] = [
   { id: 'linters', label: 'Линтеры' },
   { id: 'assets', label: 'Активы' },
   { id: 'aiArchitect', label: 'AI Architect' },
+  { id: 'adr', label: 'ADR' },
   { id: 'viewMode', label: 'Режим просмотра' },
   { id: 'admin', label: 'Администрирование' },
 ]
