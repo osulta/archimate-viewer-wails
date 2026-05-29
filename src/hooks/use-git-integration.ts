@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { apiUrl } from '../lib/api-base'
+import { confirmDialog } from '../lib/ui/confirm-dialog'
 import type { ModelLoadPayload } from '../types/model'
 
 function localBranchNameFromRef(ref: string | null | undefined): string {
@@ -88,6 +89,29 @@ interface UseGitIntegrationOptions {
   onModelSaved?: (payload: ModelLoadPayload) => void
   onModelParseError: (message: string) => void
   onRepositoryDeleted: () => void
+}
+
+const isWailsDesktopRuntime =
+  typeof window !== 'undefined' && window.location.protocol === 'wails:'
+
+const apiUnavailableMessage = isWailsDesktopRuntime
+  ? 'Локальный API недоступен. Перезапустите приложение.'
+  : 'API недоступен. Запустите npm run dev (порт API 5151).'
+
+function formatApiRequestError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  const normalized = raw.toLowerCase()
+  const looksLikeInvalidUrl =
+    normalized.includes('did not match the expected pattern') ||
+    normalized.includes('failed to parse url')
+
+  if (isWailsDesktopRuntime) {
+    return looksLikeInvalidUrl
+      ? 'Локальный API недоступен (не удалось определить адрес). Перезапустите приложение и попробуйте снова.'
+      : raw
+  }
+
+  return err instanceof Error ? `${err.message}\nЗапустите npm run dev (API на порту 5151).` : String(err)
 }
 
 export function useGitIntegration({
@@ -408,10 +432,43 @@ export function useGitIntegration({
   }, [gitApiReady, gitRepoProbe.hasDotGit, gitWorkFolder, gitRepoPath, loadGitBranches])
 
   useEffect(() => {
-    fetch(apiUrl('/api/health'))
-      .then((r) => r.json())
-      .then((data) => setGitApiReady(Boolean(data.ok)))
-      .catch(() => setGitApiReady(false))
+    let cancelled = false
+    let timer: number | null = null
+
+    const checkHealth = async (): Promise<void> => {
+      try {
+        const response = await fetch(apiUrl('/api/health'))
+        const data = await response.json()
+        if (cancelled) {
+          return
+        }
+        const ok = Boolean(data.ok)
+        setGitApiReady(ok)
+        if (!ok && isWailsDesktopRuntime) {
+          timer = window.setTimeout(() => {
+            void checkHealth()
+          }, 1200)
+        }
+      } catch {
+        if (cancelled) {
+          return
+        }
+        setGitApiReady(false)
+        if (isWailsDesktopRuntime) {
+          timer = window.setTimeout(() => {
+            void checkHealth()
+          }, 1200)
+        }
+      }
+    }
+
+    void checkHealth()
+    return () => {
+      cancelled = true
+      if (timer !== null) {
+        window.clearTimeout(timer)
+      }
+    }
   }, [])
 
   useEffect(() => {
@@ -598,10 +655,7 @@ export function useGitIntegration({
       setGitOutput(msg)
       return { ok: false, error: msg }
     } catch (err) {
-      const msg =
-        err instanceof Error
-          ? `${err.message}\nЗапустите npm run dev (API на порту 5151).`
-          : String(err)
+      const msg = formatApiRequestError(err)
       setGitOutput(msg)
       return { ok: false, error: msg }
     }
@@ -641,16 +695,19 @@ export function useGitIntegration({
 
   async function handleDeleteGitRepository(): Promise<void> {
     if (!gitApiReady) {
-      setGitOutput('API недоступен.')
+      setGitOutput(apiUnavailableMessage)
       return
     }
     const wf = gitWorkFolder.trim() || 'git'
     const relPath = wf.replace(/^[\\/]+/, '').replace(/\\/g, '/')
-    if (
-      !window.confirm(
-        `Удалить каталог GIT_REPO_ROOT/${relPath} со всем содержимым (включая .git)? Действие необратимо.`,
-      )
-    ) {
+    const confirmed = await confirmDialog({
+      title: 'Удалить репозиторий с диска',
+      content: `Удалить каталог GIT_REPO_ROOT/${relPath} со всем содержимым (включая .git)? Действие необратимо.`,
+      okText: 'Удалить',
+      cancelText: 'Отмена',
+      danger: true,
+    })
+    if (!confirmed) {
       return
     }
     await withGitCommand('Удаление репозитория…', async () => {
@@ -738,11 +795,7 @@ export function useGitIntegration({
         setGitOutput(data.error || `${data.stderr}\n${data.stdout}`)
       }
     } catch (err) {
-      setGitOutput(
-        err instanceof Error
-          ? `${err.message}\nЗапустите npm run dev (API на порту 5151).`
-          : String(err),
-      )
+      setGitOutput(formatApiRequestError(err))
     }
     })
   }
@@ -804,11 +857,7 @@ export function useGitIntegration({
         setGitOutput(data.error || [co.stderr, co.stdout].filter(Boolean).join('\n'))
       }
     } catch (err) {
-      setGitOutput(
-        err instanceof Error
-          ? `${err.message}\nЗапустите npm run dev (API на порту 5151).`
-          : String(err),
-      )
+      setGitOutput(formatApiRequestError(err))
     }
     })
   }
@@ -861,18 +910,14 @@ export function useGitIntegration({
         )
       }
     } catch (err) {
-      setGitOutput(
-        err instanceof Error
-          ? `${err.message}\nЗапустите npm run dev (API на порту 5151).`
-          : String(err),
-      )
+      setGitOutput(formatApiRequestError(err))
     }
     })
   }
 
   async function handleGitPullAndRefresh(): Promise<void> {
     if (!gitApiReady) {
-      setGitOutput('API недоступен.')
+      setGitOutput(apiUnavailableMessage)
       return
     }
     await withGitCommand('Получение изменений…', async () => {

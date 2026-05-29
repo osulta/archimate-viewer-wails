@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Alert, Empty, Select, Spin, Typography } from 'antd'
 import { DiagramCanvas } from '../diagram-canvas'
 import {
   findDiagramInModel,
@@ -61,6 +62,8 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
   } = props
 
   const { gitApiReady, gitRepoProbe, gitBranches, loadGitBranches } = git
+  const isWailsDesktopRuntime =
+    typeof window !== 'undefined' && window.location.protocol === 'wails:'
   const currentBranch = gitRepoProbe.currentBranch?.trim() || ''
   const isSplitModel = model?.format === 'split-files'
 
@@ -236,74 +239,73 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
   return (
     <main className="tab-page compare-page" role="tabpanel" aria-label="Сравнение изменений">
       <div className="tab-page-head">
-        <h2>Сравнение изменений</h2>
-        <p>
+        <Typography.Title level={3}>Сравнение изменений</Typography.Title>
+        <Typography.Paragraph type="secondary">
           Сравнение диаграммы в текущей модели с версией из другой ветки
           {isSplitModel ? ' (split XML).' : '.'}
-        </p>
+        </Typography.Paragraph>
       </div>
 
       <section className="compare-toolbar" aria-label="Параметры сравнения">
         <label className="git-label compare-toolbar-field">
-          Диаграмма
-          <select
-            className="git-branch-select"
-            value={selectedDiagramId}
-            onChange={(e) => onSelectedDiagramIdChange?.(e.target.value)}
+          <span>Диаграмма</span>
+          <Select
+            value={selectedDiagramId || undefined}
+            onChange={(value) => onSelectedDiagramIdChange?.(value)}
             disabled={!model || diagramOptions.length === 0}
-          >
-            {diagramOptions.length === 0 ? (
-              <option value="">— нет диаграмм —</option>
-            ) : (
-              diagramOptions.map((d) => (
-                <option key={d.id} value={d.id}>
-                  {formatDiagramOption(d)}
-                </option>
-              ))
-            )}
-          </select>
+            placeholder="— нет диаграмм —"
+            options={diagramOptions.map((d) => ({ value: d.id, label: formatDiagramOption(d) }))}
+          />
         </label>
         <label className="git-label compare-toolbar-field">
-          Сравнить с веткой
-          <select
-            className="git-branch-select"
-            value={compareBranch}
-            onChange={(e) => setCompareBranch(e.target.value)}
+          <span>Сравнить с веткой</span>
+          <Select
+            value={compareBranch || undefined}
+            onChange={(value) => setCompareBranch(value)}
             disabled={!gitRepoProbe.hasDotGit || gitBranches.loading || branchOptions.length === 0}
-          >
-            {branchOptions.length === 0 ? (
-              <option value="">— нет веток —</option>
-            ) : (
-              branchOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                  {name === currentBranch ? ' (текущая)' : ''}
-                </option>
-              ))
-            )}
-          </select>
+            placeholder="— нет веток —"
+            options={branchOptions.map((name) => ({
+              value: name,
+              label: `${name}${name === currentBranch ? ' (текущая)' : ''}`,
+            }))}
+          />
         </label>
       </section>
 
       {!model ? (
-        <p className="compare-empty">
-          Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git.
-        </p>
+        <Empty
+          className="compare-empty"
+          description="Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git."
+        />
       ) : !gitApiReady ? (
-        <p className="compare-empty">API недоступен. Запустите npm run dev.</p>
+        <Empty
+          className="compare-empty"
+          description={
+            isWailsDesktopRuntime
+              ? 'Локальный API недоступен. Перезапустите приложение.'
+              : 'API недоступен. Запустите npm run dev.'
+          }
+        />
       ) : !gitRepoProbe.hasDotGit ? (
-        <p className="compare-empty">Репозиторий не найден. Настройте Git в «Администрирование» → Git.</p>
+        <Empty
+          className="compare-empty"
+          description="Репозиторий не найден. Настройте Git в «Администрирование» → Git."
+        />
       ) : !pathForCompare ? (
-        <p className="compare-empty">{pathMissingMessage}</p>
+        <Empty className="compare-empty" description={pathMissingMessage} />
       ) : (
         <CompareCanvasSyncProvider resetKey={selectedDiagramId}>
           <div className="compare-columns">
             <section className="compare-column" aria-label={leftTitle}>
-              <h3 className="compare-column-title">{leftTitle}</h3>
+              <Typography.Title level={5} className="compare-column-title">
+                {leftTitle}
+              </Typography.Title>
               {leftDiagramLoading ? (
-                <p className="compare-empty">Загрузка диаграммы…</p>
+                <p className="compare-empty">
+                  <Spin size="small" /> Загрузка диаграммы…
+                </p>
               ) : !leftDiagram ? (
-                <p className="compare-empty">Диаграмма не найдена в текущей модели.</p>
+                <Empty className="compare-empty" description="Диаграмма не найдена в текущей модели." />
               ) : (
                 <DiagramCanvas
                   readOnly
@@ -318,21 +320,23 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
             </section>
 
             <section className="compare-column" aria-label={`Ветка: ${compareBranch || '—'}`}>
-              <h3 className="compare-column-title">
+              <Typography.Title level={5} className="compare-column-title">
                 Ветка: {compareBranch || '—'}
                 {compareLoadState === 'loading' ? ' (загрузка…)' : ''}
-              </h3>
+              </Typography.Title>
               {compareLoadState === 'error' ? (
-                <p className="compare-error">{compareError}</p>
+                <Alert type="error" showIcon message={compareError} />
               ) : compareLoadState === 'loading' ? (
-                <p className="compare-empty">{compareLoadingMessage}</p>
-              ) : !compareBranch ? (
-                <p className="compare-empty">Выберите ветку для сравнения.</p>
-              ) : !rightDiagram ? (
                 <p className="compare-empty">
-                  Диаграмма «{selectedDiagramStub?.name ?? selectedDiagramId}» не найдена в этой
-                  ветке.
+                  <Spin size="small" /> {compareLoadingMessage}
                 </p>
+              ) : !compareBranch ? (
+                <Empty className="compare-empty" description="Выберите ветку для сравнения." />
+              ) : !rightDiagram ? (
+                <Empty
+                  className="compare-empty"
+                  description={`Диаграмма «${selectedDiagramStub?.name ?? selectedDiagramId}» не найдена в этой ветке.`}
+                />
               ) : (
                 <DiagramCanvas
                   readOnly

@@ -1,12 +1,16 @@
+import { Menu, Typography } from 'antd'
+import { ApartmentOutlined, TeamOutlined, BranchesOutlined } from '@ant-design/icons'
+
 interface AdminSection {
   id: string
   label: string
+  icon: React.ReactNode
 }
 
 const ADMIN_SECTIONS: AdminSection[] = [
-  { id: 'metamodel', label: 'Метамодель' },
-  { id: 'accounts', label: 'Учетные записи' },
-  { id: 'git', label: 'Git' },
+  { id: 'metamodel', label: 'Метамодель', icon: <ApartmentOutlined /> },
+  { id: 'accounts', label: 'Учетные записи', icon: <TeamOutlined /> },
+  { id: 'git', label: 'Git', icon: <BranchesOutlined /> },
 ]
 
 interface AdminSidebarProps {
@@ -19,28 +23,20 @@ export function AdminSidebar(props: AdminSidebarProps) {
 
   return (
     <aside className="admin-sidebar" aria-label="Разделы администрирования">
-      <h2 className="admin-sidebar-title">Администрирование</h2>
-      <nav className="admin-sidebar-nav">
-        <ul className="admin-sidebar-list">
-          {ADMIN_SECTIONS.map((section) => {
-            const isActive = activeSection === section.id
-            return (
-              <li key={section.id}>
-                <button
-                  type="button"
-                  className={
-                    isActive ? 'admin-sidebar-item admin-sidebar-item-active' : 'admin-sidebar-item'
-                  }
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => onSectionChange(section.id)}
-                >
-                  {section.label}
-                </button>
-              </li>
-            )
-          })}
-        </ul>
-      </nav>
+      <Typography.Title level={5} className="admin-sidebar-title">
+        Администрирование
+      </Typography.Title>
+      <Menu
+        className="admin-sidebar-nav"
+        mode="inline"
+        selectedKeys={[activeSection]}
+        onClick={({ key }) => onSectionChange(key)}
+        items={ADMIN_SECTIONS.map((section) => ({
+          key: section.id,
+          icon: section.icon,
+          label: section.label,
+        }))}
+      />
     </aside>
   )
 }

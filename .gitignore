@@ -9,7 +9,6 @@ lerna-debug.log*
 
 node_modules
 dist
-dist-api
 build/bin
 release
 dist-ssr
@@ -26,6 +25,8 @@ dist-ssr
 *.sln
 *.sw?
 
-git
+# Git working folder for cloned repos (GIT_REPO_ROOT), repo-root only.
+# Use a rooted path so it does not ignore source dirs like src/components/git.
+/git/
 *.archimate
 *.archimate.*

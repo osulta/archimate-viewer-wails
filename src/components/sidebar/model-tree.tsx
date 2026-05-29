@@ -1,4 +1,6 @@
 import React, { useMemo } from 'react'
+import { Button, Collapse, Input } from 'antd'
+import { SearchOutlined } from '@ant-design/icons'
 import { setSidebarElementDragData } from '../../lib/archimate/sidebar-drag'
 import {
   buildDiagramFolderTree,
@@ -91,8 +93,6 @@ export function ModelTree({
   const useVirtualElements =
     !treeSearchNorm && filteredTreeElements.length >= VIRTUAL_LIST_THRESHOLD
 
-  const elementsOpenByDefault = (model?.elements.length ?? 0) < VIRTUAL_LIST_THRESHOLD
-
   function handleElementSelect(item: ParsedElement): void {
     if (focusElementInDiagram) {
       const { diagramId, node, pending } = focusElementInDiagram(item.id)
@@ -121,15 +121,16 @@ export function ModelTree({
 
   function renderElementRow(item: ParsedElement): React.JSX.Element {
     return (
-      <button
-        type="button"
+      <Button
+        type={selectedElementId === item.id ? 'primary' : 'text'}
+        ghost={selectedElementId === item.id}
         draggable={false}
-        className={selectedElementId === item.id ? 'tree-btn selected' : 'tree-btn'}
+        className="tree-btn"
         onClick={() => handleElementSelect(item)}
       >
         <span className="node-label">{elementOverrides.get(item.id)?.name ?? item.name}</span>
         <span className="node-type">{item.type}</span>
-      </button>
+      </Button>
     )
   }
 
@@ -142,125 +143,126 @@ export function ModelTree({
     )
   }
 
-  return (
-    <div className="tree">
-      <label className="tree-search-label">
-        Поиск по дереву
-        <input
-          type="search"
-          className="tree-search-input"
-          value={sidebarTreeSearch}
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSidebarTreeSearchChange(e.target.value)}
-          placeholder="Имя, тип, id…"
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="Поиск по элементам, связям и диаграммам"
-        />
-      </label>
-      {model.format === 'split-files' && model.elements.length >= VIRTUAL_LIST_THRESHOLD ? (
-        <p className="tree-hint-compact">
-          Элементы: лёгкий индекс ({model.elements.length.toLocaleString()}). Детали подгружаются при
-          выборе. Используйте поиск для узкого списка.
-        </p>
-      ) : null}
-      <details open>
-        <summary>{model.modelName}</summary>
-        <details open={elementsOpenByDefault}>
-          <summary>
-            Elements (
-            {treeSearchNorm
-              ? `${filteredTreeElements.length} / ${model.elements.length}`
-              : model.elements.length}
-            )
-          </summary>
-          {filteredTreeElements.length === 0 ? (
-            <p className="tree-search-empty">Нет совпадений</p>
-          ) : useVirtualElements ? (
-            <VirtualList
-              items={filteredTreeElements}
-              itemHeight={ELEMENT_ROW_HEIGHT}
-              getItemKey={(item: ParsedElement) => item.id}
-              maxHeight={400}
-              renderItem={(item: ParsedElement) => (
-                <div
-                  className={allowElementDrag ? 'tree-item-draggable' : undefined}
-                  draggable={allowElementDrag}
-                  title={
-                    allowElementDrag
-                      ? `${item.type} (${item.id}) — перетащите на диаграмму`
-                      : `${item.type} (${item.id})`
-                  }
-                  onDragStart={
-                    allowElementDrag
-                      ? (event: React.DragEvent<HTMLDivElement>) => handleElementDragStart(event, item.id)
-                      : undefined
-                  }
-                  onDragEnd={allowElementDrag ? handleElementDragEnd : undefined}
-                >
-                  {renderElementRow(item)}
-                </div>
-              )}
-            />
-          ) : (
-            <ul>
-              {filteredTreeElements.map((item) => (
-                <li
-                  key={item.id}
-                  className={allowElementDrag ? 'tree-item-draggable' : undefined}
-                  draggable={allowElementDrag}
-                  title={
-                    allowElementDrag
-                      ? `${item.type} (${item.id}) — перетащите на диаграмму`
-                      : `${item.type} (${item.id})`
-                  }
-                  onDragStart={
-                    allowElementDrag
-                      ? (event: React.DragEvent<HTMLLIElement>) => handleElementDragStart(event, item.id)
-                      : undefined
-                  }
-                  onDragEnd={allowElementDrag ? handleElementDragEnd : undefined}
-                >
-                  {renderElementRow(item)}
-                </li>
-              ))}
-            </ul>
+  const elementsPanel = (
+    <>
+      {filteredTreeElements.length === 0 ? (
+        <p className="tree-search-empty">Нет совпадений</p>
+      ) : useVirtualElements ? (
+        <VirtualList
+          items={filteredTreeElements}
+          itemHeight={ELEMENT_ROW_HEIGHT}
+          getItemKey={(item: ParsedElement) => item.id}
+          maxHeight={400}
+          renderItem={(item: ParsedElement) => (
+            <div
+              className={allowElementDrag ? 'tree-item-draggable' : undefined}
+              draggable={allowElementDrag}
+              title={
+                allowElementDrag
+                  ? `${item.type} (${item.id}) — перетащите на диаграмму`
+                  : `${item.type} (${item.id})`
+              }
+              onDragStart={
+                allowElementDrag
+                  ? (event: React.DragEvent<HTMLDivElement>) => handleElementDragStart(event, item.id)
+                  : undefined
+              }
+              onDragEnd={allowElementDrag ? handleElementDragEnd : undefined}
+            >
+              {renderElementRow(item)}
+            </div>
           )}
-        </details>
-        <details>
-          <summary>
-            Relationships (
-            {treeSearchNorm
-              ? `${filteredTreeRelationships.length} / ${model.relationships.length}`
-              : model.relationships.length}
-            )
-          </summary>
-          <ul>
-            {filteredTreeRelationships.length === 0 ? (
-              <li className="tree-search-empty">Нет совпадений</li>
-            ) : (
-              filteredTreeRelationships.map((item) => (
-                <li key={item.id} title={`${item.source} -> ${item.target}`}>
-                  <button
-                    type="button"
-                    className={
-                      selectedRelationshipRef === item.id ? 'tree-btn selected' : 'tree-btn'
-                    }
-                    onClick={() => handleRelationshipSelect(item)}
-                  >
-                    <span className="node-label">
-                      {getRelationshipDisplayLabel(item) || item.id}
-                    </span>
-                    <span className="node-type">{item.type}</span>
-                  </button>
-                </li>
-              ))
-            )}
-          </ul>
-        </details>
+        />
+      ) : (
+        <ul className="tree-list">
+          {filteredTreeElements.map((item) => (
+            <li
+              key={item.id}
+              className={allowElementDrag ? 'tree-item-draggable' : undefined}
+              draggable={allowElementDrag}
+              title={
+                allowElementDrag
+                  ? `${item.type} (${item.id}) — перетащите на диаграмму`
+                  : `${item.type} (${item.id})`
+              }
+              onDragStart={
+                allowElementDrag
+                  ? (event: React.DragEvent<HTMLLIElement>) => handleElementDragStart(event, item.id)
+                  : undefined
+              }
+              onDragEnd={allowElementDrag ? handleElementDragEnd : undefined}
+            >
+              {renderElementRow(item)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  )
+
+  const relationshipsPanel =
+    filteredTreeRelationships.length === 0 ? (
+      <p className="tree-search-empty">Нет совпадений</p>
+    ) : (
+      <ul className="tree-list">
+        {filteredTreeRelationships.map((item) => (
+          <li key={item.id} title={`${item.source} -> ${item.target}`}>
+            <Button
+              type={selectedRelationshipRef === item.id ? 'primary' : 'text'}
+              ghost={selectedRelationshipRef === item.id}
+              className="tree-btn"
+              onClick={() => handleRelationshipSelect(item)}
+            >
+              <span className="node-label">
+                {getRelationshipDisplayLabel(item) || item.id}
+              </span>
+              <span className="node-type">{item.type}</span>
+            </Button>
+          </li>
+        ))}
+      </ul>
+    )
+
+  const innerItems = [
+    {
+      key: 'elements',
+      label: `Elements (${
+        treeSearchNorm
+          ? `${filteredTreeElements.length} / ${model.elements.length}`
+          : model.elements.length
+      })`,
+      children: elementsPanel,
+    },
+    {
+      key: 'relationships',
+      label: `Relationships (${
+        treeSearchNorm
+          ? `${filteredTreeRelationships.length} / ${model.relationships.length}`
+          : model.relationships.length
+      })`,
+      children: relationshipsPanel,
+    },
+    {
+      key: 'diagrams',
+      label: `Diagrams (${
+        treeSearchNorm ? `${visibleDiagramCount} / ${model.diagrams.length}` : model.diagrams.length
+      })`,
+      extra: onCreateDiagram ? (
+        <Button
+          size="small"
+          className="tree-section-add-btn"
+          title="Создать диаграмму"
+          aria-label="Создать диаграмму"
+          onClick={(event) => {
+            event.stopPropagation()
+            onCreateDiagram()
+          }}
+        >
+          +
+        </Button>
+      ) : undefined,
+      children: (
         <TreeSection
-          title="Diagrams"
-          totalCount={model.diagrams.length}
-          visibleCount={visibleDiagramCount}
           treeSearchNorm={treeSearchNorm}
           folders={diagramFolderTree}
           rootDiagrams={rootTreeDiagrams}
@@ -285,9 +287,49 @@ export function ModelTree({
               ? (relationshipId: string) => focusRelationshipInDiagram(relationshipId)
               : undefined
           }
-          onCreateDiagram={onCreateDiagram}
         />
-      </details>
+      ),
+    },
+  ]
+
+  const defaultInnerKeys = ['diagrams']
+
+  return (
+    <div className="tree">
+      <Input
+        className="tree-search-input"
+        allowClear
+        prefix={<SearchOutlined />}
+        value={sidebarTreeSearch}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSidebarTreeSearchChange(e.target.value)}
+        placeholder="Поиск: имя, тип, id…"
+        spellCheck={false}
+        autoComplete="off"
+        aria-label="Поиск по элементам, связям и диаграммам"
+      />
+      {model.format === 'split-files' && model.elements.length >= VIRTUAL_LIST_THRESHOLD ? (
+        <p className="tree-hint-compact">
+          Элементы: лёгкий индекс ({model.elements.length.toLocaleString()}). Детали подгружаются при
+          выборе. Используйте поиск для узкого списка.
+        </p>
+      ) : null}
+      <Collapse
+        className="tree-collapse"
+        defaultActiveKey={['model']}
+        items={[
+          {
+            key: 'model',
+            label: model.modelName,
+            children: (
+              <Collapse
+                className="tree-collapse"
+                defaultActiveKey={defaultInnerKeys}
+                items={innerItems}
+              />
+            ),
+          },
+        ]}
+      />
     </div>
   )
 }

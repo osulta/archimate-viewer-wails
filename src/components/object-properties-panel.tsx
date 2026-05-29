@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
+import { Button, Empty, Input, Tabs } from 'antd'
+import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { ObjectRelationshipsPanel } from './object-relationships-panel'
 import { flattenNodes } from '../lib/archimate/diagram-model'
 import { formatArchimateTypeLabel } from '../lib/archimate/model-folder-tree'
@@ -211,9 +213,8 @@ export function ObjectPropertiesPanel({
           </div>
           <div>
             <b>Name:</b>{' '}
-            <input
+            <Input
               className="prop-input"
-              type="text"
               value={diagramNameDraft}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDiagramNameDraft(e.target.value)}
               onBlur={() =>
@@ -261,9 +262,8 @@ export function ObjectPropertiesPanel({
           </div>
           <div>
             <b>Name:</b>{' '}
-            <input
+            <Input
               className="prop-input"
-              type="text"
               value={relationshipNameDraft}
               placeholder={
                 getRelationshipDisplayLabel(selectedRelationship, selectedConnection) ||
@@ -299,13 +299,13 @@ export function ObjectPropertiesPanel({
               (c: DiagramConnection) => c.relationshipRef === selectedRelationshipRef,
             ) ? (
               <>
-                <button
-                  type="button"
-                  className="delete-object-btn"
+                <Button
+                  danger
+                  icon={<DeleteOutlined />}
                   onClick={onDeleteSelectedConnectionFromDiagram}
                 >
                   Удалить с диаграммы
-                </button>
+                </Button>
                 <span className="props-hint">
                   Двойной клик по линии — добавить точку излома; по точке — удалить. Delete /
                   Backspace — удалить выбранную точку или всю связь на диаграмме.
@@ -317,13 +317,14 @@ export function ObjectPropertiesPanel({
                 ниже.
               </span>
             )}
-            <button
-              type="button"
-              className="delete-model-btn"
+            <Button
+              danger
+              type="primary"
+              icon={<DeleteOutlined />}
               onClick={onDeleteRelationshipFromModel}
             >
               Удалить из модели
-            </button>
+            </Button>
           </div>
         </div>
       </section>
@@ -337,43 +338,30 @@ export function ObjectPropertiesPanel({
   return (
     <section className="properties">
       <h3>Свойства объекта</h3>
-      <div className="props-tab-bar" role="tablist" aria-label="Разделы свойств объекта">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={objectPropsTab === 'details'}
-          className={objectPropsTab === 'details' ? 'props-tab props-tab-active' : 'props-tab'}
-          onClick={() => onObjectPropsTabChange('details')}
-        >
-          Детали
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={objectPropsTab === 'relationships'}
-          className={
-            objectPropsTab === 'relationships' ? 'props-tab props-tab-active' : 'props-tab'
-          }
-          onClick={() => onObjectPropsTabChange('relationships')}
-        >
-          Связи объекта
-          {selectedElementRelationships.length > 0
-            ? ` (${selectedElementRelationships.length})`
-            : ''}
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={objectPropsTab === 'diagrams'}
-          className={objectPropsTab === 'diagrams' ? 'props-tab props-tab-active' : 'props-tab'}
-          onClick={() => onObjectPropsTabChange('diagrams')}
-        >
-          Диаграммы
-          {diagramsUsingSelectedElement.length > 0
-            ? ` (${diagramsUsingSelectedElement.length})`
-            : ''}
-        </button>
-      </div>
+      <Tabs
+        className="props-tab-bar"
+        activeKey={objectPropsTab}
+        onChange={onObjectPropsTabChange}
+        items={[
+          { key: 'details', label: 'Детали' },
+          {
+            key: 'relationships',
+            label: `Связи объекта${
+              selectedElementRelationships.length > 0
+                ? ` (${selectedElementRelationships.length})`
+                : ''
+            }`,
+          },
+          {
+            key: 'diagrams',
+            label: `Диаграммы${
+              diagramsUsingSelectedElement.length > 0
+                ? ` (${diagramsUsingSelectedElement.length})`
+                : ''
+            }`,
+          },
+        ]}
+      />
       {objectPropsTab === 'details' ? (
         <>
           <div className="props-grid">
@@ -386,9 +374,8 @@ export function ObjectPropertiesPanel({
             <div>
               <b>Name:</b>{' '}
               {selectedElement ? (
-                <input
+                <Input
                   className="prop-input"
-                  type="text"
                   value={nameDraft}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNameDraft(e.target.value)}
                   onBlur={() =>
@@ -407,7 +394,7 @@ export function ObjectPropertiesPanel({
                 <label className="props-label" htmlFor="element-documentation">
                   Documentation
                 </label>
-                <textarea
+                <Input.TextArea
                   id="element-documentation"
                   className="prop-textarea"
                   rows={5}
@@ -433,26 +420,23 @@ export function ObjectPropertiesPanel({
             <div className="props-actions props-actions-stack">
               {selectedNodeLive ? (
                 <>
-                  <button
-                    type="button"
-                    className="delete-object-btn"
-                    onClick={onDeleteSelectedFromDiagram}
-                  >
+                  <Button danger icon={<DeleteOutlined />} onClick={onDeleteSelectedFromDiagram}>
                     Удалить с диаграммы
-                  </button>
+                  </Button>
                   <span className="props-hint">
                     Delete / Backspace — объект на текущей диаграмме
                   </span>
                 </>
               ) : null}
               {selectedElement ? (
-                <button
-                  type="button"
-                  className="delete-model-btn"
+                <Button
+                  danger
+                  type="primary"
+                  icon={<DeleteOutlined />}
                   onClick={onDeleteElementFromModel}
                 >
                   Удалить из модели
-                </button>
+                </Button>
               ) : null}
             </div>
           </div>
@@ -461,9 +445,8 @@ export function ObjectPropertiesPanel({
               <ul className="props-list">
                 {propertiesDraft.map((prop, idx) => (
                   <li key={`${prop.key}-${idx}`} className="prop-row">
-                    <input
+                    <Input
                       className="prop-input"
-                      type="text"
                       placeholder="key"
                       value={prop.key ?? ''}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -479,9 +462,8 @@ export function ObjectPropertiesPanel({
                         )
                       }
                     />
-                    <input
+                    <Input
                       className="prop-input"
-                      type="text"
                       placeholder="value"
                       value={prop.value ?? ''}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -497,9 +479,10 @@ export function ObjectPropertiesPanel({
                         )
                       }
                     />
-                    <button
-                      type="button"
-                      className="prop-delete-btn"
+                    <Button
+                      danger
+                      size="small"
+                      icon={<DeleteOutlined />}
                       onClick={() => {
                         const next = [...propertiesDraft]
                         next.splice(idx, 1)
@@ -510,22 +493,20 @@ export function ObjectPropertiesPanel({
                           onUpdateElementOverride,
                         )
                       }}
-                    >
-                      Удалить
-                    </button>
+                    />
                   </li>
                 ))}
               </ul>
-              <button
-                type="button"
+              <Button
                 className="add-prop-btn"
+                icon={<PlusOutlined />}
                 onClick={() => {
                   const next = [...propertiesDraft, { key: '', value: '' }]
                   setPropertiesDraft(next)
                 }}
               >
                 Добавить property
-              </button>
+              </Button>
             </>
           ) : null}
         </>
@@ -543,18 +524,19 @@ export function ObjectPropertiesPanel({
       {objectPropsTab === 'diagrams' ? (
         <div className="props-diagrams-panel">
           {diagramsUsingSelectedElement.length === 0 ? (
-            <p className="props-empty">Элемент ни на одной диаграмме не отображается.</p>
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Элемент ни на одной диаграмме не отображается."
+            />
           ) : (
             <ul className="props-diagram-list">
               {diagramsUsingSelectedElement.map(({ diagram, nodes }) => (
                 <li key={diagram.id}>
-                  <button
-                    type="button"
-                    className={
-                      selectedDiagramId === diagram.id
-                        ? 'diagram-btn diagram-btn-block active'
-                        : 'diagram-btn diagram-btn-block'
-                    }
+                  <Button
+                    type={selectedDiagramId === diagram.id ? 'primary' : 'default'}
+                    ghost={selectedDiagramId === diagram.id}
+                    block
+                    className="diagram-btn diagram-btn-block"
                     onClick={() => onNavigateToDiagram({ diagramId: diagram.id, nodes })}
                   >
                     <span className="props-diagram-title">
@@ -565,7 +547,7 @@ export function ObjectPropertiesPanel({
                     {nodes.length > 1 ? (
                       <span className="props-diagram-badge">{nodes.length} экз.</span>
                     ) : null}
-                  </button>
+                  </Button>
                 </li>
               ))}
             </ul>

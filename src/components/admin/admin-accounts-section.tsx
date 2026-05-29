@@ -1,11 +1,15 @@
+import { Empty, Typography } from 'antd'
+
 export function AdminAccountsSection() {
   return (
     <section className="admin-section" aria-label="Учетные записи">
       <div className="tab-page-head">
-        <h2>Учетные записи</h2>
-        <p>Управление пользователями и правами доступа.</p>
+        <Typography.Title level={3}>Учетные записи</Typography.Title>
+        <Typography.Paragraph type="secondary">
+          Управление пользователями и правами доступа.
+        </Typography.Paragraph>
       </div>
-      <p className="admin-section-empty">Раздел в разработке.</p>
+      <Empty description="Раздел в разработке." />
     </section>
   )
 }

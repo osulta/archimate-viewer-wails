@@ -1,4 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react'
+import { Button, Empty, Layout, Spin, Typography } from 'antd'
+import { SwapOutlined } from '@ant-design/icons'
 import './App.css'
 import { AppHeader } from './components/app-header'
 import { DiagramCanvas } from './components/diagram-canvas'
@@ -2205,7 +2207,7 @@ function App() {
   }
 
   return (
-    <div className="app-shell">
+    <Layout className="app-shell">
       <AppHeader
         activeTab={appTab}
         onTabChange={(tab) => setAppTab(tab as AppTab)}
@@ -2216,7 +2218,7 @@ function App() {
         onUndo={performUndo}
         onRedo={performRedo}
       />
-      <div className="app-body">
+      <Layout.Content className="app-body">
         {appTab === 'modeling' ? (
           <div className="layout">
       <Sidebar
@@ -2286,23 +2288,29 @@ function App() {
       <main className="content">
         <div className="content-head">
           <div className="content-head-text">
-            <h2>{selectedDiagram?.name ?? 'Диаграмма не выбрана'}</h2>
-            <p>{selectedDiagram?.type ?? 'Canvas preview'}</p>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              {selectedDiagram?.name ?? 'Диаграмма не выбрана'}
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              {selectedDiagram?.type ?? 'Canvas preview'}
+            </Typography.Text>
           </div>
           {selectedDiagramId && model ? (
-            <button
-              type="button"
+            <Button
+              type="primary"
+              ghost
+              icon={<SwapOutlined />}
               className="content-compare-link"
               onClick={handleOpenCompareChanges}
             >
               Сравнение изменений
-            </button>
+            </Button>
           ) : null}
         </div>
         {splitRuntime.diagramLoadingId &&
         splitRuntime.diagramLoadingId === selectedDiagramId ? (
           <p className="content-diagram-loader" role="status" aria-live="polite">
-            <span className="sidebar-model-loader-spinner" aria-hidden="true" />
+            <Spin size="small" />
             Загрузка диаграммы…
           </p>
         ) : null}
@@ -2378,9 +2386,11 @@ function App() {
             }}
           />
         ) : (
-          <p className="props-empty">
-            Выберите диаграмму, объект или связь, чтобы увидеть свойства.
-          </p>
+          <Empty
+            className="props-empty"
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Выберите диаграмму, объект или связь, чтобы увидеть свойства."
+          />
         )}
       </main>
           </div>
@@ -2477,8 +2487,8 @@ function App() {
           />
         ) : null}
         {appTab === 'admin' ? <AdminPanel git={git} /> : null}
-      </div>
-    </div>
+      </Layout.Content>
+    </Layout>
   )
 }
 

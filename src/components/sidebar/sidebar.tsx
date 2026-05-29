@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react'
+import { Alert, Button, Space, Spin, Typography } from 'antd'
+import { ReloadOutlined, SaveOutlined } from '@ant-design/icons'
 import { applyRelationshipMetaToList } from '../../lib/archimate/relationship-meta'
 import { useDebouncedValue } from '../../hooks/use-debounced-value'
 import { ModelTree } from './model-tree'
@@ -141,13 +143,15 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <h1>ArchiMate Viewer</h1>
+      <Typography.Title level={4} className="sidebar-title">
+        ArchiMate Viewer
+      </Typography.Title>
       {!isViewMode && model ? (
         <>
-          <div className="sidebar-model-actions">
-          <button
-            type="button"
-            className="refresh-model-btn"
+          <Space className="sidebar-model-actions" direction="vertical" size={8}>
+          <Button
+            icon={<ReloadOutlined />}
+            block
             title={
               saveTargetPath
                 ? `Заново загрузить модель из GIT_REPO_ROOT/${saveTargetPath}`
@@ -157,21 +161,23 @@ export function Sidebar({
             onClick={() => void onReloadModel?.()}
           >
             Обновить модель
-          </button>
-          <button
-            type="button"
-            className="save-btn"
+          </Button>
+          <Button
+            type="primary"
+            icon={<SaveOutlined />}
+            block
             title={
               saveTargetPath
                 ? `Перезаписать GIT_REPO_ROOT/${saveTargetPath}`
                 : 'Записать изменения в файл модели в репозитории Git'
             }
+            loading={modelSaving}
             disabled={modelActionLoading || modelLoading || modelSaving || !canSaveModel}
             onClick={() => void onSaveEditedModel?.()}
           >
             {modelSaving ? 'Сохранение…' : 'Сохранить модель'}
-          </button>
-          </div>
+          </Button>
+          </Space>
           {modelLayoutHint ? (
             <p className="save-path-hint" title="Формат загрузки модели">
               {modelLayoutHint}
@@ -183,12 +189,19 @@ export function Sidebar({
             </p>
           ) : null}
           {saveStatusMessage && !error ? (
-            <p className="save-status">{saveStatusMessage}</p>
+            <Alert
+              className="save-status"
+              type="success"
+              showIcon
+              message={saveStatusMessage}
+            />
           ) : null}
           {git ? <GitSidebarWorkflow git={git} /> : null}
         </>
       ) : null}
-      {error ? <p className="error">{error}</p> : null}
+      {error ? (
+        <Alert className="error" type="error" showIcon message={error} />
+      ) : null}
 
       <div
         className={
@@ -197,7 +210,7 @@ export function Sidebar({
       >
         {modelLoading ? (
           <div className="sidebar-model-loader" role="status" aria-live="polite" aria-busy="true">
-            <span className="sidebar-model-loader-spinner" aria-hidden="true" />
+            <Spin size="small" />
             <span>{model ? 'Обновление модели…' : 'Загрузка модели…'}</span>
           </div>
         ) : null}

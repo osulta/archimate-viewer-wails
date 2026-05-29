@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react'
+import { Alert, Button, Card, Empty, List, Space, Tag, Typography } from 'antd'
 import { linters } from '../../../linters/index'
 import type { ParsedModel } from '../../types/model'
 
@@ -29,13 +30,6 @@ interface LintersPanelProps {
 export function LintersPanel(props: LintersPanelProps) {
   const { model } = props
   const [resultsById, setResultsById] = useState<Record<string, LinterResult>>(() => ({}))
-  const [expandedById, setExpandedById] = useState<Record<string, boolean>>(() =>
-    Object.fromEntries(linters.map((item) => [item.id, true])),
-  )
-
-  const handleToggleExpanded = useCallback((linterId: string) => {
-    setExpandedById((prev) => ({ ...prev, [linterId]: !prev[linterId] }))
-  }, [])
 
   const handleRunLinter = useCallback(
     (linterId: string) => {
@@ -60,84 +54,76 @@ export function LintersPanel(props: LintersPanelProps) {
   return (
     <main className="tab-page linters-page" role="tabpanel" aria-label="Линтеры">
       <div className="tab-page-head">
-        <h2>Линтеры</h2>
-        <p>Проверки целостности и качества модели ArchiMate.</p>
+        <Typography.Title level={3}>Линтеры</Typography.Title>
+        <Typography.Paragraph type="secondary">
+          Проверки целостности и качества модели ArchiMate.
+        </Typography.Paragraph>
       </div>
 
       {!model ? (
-        <p className="linters-empty">
-          Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git.
-        </p>
+        <Empty description="Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git." />
       ) : (
         <>
           <div className="linters-toolbar">
-            <button type="button" className="save-btn linters-run-all" onClick={handleRunAll}>
+            <Button type="primary" onClick={handleRunAll}>
               Запустить все
-            </button>
+            </Button>
           </div>
-          <ul className="linters-list">
+          <Space direction="vertical" size={14} style={{ width: '100%' }}>
             {linters.map((linter) => {
               const result = resultsById[linter.id]
               const hasRun = result != null
-              const isExpanded = expandedById[linter.id] !== false
+              const isWarn =
+                hasRun && result.findings.length > 0 && result.findingsStyle !== 'neutral'
 
               return (
-                <li key={linter.id} className="linter-card">
-                  <div className="linter-card-head">
-                    <div className="linter-card-text">
-                      <button
-                        type="button"
-                        className="linter-card-title"
-                        aria-expanded={isExpanded}
-                        onClick={() => handleToggleExpanded(linter.id)}
-                      >
-                        {linter.title}
-                      </button>
-                      <p className="linter-card-desc">{linter.description}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className="git-action-btn linter-run-btn"
-                      onClick={() => handleRunLinter(linter.id)}
-                    >
+                <Card
+                  key={linter.id}
+                  size="small"
+                  className="linter-card"
+                  title={linter.title}
+                  extra={
+                    <Button size="small" onClick={() => handleRunLinter(linter.id)}>
                       Запустить
-                    </button>
-                  </div>
+                    </Button>
+                  }
+                >
+                  <Typography.Paragraph type="secondary" className="linter-card-desc">
+                    {linter.description}
+                  </Typography.Paragraph>
                   {!hasRun ? (
-                    <p className="linter-result linter-result-idle">
+                    <Typography.Text type="secondary" italic>
                       Проверка ещё не запускалась.
-                    </p>
-                  ) : isExpanded ? (
+                    </Typography.Text>
+                  ) : (
                     <>
-                      <p
-                        className={
-                          result.findings.length > 0 &&
-                          result.findingsStyle !== 'neutral'
-                            ? 'linter-result linter-result-warn'
-                            : 'linter-result'
-                        }
-                      >
-                        {result.message}
-                      </p>
+                      <Alert
+                        type={isWarn ? 'warning' : 'success'}
+                        showIcon
+                        message={result.message}
+                      />
                       {result.findings.length > 0 ? (
-                        <ul className="linter-findings">
-                          {result.findings.map((item) => (
-                            <li key={item.elementId} className="linter-finding">
-                              <span className="linter-finding-name">{item.name}</span>
-                              <span className="linter-finding-meta">
-                                {formatElementType(item.type)}
-                              </span>
-                              <span className="linter-finding-id">{item.elementId}</span>
-                            </li>
-                          ))}
-                        </ul>
+                        <List
+                          className="linter-findings"
+                          size="small"
+                          dataSource={result.findings}
+                          renderItem={(item) => (
+                            <List.Item key={item.elementId}>
+                              <List.Item.Meta
+                                title={item.name}
+                                description={item.elementId}
+                              />
+                              <Tag>{formatElementType(item.type)}</Tag>
+                            </List.Item>
+                          )}
+                        />
                       ) : null}
                     </>
-                  ) : null}
-                </li>
+                  )}
+                </Card>
               )
             })}
-          </ul>
+          </Space>
         </>
       )}
     </main>

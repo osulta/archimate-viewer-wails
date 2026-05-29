@@ -5,12 +5,13 @@
   min-height: 0;
 }
 
-.app-header {
+.app-header.ant-layout-header {
   display: flex;
   align-items: center;
-  gap: 24px;
-  padding: 0 20px;
-  min-height: 52px;
+  gap: 12px;
+  padding: 0 16px;
+  height: 52px;
+  line-height: normal;
   border-bottom: 1px solid #d9dfef;
   background: #f8faff;
   flex-shrink: 0;
@@ -23,63 +24,21 @@
   white-space: nowrap;
 }
 
-.app-header-tabs {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.app-header-tab {
-  border: 1px solid transparent;
+.app-header-tabs.ant-menu {
+  flex: 1;
+  min-width: 0;
+  border-bottom: none;
   background: transparent;
-  color: #6479a3;
-  border-radius: 8px 8px 0 0;
-  padding: 10px 14px;
-  font-size: 14px;
-  cursor: pointer;
+  line-height: 50px;
 }
 
-.app-header-tab:hover {
-  background: #eef3fd;
-  color: #20345d;
-}
-
-.app-header-tab-active {
-  background: #fff;
-  border-color: #d9dfef;
-  border-bottom-color: #fff;
-  color: #1f47bf;
-  font-weight: 600;
-  margin-bottom: -1px;
+.app-header-tabs.ant-menu .ant-menu-item {
+  padding-inline: 12px;
 }
 
 .app-header-actions {
-  display: flex;
-  gap: 4px;
   margin-left: auto;
   flex-shrink: 0;
-}
-
-.undo-redo-btn {
-  border: 1px solid #d9dfef;
-  background: #fff;
-  color: #1f47bf;
-  border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 18px;
-  line-height: 1;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.undo-redo-btn:hover:not(:disabled) {
-  background: #eef3fd;
-}
-
-.undo-redo-btn:disabled {
-  color: #b8c4de;
-  border-color: #e8ecf4;
-  cursor: default;
 }
 
 .app-body {
@@ -188,10 +147,13 @@
   font-size: 22px;
 }
 
-.tab-page-head p {
-  margin: 6px 0 0;
-  color: #6479a3;
-  font-size: 14px;
+.tab-page-head .ant-typography + .ant-typography {
+  margin-top: 4px;
+  margin-bottom: 0;
+}
+
+.tab-page-head .ant-typography {
+  margin-bottom: 0;
 }
 
 .admin-layout {
@@ -206,12 +168,17 @@
   min-height: 0;
 }
 
-.admin-sidebar-title {
+.admin-sidebar-title.ant-typography {
   margin: 0 0 14px;
   padding: 0 8px;
   font-size: 15px;
   font-weight: 700;
   color: #1f47bf;
+}
+
+.admin-sidebar-nav.ant-menu {
+  background: transparent;
+  border-inline-end: none;
 }
 
 .admin-sidebar-list {
@@ -336,7 +303,7 @@
   font-size: 13px;
 }
 
-.git-block-title {
+.git-block-title.ant-typography {
   margin: 0 0 12px;
   font-size: 15px;
   font-weight: 600;
@@ -503,11 +470,12 @@
   gap: 14px;
 }
 
-.linter-card {
-  border: 1px solid #cad6ef;
-  border-radius: 8px;
-  padding: 14px 16px;
-  background: #f8faff;
+.linter-card .linter-card-desc.ant-typography {
+  margin-bottom: 10px;
+}
+
+.linter-findings {
+  margin-top: 10px;
 }
 
 .linter-card-title {
@@ -604,9 +572,10 @@
   min-height: 0;
 }
 
-.sidebar h1 {
+.sidebar-title.ant-typography {
   margin: 0 0 14px;
   font-size: 20px;
+  color: #1f47bf;
 }
 
 .sidebar-tree-section.is-loading .tree {
@@ -672,16 +641,13 @@
   font-size: 13px;
 }
 
-.sidebar-model-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.sidebar-model-actions.ant-space {
+  width: 100%;
   margin-bottom: 12px;
 }
 
-.sidebar-model-actions .save-btn,
-.sidebar-model-actions .refresh-model-btn {
-  margin-bottom: 0;
+.sidebar-model-actions.ant-space > .ant-space-item {
+  width: 100%;
 }
 
 .sidebar-git-workflow {
@@ -767,8 +733,12 @@
 }
 
 .error {
-  color: #b1252a;
   margin: 6px 0 10px;
+}
+
+.compare-toolbar-field .ant-select,
+.git-label .ant-select {
+  width: 100%;
 }
 
 .save-path-hint {
@@ -779,9 +749,7 @@
 }
 
 .save-status {
-  margin: -4px 0 12px;
-  font-size: 12px;
-  color: #1a6b3a;
+  margin: 0 0 12px;
 }
 
 .hint {
@@ -805,23 +773,7 @@
 
 .tree-search-input {
   width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #cad6ef;
-  border-radius: 6px;
-  padding: 6px 8px;
-  font-size: 13px;
-  background: #fff;
-  color: #20345d;
-}
-
-.tree-search-input::placeholder {
-  color: #8a9bb8;
-}
-
-.tree-search-input:focus {
-  outline: none;
-  border-color: #7b98d9;
-  box-shadow: 0 0 0 2px rgba(123, 152, 217, 0.25);
+  margin-bottom: 10px;
 }
 
 .tree-search-empty {
@@ -914,51 +866,73 @@
   cursor: grabbing;
 }
 
-.tree-btn {
+.tree-btn.ant-btn {
   width: 100%;
+  height: auto;
+  min-height: 0;
   text-align: left;
-  border: 1px solid transparent;
-  background: transparent;
   padding: 4px 6px;
   border-radius: 6px;
-  cursor: pointer;
   font-size: 13px;
-  color: inherit;
-}
-
-.tree-btn:hover {
-  background: #f0f5ff;
-  border-color: #dbe8ff;
-}
-
-.tree-btn.selected {
-  background: #e7efff;
-  border-color: #7b98d9;
+  white-space: normal;
+  display: block;
+  box-shadow: none;
 }
 
 .node-label {
   display: block;
-  color: #20345d;
+  color: inherit;
 }
 
 .node-type {
+  display: block;
   color: #6a7ea5;
   font-size: 12px;
 }
 
-.diagram-btn {
-  width: 100%;
-  text-align: left;
-  border: 1px solid #cad6ef;
-  background: #fff;
-  border-radius: 6px;
-  padding: 6px 8px;
-  cursor: pointer;
+.tree-btn.ant-btn-primary .node-label,
+.tree-btn.ant-btn-primary .node-type {
+  color: inherit;
 }
 
-.diagram-btn.active {
-  background: #e7efff;
-  border-color: #7b98d9;
+.diagram-btn.ant-btn {
+  width: 100%;
+  text-align: left;
+  justify-content: flex-start;
+  height: auto;
+  min-height: 0;
+  padding: 6px 8px;
+  white-space: normal;
+}
+
+/* Compact collapse for the model tree / palettes */
+.tree-collapse.ant-collapse {
+  background: transparent;
+  border: none;
+}
+
+.tree-collapse > .ant-collapse-item {
+  border-bottom: none;
+}
+
+.tree-collapse > .ant-collapse-item > .ant-collapse-header {
+  padding: 6px 0;
+  align-items: center;
+  font-size: 13px;
+}
+
+.tree-collapse .ant-collapse-content > .ant-collapse-content-box {
+  padding: 4px 0 4px 12px;
+}
+
+.tree-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tree-list li {
+  margin: 2px 0;
 }
 
 .content {
@@ -981,29 +955,7 @@
 
 .content-compare-link {
   flex-shrink: 0;
-  border: 1px solid #7b98d9;
-  background: #e7efff;
-  color: #1f47bf;
-  border-radius: 8px;
-  padding: 8px 12px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
   white-space: nowrap;
-}
-
-.content-compare-link:hover {
-  background: #dbe8ff;
-}
-
-.content-head h2 {
-  margin: 0;
-  font-size: 22px;
-}
-
-.content-head p {
-  margin: 4px 0 0;
-  color: #6479a3;
 }
 
 .properties {
@@ -1019,37 +971,12 @@
   font-size: 15px;
 }
 
-.props-tab-bar {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
-  border-bottom: 1px solid #dce4f5;
-  padding-bottom: 2px;
+.props-tab-bar.ant-tabs {
+  margin-bottom: 8px;
 }
 
-.props-tab {
-  flex: 1;
-  border: 1px solid transparent;
-  background: transparent;
-  color: #6479a3;
-  border-radius: 6px 6px 0 0;
-  padding: 6px 8px;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.props-tab:hover {
-  background: #eef3fd;
-  color: #20345d;
-}
-
-.props-tab-active {
-  background: #fff;
-  border-color: #dce4f5;
-  border-bottom-color: #fff;
-  margin-bottom: -1px;
-  color: #20345d;
-  font-weight: 600;
+.props-tab-bar .ant-tabs-nav {
+  margin-bottom: 8px;
 }
 
 .props-diagrams-panel {
@@ -1424,52 +1351,16 @@
   color: #4a5f8c;
 }
 
-.canvas-zoom-input {
-  width: 56px;
-  border: 1px solid #cad6ef;
-  border-radius: 6px;
-  padding: 3px 6px;
-  font-size: 13px;
-  text-align: right;
-  color: #20345d;
-  background: #fff;
-}
-
-.canvas-zoom-input:focus {
-  outline: none;
-  border-color: #7b98d9;
-  box-shadow: 0 0 0 2px rgba(123, 152, 217, 0.25);
+.canvas-zoom-input.ant-input-number {
+  width: 64px;
 }
 
 .canvas-zoom-suffix {
   color: #6479a3;
 }
 
-.canvas-toolbar button {
-  border: 1px solid #cad6ef;
-  background: #fff;
-  border-radius: 6px;
-  padding: 3px 8px;
-  cursor: pointer;
-}
-
-.canvas-toolbar span {
-  margin-left: 4px;
-  color: #6479a3;
-  font-size: 13px;
-}
-
 .canvas-toolbar .canvas-export-btn {
   margin-left: auto;
-  font-size: 12px;
-  font-weight: 600;
-  color: #20345d;
-  border-color: #7b98d9;
-  background: #e7efff;
-}
-
-.canvas-toolbar .canvas-export-btn:hover {
-  background: #dbe8ff;
 }
 
 .diagram-canvas {
@@ -1792,4 +1683,75 @@
   font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ---- antd reconciliation ---- */
+
+.git-command-loader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+}
+
+.git-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  font-size: 12px;
+  color: #4f5f8c;
+}
+
+.git-settings-fields.ant-space {
+  width: 100%;
+}
+
+.git-settings-fields.ant-space > .ant-space-item {
+  width: 100%;
+}
+
+.element-palette-heading.ant-typography {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #20345d;
+}
+
+.element-palette-hint.ant-typography {
+  margin: 0 0 8px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #5872a5;
+}
+
+.props-rel-section-title.ant-typography {
+  margin: 12px 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6479a3;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.props-relationships-panel .props-rel-section-title.ant-typography:first-child {
+  margin-top: 0;
+}
+
+.props-rel-other-link.ant-btn {
+  padding: 0;
+  height: auto;
+  font-size: inherit;
+}
+
+.tree-section-add-btn.ant-btn {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.compare-empty {
+  margin: 12px 0;
 }

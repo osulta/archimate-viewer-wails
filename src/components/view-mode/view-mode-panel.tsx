@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { Empty, Typography } from 'antd'
 import { DiagramCanvas } from '../diagram-canvas'
 import { collectDiagramHighlightsForElement } from '../../lib/archimate/diagram-model'
 import { Sidebar } from '../sidebar/sidebar'
@@ -138,17 +139,22 @@ export function ViewModePanel(props: ViewModePanelProps) {
       <main className="content view-mode-content">
         <div className="content-head">
           <div className="content-head-text">
-            <h2>{selectedDiagram?.name ?? 'Диаграмма не выбрана'}</h2>
-            <p>{selectedDiagram?.type ?? 'Режим просмотра'}</p>
+            <Typography.Title level={3} style={{ margin: 0 }}>
+              {selectedDiagram?.name ?? 'Диаграмма не выбрана'}
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              {selectedDiagram?.type ?? 'Режим просмотра'}
+            </Typography.Text>
           </div>
         </div>
 
         {!model ? (
-          <p className="view-mode-empty">
-            Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git.
-          </p>
+          <Empty
+            className="view-mode-empty"
+            description="Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git."
+          />
         ) : !selectedDiagram ? (
-          <p className="view-mode-empty">Выберите диаграмму в дереве слева.</p>
+          <Empty className="view-mode-empty" description="Выберите диаграмму в дереве слева." />
         ) : (
           <>
             <DiagramCanvas

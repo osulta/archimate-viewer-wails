@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react'
+import { Button, Empty, Typography } from 'antd'
 import { formatArchimateTypeLabel } from '../lib/archimate/model-folder-tree'
 import { layoutElementRelationshipGraph } from '../lib/archimate/element-relationships'
 import type { ParsedElement, ParsedRelationship, ElementOverride } from '../types/model'
@@ -177,16 +178,18 @@ export function ObjectRelationshipsPanel({
   onSelectElement,
 }: ObjectRelationshipsPanelProps): React.JSX.Element {
   if (!elementId) {
-    return <p className="props-empty">Не удалось определить элемент.</p>
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Не удалось определить элемент." />
   }
 
   if (!entries.length) {
-    return <p className="props-empty">У объекта нет связей в модели.</p>
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="У объекта нет связей в модели." />
   }
 
   return (
     <div className="props-relationships-panel">
-      <h4 className="props-rel-section-title">Список связей</h4>
+      <Typography.Title level={5} className="props-rel-section-title">
+        Список связей
+      </Typography.Title>
       <ul className="props-rel-list">
         {entries.map((entry) => {
           const rel = entry.relationship
@@ -215,14 +218,15 @@ export function ObjectRelationshipsPanel({
               </button>
               <span className="props-rel-item-other">
                 {prefix}
-                <button
-                  type="button"
+                <Button
+                  type="link"
+                  size="small"
                   className="props-rel-other-link"
                   onClick={() => onSelectElement?.(entry.otherElementId)}
                   disabled={!onSelectElement || entry.direction === 'self'}
                 >
                   {otherLabel}
-                </button>
+                </Button>
                 {otherType ? <span className="props-rel-other-type"> ({otherType})</span> : null}
               </span>
             </li>
@@ -230,7 +234,9 @@ export function ObjectRelationshipsPanel({
         })}
       </ul>
 
-      <h4 className="props-rel-section-title">Граф связей</h4>
+      <Typography.Title level={5} className="props-rel-section-title">
+        Граф связей
+      </Typography.Title>
       <RelationshipGraph
         elementId={elementId}
         entries={entries}

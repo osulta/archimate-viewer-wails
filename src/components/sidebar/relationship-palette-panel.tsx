@@ -1,4 +1,5 @@
 import React from 'react'
+import { Typography } from 'antd'
 import { CREATABLE_RELATIONSHIP_TYPE_OPTIONS } from '../../lib/archimate/notation'
 import { setSidebarNewRelationshipDragData } from '../../lib/archimate/sidebar-drag'
 import { RelationshipPaletteIcon } from './relationship-palette-icon'
@@ -38,14 +39,16 @@ export function RelationshipPalettePanel({
       className="relationship-palette-panel create-object-panel"
       aria-label="Палитра новых связей"
     >
-      <h2 className="element-palette-heading">Новые связи</h2>
-      <p className="element-palette-hint">
+      <Typography.Title level={5} className="element-palette-heading">
+        Новые связи
+      </Typography.Title>
+      <Typography.Paragraph className="element-palette-hint">
         {isActive
           ? hasLinkSource
             ? 'Кликните объект-назначение на диаграмме. Esc — сбросить выбор.'
             : 'Кликните объект-источник, затем объект-назначение. Esc — сбросить.'
           : 'Выберите тип связи, затем два объекта на диаграмме. Можно перетащить тип на объект.'}
-      </p>
+      </Typography.Paragraph>
       <ul className="element-palette-grid relationship-palette-grid">
         {CREATABLE_RELATIONSHIP_TYPE_OPTIONS.map((option: { value: string; label: string }) => {
           const isSelected = activeRelationshipType === option.value

@@ -1,11 +1,15 @@
+import { Empty, Typography } from 'antd'
+
 export function AdminMetamodelSection() {
   return (
     <section className="admin-section" aria-label="Метамодель">
       <div className="tab-page-head">
-        <h2>Метамодель</h2>
-        <p>Настройка типов элементов, связей и правил ArchiMate.</p>
+        <Typography.Title level={3}>Метамодель</Typography.Title>
+        <Typography.Paragraph type="secondary">
+          Настройка типов элементов, связей и правил ArchiMate.
+        </Typography.Paragraph>
       </div>
-      <p className="admin-section-empty">Раздел в разработке.</p>
+      <Empty description="Раздел в разработке." />
     </section>
   )
 }

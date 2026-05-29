@@ -1,4 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
+import { Button, Empty, InputNumber, Space } from 'antd'
+import { ZoomInOutlined, ZoomOutOutlined, DownloadOutlined } from '@ant-design/icons'
 import {
   flattenNodes,
   getNodeAtPosition,
@@ -1214,18 +1216,6 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
     }
   }
 
-  function handleZoomInputChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const raw = event.target.value.trim()
-    if (raw === '') {
-      return
-    }
-    const parsed = Number(raw)
-    if (!Number.isFinite(parsed)) {
-      return
-    }
-    setZoomClamped(parsed / 100)
-  }
-
   function handleWheel(event: React.WheelEvent) {
     event.preventDefault()
     const factor = event.deltaY < 0 ? 1.1 : 0.9
@@ -1255,7 +1245,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
   if (!diagram) {
     return (
       <div className="placeholder">
-        Выберите диаграмму в дереве объектов слева.
+        <Empty description="Выберите диаграмму в дереве объектов слева." />
       </div>
     )
   }
@@ -1267,37 +1257,52 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
       }
     >
       <div className="canvas-toolbar">
-        <button type="button" onClick={() => setZoomClamped(zoom * 1.1)}>
-          +
-        </button>
-        <button type="button" onClick={() => setZoomClamped(zoom * 0.9)}>
-          -
-        </button>
-        <button type="button" onClick={() => setZoomClamped(1)}>
-          100%
-        </button>
-        <label className="canvas-zoom-label">
-          <span className="canvas-zoom-label-text">Зум</span>
-          <input
-            type="number"
-            className="canvas-zoom-input"
-            min={30}
-            max={300}
-            step={10}
-            value={Math.round(zoom * 100)}
-            onChange={handleZoomInputChange}
-            aria-label="Масштаб диаграммы в процентах"
+        <Space size={6}>
+          <Button
+            size="small"
+            icon={<ZoomInOutlined />}
+            title="Увеличить"
+            onClick={() => setZoomClamped(zoom * 1.1)}
           />
-          <span className="canvas-zoom-suffix">%</span>
-        </label>
-        <button
-          type="button"
+          <Button
+            size="small"
+            icon={<ZoomOutOutlined />}
+            title="Уменьшить"
+            onClick={() => setZoomClamped(zoom * 0.9)}
+          />
+          <Button size="small" onClick={() => setZoomClamped(1)}>
+            100%
+          </Button>
+          <span className="canvas-zoom-label">
+            <span className="canvas-zoom-label-text">Зум</span>
+            <InputNumber
+              className="canvas-zoom-input"
+              size="small"
+              min={30}
+              max={300}
+              step={10}
+              value={Math.round(zoom * 100)}
+              onChange={(value) => {
+                if (typeof value === 'number' && Number.isFinite(value)) {
+                  setZoomClamped(value / 100)
+                }
+              }}
+              aria-label="Масштаб диаграммы в процентах"
+            />
+            <span className="canvas-zoom-suffix">%</span>
+          </span>
+        </Space>
+        <Button
+          size="small"
+          type="primary"
+          ghost
           className="canvas-export-btn"
+          icon={<DownloadOutlined />}
           title="Сохранить диаграмму как PNG (полное разрешение canvas)"
           onClick={exportDiagramPng}
         >
           PNG
-        </button>
+        </Button>
       </div>
       <div className="canvas-scroll" ref={handleScrollContainerRef} onWheel={handleWheel}>
         <canvas

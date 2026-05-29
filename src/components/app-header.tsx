@@ -1,4 +1,6 @@
 import React from 'react'
+import { Button, Layout, Menu, Space, Tooltip, Typography } from 'antd'
+import { UndoOutlined, RedoOutlined } from '@ant-design/icons'
 
 interface Tab {
   id: string
@@ -37,46 +39,38 @@ export function AppHeader({
   onRedo,
 }: AppHeaderProps): React.JSX.Element {
   return (
-    <header className="app-header">
-      <div className="app-header-brand">ArchiMate Viewer</div>
-      <nav className="app-header-tabs" role="tablist" aria-label="Разделы приложения">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            className={
-              activeTab === tab.id ? 'app-header-tab app-header-tab-active' : 'app-header-tab'
-            }
-            onClick={() => onTabChange(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-      <div className="app-header-actions">
-        <button
-          type="button"
-          className="undo-redo-btn"
-          disabled={!canUndo}
-          title={undoLabel ? `Отменить: ${undoLabel} (Ctrl+Z)` : 'Отменить (Ctrl+Z)'}
-          aria-label="Отменить"
-          onClick={onUndo}
-        >
-          &#x21B6;
-        </button>
-        <button
-          type="button"
-          className="undo-redo-btn"
-          disabled={!canRedo}
+    <Layout.Header className="app-header">
+      <Typography.Text className="app-header-brand">ArchiMate Viewer</Typography.Text>
+      <Menu
+        className="app-header-tabs"
+        mode="horizontal"
+        selectedKeys={[activeTab]}
+        onClick={({ key }) => onTabChange(key)}
+        items={TABS.map((tab) => ({ key: tab.id, label: tab.label }))}
+        aria-label="Разделы приложения"
+      />
+      <Space className="app-header-actions" size={4}>
+        <Tooltip title={undoLabel ? `Отменить: ${undoLabel} (Ctrl+Z)` : 'Отменить (Ctrl+Z)'}>
+          <Button
+            type="text"
+            icon={<UndoOutlined />}
+            disabled={!canUndo}
+            aria-label="Отменить"
+            onClick={onUndo}
+          />
+        </Tooltip>
+        <Tooltip
           title={redoLabel ? `Повторить: ${redoLabel} (Ctrl+Shift+Z)` : 'Повторить (Ctrl+Shift+Z)'}
-          aria-label="Повторить"
-          onClick={onRedo}
         >
-          &#x21B7;
-        </button>
-      </div>
-    </header>
+          <Button
+            type="text"
+            icon={<RedoOutlined />}
+            disabled={!canRedo}
+            aria-label="Повторить"
+            onClick={onRedo}
+          />
+        </Tooltip>
+      </Space>
+    </Layout.Header>
   )
 }

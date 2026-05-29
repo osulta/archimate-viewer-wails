@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Button, Empty, Tabs } from 'antd'
 import { ObjectRelationshipsPanel } from '../object-relationships-panel'
 import { formatArchimateTypeLabel } from '../../lib/archimate/model-folder-tree'
 import {
@@ -104,43 +105,30 @@ export function ViewModeProperties(props: ViewModePropertiesProps) {
     return (
       <section className="properties view-mode-properties">
         <h3>Свойства объекта</h3>
-        <div className="props-tab-bar" role="tablist" aria-label="Разделы свойств объекта">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={objectPropsTab === 'details'}
-            className={objectPropsTab === 'details' ? 'props-tab props-tab-active' : 'props-tab'}
-            onClick={() => setObjectPropsTab('details')}
-          >
-            Детали
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={objectPropsTab === 'relationships'}
-            className={
-              objectPropsTab === 'relationships' ? 'props-tab props-tab-active' : 'props-tab'
-            }
-            onClick={() => setObjectPropsTab('relationships')}
-          >
-            Связи объекта
-            {selectedElementRelationships.length > 0
-              ? ` (${selectedElementRelationships.length})`
-              : ''}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={objectPropsTab === 'diagrams'}
-            className={objectPropsTab === 'diagrams' ? 'props-tab props-tab-active' : 'props-tab'}
-            onClick={() => setObjectPropsTab('diagrams')}
-          >
-            Диаграммы
-            {diagramsUsingSelectedElement.length > 0
-              ? ` (${diagramsUsingSelectedElement.length})`
-              : ''}
-          </button>
-        </div>
+        <Tabs
+          className="props-tab-bar"
+          activeKey={objectPropsTab}
+          onChange={setObjectPropsTab}
+          items={[
+            { key: 'details', label: 'Детали' },
+            {
+              key: 'relationships',
+              label: `Связи объекта${
+                selectedElementRelationships.length > 0
+                  ? ` (${selectedElementRelationships.length})`
+                  : ''
+              }`,
+            },
+            {
+              key: 'diagrams',
+              label: `Диаграммы${
+                diagramsUsingSelectedElement.length > 0
+                  ? ` (${diagramsUsingSelectedElement.length})`
+                  : ''
+              }`,
+            },
+          ]}
+        />
         {objectPropsTab === 'details' ? (
           <div className="props-grid props-grid-readonly">
             <div>
@@ -193,20 +181,21 @@ export function ViewModeProperties(props: ViewModePropertiesProps) {
         ) : (
           <div className="props-diagrams-panel">
             {!selectedElementRefForUsage ? (
-              <p className="props-empty">Не удалось определить элемент.</p>
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Не удалось определить элемент." />
             ) : diagramsUsingSelectedElement.length === 0 ? (
-              <p className="props-empty">Элемент ни на одной диаграмме не отображается.</p>
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description="Элемент ни на одной диаграмме не отображается."
+              />
             ) : (
               <ul className="props-diagram-list">
                 {diagramsUsingSelectedElement.map(({ diagram, nodes }) => (
                   <li key={diagram.id}>
-                    <button
-                      type="button"
-                      className={
-                        selectedDiagramId === diagram.id
-                          ? 'diagram-btn diagram-btn-block active'
-                          : 'diagram-btn diagram-btn-block'
-                      }
+                    <Button
+                      type={selectedDiagramId === diagram.id ? 'primary' : 'default'}
+                      ghost={selectedDiagramId === diagram.id}
+                      block
+                      className="diagram-btn diagram-btn-block"
                       onClick={() =>
                         onNavigateToDiagram({
                           diagramId: diagram.id,
@@ -223,7 +212,7 @@ export function ViewModeProperties(props: ViewModePropertiesProps) {
                       {nodes.length > 1 ? (
                         <span className="props-diagram-badge">{nodes.length} экз.</span>
                       ) : null}
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -235,6 +224,10 @@ export function ViewModeProperties(props: ViewModePropertiesProps) {
   }
 
   return (
-    <p className="props-empty">Кликните на объект или связь на диаграмме, чтобы увидеть свойства.</p>
+    <Empty
+      className="props-empty"
+      image={Empty.PRESENTED_IMAGE_SIMPLE}
+      description="Кликните на объект или связь на диаграмме, чтобы увидеть свойства."
+    />
   )
 }
