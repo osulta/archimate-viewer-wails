@@ -25,18 +25,29 @@ type Config struct {
 	StaticDir   string
 	ServeStatic bool
 	Port        int
+
+	// DefaultRepoRoot is the platform default reported to the UI so it can offer
+	// a "reset to default" action. When empty it falls back to RepoRoot.
+	DefaultRepoRoot string
+	// OnRepoRootChange is invoked after the repo root is changed at runtime so the
+	// host (e.g. the desktop app) can persist the new value. It may be nil.
+	OnRepoRootChange func(newRoot string) error
 }
 
 // Server is the in-process HTTP API server.
 type Server struct {
-	repoRoot    string
-	staticDir   string
-	serveStatic bool
-	baseURL     string
+	repoRoot        string
+	defaultRepoRoot string
+	staticDir       string
+	serveStatic     bool
+	baseURL         string
+
+	onRepoRootChange func(string) error
 
 	httpServer *http.Server
 	listener   net.Listener
 	mu         sync.Mutex
+	repoRootMu sync.RWMutex
 }
 
 // Start binds an in-process HTTP server on 127.0.0.1 and waits until it is healthy.
@@ -65,12 +76,21 @@ func Start(ctx context.Context, cfg Config) (*Server, error) {
 	}
 	port = listener.Addr().(*net.TCPAddr).Port
 
+	defaultRoot := strings.TrimSpace(cfg.DefaultRepoRoot)
+	if defaultRoot == "" {
+		defaultRoot = repoRootAbs
+	} else if abs, e := filepath.Abs(defaultRoot); e == nil {
+		defaultRoot = abs
+	}
+
 	s := &Server{
-		repoRoot:    repoRootAbs,
-		staticDir:   cfg.StaticDir,
-		serveStatic: cfg.ServeStatic,
-		baseURL:     fmt.Sprintf("http://127.0.0.1:%d", port),
-		listener:    listener,
+		repoRoot:         repoRootAbs,
+		defaultRepoRoot:  defaultRoot,
+		staticDir:        cfg.StaticDir,
+		serveStatic:      cfg.ServeStatic,
+		baseURL:          fmt.Sprintf("http://127.0.0.1:%d", port),
+		listener:         listener,
+		onRepoRootChange: cfg.OnRepoRootChange,
 	}
 	s.httpServer = &http.Server{Handler: s.routes()}
 
@@ -88,6 +108,55 @@ func Start(ctx context.Context, cfg Config) (*Server, error) {
 // BaseURL returns the loopback base URL the frontend should target.
 func (s *Server) BaseURL() string {
 	return s.baseURL
+}
+
+// RepoRoot returns the current GIT_REPO_ROOT (thread-safe).
+func (s *Server) RepoRoot() string {
+	s.repoRootMu.RLock()
+	defer s.repoRootMu.RUnlock()
+	return s.repoRoot
+}
+
+// DefaultRepoRoot returns the platform default repo root.
+func (s *Server) DefaultRepoRoot() string {
+	return s.defaultRepoRoot
+}
+
+// SetRepoRoot validates, creates if needed, and switches the GIT_REPO_ROOT used
+// for all subsequent git/model operations. Returns the normalized absolute path.
+func (s *Server) SetRepoRoot(newRoot string) (string, error) {
+	trimmed := strings.TrimSpace(newRoot)
+	if trimmed == "" {
+		return "", fmt.Errorf("Укажите путь к каталогу GIT_REPO_ROOT")
+	}
+	if !filepath.IsAbs(trimmed) {
+		return "", fmt.Errorf("Путь к GIT_REPO_ROOT должен быть абсолютным")
+	}
+	abs, err := filepath.Abs(trimmed)
+	if err != nil {
+		return "", fmt.Errorf("Некорректный путь: %w", err)
+	}
+	if err := os.MkdirAll(abs, 0o755); err != nil {
+		return "", fmt.Errorf("Не удалось создать каталог: %w", err)
+	}
+	st, err := os.Stat(abs)
+	if err != nil {
+		return "", fmt.Errorf("Не удалось открыть каталог: %w", err)
+	}
+	if !st.IsDir() {
+		return "", fmt.Errorf("Путь не является каталогом")
+	}
+
+	s.repoRootMu.Lock()
+	s.repoRoot = abs
+	s.repoRootMu.Unlock()
+
+	if s.onRepoRootChange != nil {
+		if err := s.onRepoRootChange(abs); err != nil {
+			return abs, fmt.Errorf("Каталог применён, но не удалось сохранить настройку: %w", err)
+		}
+	}
+	return abs, nil
 }
 
 // Stop shuts the HTTP server down.
@@ -134,6 +203,7 @@ func (s *Server) waitHealthy(ctx context.Context, timeout time.Duration) error {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/git/repo-root", s.handleRepoRoot)
 	mux.HandleFunc("/api/git/repo-state", s.handleRepoState)
 	mux.HandleFunc("/api/git/settings", s.handleSettings)
 	mux.HandleFunc("/api/git/status", s.handleStatus)

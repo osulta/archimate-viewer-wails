@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
+	"strings"
 
 	wailsruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -25,14 +27,20 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
-	repoRoot := filepath.Join(userDataDir(), "repositories")
+	defaultRepoRoot := filepath.Join(userDataDir(), "repositories")
+	repoRoot := defaultRepoRoot
+	if saved := strings.TrimSpace(loadSavedRepoRoot()); saved != "" {
+		repoRoot = saved
+	}
 	staticDir := resolveStaticDir()
 
 	srv, err := apiserver.Start(context.Background(), apiserver.Config{
-		RepoRoot:    repoRoot,
-		StaticDir:   staticDir,
-		ServeStatic: staticDir != "",
-		Port:        apiserver.ParsePort(),
+		RepoRoot:         repoRoot,
+		DefaultRepoRoot:  defaultRepoRoot,
+		StaticDir:        staticDir,
+		ServeStatic:      staticDir != "",
+		Port:             apiserver.ParsePort(),
+		OnRepoRootChange: saveRepoRoot,
 	})
 	if err != nil {
 		wailsruntime.LogErrorf(ctx, "git-api: %v", err)
@@ -57,6 +65,64 @@ func (a *App) shutdown(ctx context.Context) {
 // GetAPIBaseURL is used by the UI for fetch() when assets are embedded (not same-origin as the API).
 func (a *App) GetAPIBaseURL() string {
 	return a.apiBaseURL
+}
+
+// SelectDirectory opens a native folder picker and returns the chosen absolute
+// path (empty when the user cancels). Used by the UI to choose GIT_REPO_ROOT.
+func (a *App) SelectDirectory(title string) string {
+	if a.ctx == nil {
+		return ""
+	}
+	dialogTitle := strings.TrimSpace(title)
+	if dialogTitle == "" {
+		dialogTitle = "Выберите каталог"
+	}
+	selected, err := wailsruntime.OpenDirectoryDialog(a.ctx, wailsruntime.OpenDialogOptions{
+		Title: dialogTitle,
+	})
+	if err != nil {
+		wailsruntime.LogErrorf(a.ctx, "SelectDirectory: %v", err)
+		return ""
+	}
+	return selected
+}
+
+// appConfig is the small JSON settings file persisted in the user data dir.
+type appConfig struct {
+	RepoRoot string `json:"repoRoot,omitempty"`
+}
+
+func configFilePath() string {
+	return filepath.Join(userDataDir(), "config.json")
+}
+
+func loadSavedRepoRoot() string {
+	data, err := os.ReadFile(configFilePath())
+	if err != nil {
+		return ""
+	}
+	var cfg appConfig
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return ""
+	}
+	return strings.TrimSpace(cfg.RepoRoot)
+}
+
+func saveRepoRoot(newRoot string) error {
+	path := configFilePath()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	cfg := appConfig{}
+	if data, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(data, &cfg)
+	}
+	cfg.RepoRoot = strings.TrimSpace(newRoot)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func userDataDir() string {

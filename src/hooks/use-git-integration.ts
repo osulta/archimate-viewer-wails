@@ -1,6 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react'
 import { apiUrl } from '../lib/api-base'
 import { confirmDialog } from '../lib/ui/confirm-dialog'
+import { SelectDirectory, isWailsRuntime } from '../../wailsjs/go/main/App'
 import type { ModelLoadPayload } from '../types/model'
 
 function localBranchNameFromRef(ref: string | null | undefined): string {
@@ -143,6 +144,10 @@ export function useGitIntegration({
       : 'git',
   )
   const [gitConfigPat, setGitConfigPat] = useState('')
+  const [gitRepoRoot, setGitRepoRoot] = useState('')
+  const [gitRepoRootDefault, setGitRepoRootDefault] = useState('')
+  const [gitRepoRootInput, setGitRepoRootInput] = useState('')
+  const canPickDirectory = isWailsRuntime()
   const [gitRepoProbe, setGitRepoProbe] = useState<GitRepoProbe>({
     loaded: false,
     loading: false,
@@ -287,6 +292,23 @@ export function useGitIntegration({
     }
     } finally {
       setModelLoading(false)
+    }
+  }, [])
+
+  const refreshGitRepoRoot = useCallback(async (): Promise<void> => {
+    try {
+      const r = await fetch(apiUrl('/api/git/repo-root'))
+      const data = await r.json()
+      if (data.ok) {
+        const root = typeof data.repoRoot === 'string' ? data.repoRoot : ''
+        setGitRepoRoot(root)
+        setGitRepoRootInput(root)
+        setGitRepoRootDefault(
+          typeof data.defaultRepoRoot === 'string' ? data.defaultRepoRoot : '',
+        )
+      }
+    } catch {
+      // Leave previous values; the info banner already reports API availability.
     }
   }, [])
 
@@ -477,6 +499,13 @@ export function useGitIntegration({
     }
     void refreshGitRepoState()
   }, [gitApiReady, gitWorkFolder, refreshGitRepoState])
+
+  useEffect(() => {
+    if (!gitApiReady) {
+      return
+    }
+    void refreshGitRepoRoot()
+  }, [gitApiReady, refreshGitRepoRoot])
 
   useEffect(() => {
     if (!gitApiReady || !gitRepoProbe.loaded || gitRepoProbe.loading) {
@@ -691,6 +720,86 @@ export function useGitIntegration({
       setGitOutput(err instanceof Error ? err.message : String(err))
     }
     })
+  }
+
+  async function applyRepoRoot(payload: { repoRoot?: string; reset?: boolean }): Promise<void> {
+    if (!gitApiReady) {
+      setGitOutput(apiUnavailableMessage)
+      return
+    }
+    await withGitCommand('Смена GIT_REPO_ROOT…', async () => {
+      try {
+        const response = await fetch(apiUrl('/api/git/repo-root'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        const rawText = await response.text()
+        let data: Record<string, unknown> = {}
+        try {
+          data = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {}
+        } catch {
+          data = {}
+        }
+        if (response.ok && data.ok) {
+          const root = typeof data.repoRoot === 'string' ? data.repoRoot : ''
+          setGitRepoRoot(root)
+          setGitRepoRootInput(root)
+          if (typeof data.defaultRepoRoot === 'string') {
+            setGitRepoRootDefault(data.defaultRepoRoot)
+          }
+          setGitRepoPath('')
+          setGitBranches({ loading: false, list: [], error: null })
+          onRepositoryDeleted()
+          setGitOutput(`Каталог GIT_REPO_ROOT изменён: ${root}`)
+          await refreshGitRepoState()
+          return
+        }
+        if (typeof data.error === 'string' && data.error) {
+          setGitOutput(data.error)
+          return
+        }
+        const detail = rawText.trim()
+        if (response.status === 404) {
+          setGitOutput(
+            'Эндпоинт /api/git/repo-root не найден (HTTP 404). Перезапустите локальный API (npm run dev:api) или приложение — установлена устаревшая версия сервера.',
+          )
+          return
+        }
+        setGitOutput(
+          `Не удалось изменить каталог (HTTP ${response.status})${detail ? `: ${detail}` : '.'}`,
+        )
+      } catch (err) {
+        setGitOutput(formatApiRequestError(err))
+      }
+    })
+  }
+
+  async function handleApplyRepoRoot(): Promise<void> {
+    const next = gitRepoRootInput.trim()
+    if (!next) {
+      setGitOutput('Укажите путь к каталогу GIT_REPO_ROOT')
+      return
+    }
+    await applyRepoRoot({ repoRoot: next })
+  }
+
+  async function handleResetRepoRoot(): Promise<void> {
+    await applyRepoRoot({ reset: true })
+  }
+
+  async function handleBrowseRepoRoot(): Promise<void> {
+    if (!canPickDirectory) {
+      return
+    }
+    try {
+      const picked = (await SelectDirectory('Выберите каталог GIT_REPO_ROOT')).trim()
+      if (picked) {
+        setGitRepoRootInput(picked)
+      }
+    } catch (err) {
+      setGitOutput(formatApiRequestError(err))
+    }
   }
 
   async function handleDeleteGitRepository(): Promise<void> {
@@ -1042,6 +1151,14 @@ export function useGitIntegration({
     setGitWorkFolder,
     gitConfigPat,
     setGitConfigPat,
+    gitRepoRoot,
+    gitRepoRootDefault,
+    gitRepoRootInput,
+    setGitRepoRootInput,
+    canPickDirectory,
+    handleApplyRepoRoot,
+    handleResetRepoRoot,
+    handleBrowseRepoRoot,
     gitRepoProbe,
     modelLayout,
     modelLoading,

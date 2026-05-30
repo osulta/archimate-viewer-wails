@@ -24,6 +24,7 @@ func runGitInWorkTree(workTree string, args []string) gitResult {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = workTree
 	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	hideConsoleWindow(cmd)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -164,8 +165,9 @@ func (s *Server) resolveCloneTargetDir(dirInput string) (abs, rel string, err er
 			return "", "", errors.New("Некорректный путь")
 		}
 	}
-	abs = filepath.Join(s.repoRoot, filepath.FromSlash(trimmed))
-	relToRoot, e := filepath.Rel(s.repoRoot, abs)
+	repoRoot := s.RepoRoot()
+	abs = filepath.Join(repoRoot, filepath.FromSlash(trimmed))
+	relToRoot, e := filepath.Rel(repoRoot, abs)
 	if e != nil || strings.HasPrefix(relToRoot, "..") || filepath.IsAbs(relToRoot) {
 		return "", "", errors.New("Путь выходит за пределы GIT_REPO_ROOT")
 	}
@@ -182,8 +184,9 @@ func (s *Server) resolveAllowedModelPath(relPath string) (abs, rel string, err e
 	if !strings.HasSuffix(lower, ".archimate") && !strings.HasSuffix(lower, ".xml") {
 		return "", "", errors.New("Разрешены только файлы .archimate и .xml")
 	}
-	abs = filepath.Join(s.repoRoot, filepath.FromSlash(trimmed))
-	relToRoot, e := filepath.Rel(s.repoRoot, abs)
+	repoRoot := s.RepoRoot()
+	abs = filepath.Join(repoRoot, filepath.FromSlash(trimmed))
+	relToRoot, e := filepath.Rel(repoRoot, abs)
 	if e != nil || strings.HasPrefix(relToRoot, "..") || filepath.IsAbs(relToRoot) {
 		return "", "", errors.New("Путь выходит за пределы GIT_REPO_ROOT")
 	}
@@ -192,7 +195,7 @@ func (s *Server) resolveAllowedModelPath(relPath string) (abs, rel string, err e
 
 // resolveGitWorkTreeFromOptionalModelPath mirrors the same helper.
 func (s *Server) resolveGitWorkTreeFromOptionalModelPath(relPath string) string {
-	rootResolved := s.repoRoot
+	rootResolved := s.RepoRoot()
 	if strings.TrimSpace(relPath) == "" {
 		return rootResolved
 	}
@@ -283,11 +286,12 @@ func (s *Server) resolveConfiguredWorkTree(modelPath, workFolderInput string) st
 			rel = "git"
 		}
 	}
-	abs := filepath.Join(s.repoRoot, filepath.FromSlash(rel))
+	repoRoot := s.RepoRoot()
+	abs := filepath.Join(repoRoot, filepath.FromSlash(rel))
 	if pathExists(filepath.Join(abs, ".git")) {
 		return abs
 	}
-	return s.repoRoot
+	return repoRoot
 }
 
 type splitModelRoot struct {
@@ -304,7 +308,7 @@ func (s *Server) resolveSplitModelRootFromManifestPath(manifestRel string) (spli
 		return splitModelRoot{}, err
 	}
 	modelRootAbs := filepath.Dir(abs)
-	modelRoot, err := filepath.Rel(s.repoRoot, modelRootAbs)
+	modelRoot, err := filepath.Rel(s.RepoRoot(), modelRootAbs)
 	if err != nil {
 		return splitModelRoot{}, err
 	}
@@ -322,8 +326,9 @@ func (s *Server) resolveSplitModelFilePath(modelRoot, relativePath string) (abs,
 	if root == "" || relInput == "" || strings.Contains(relInput, "..") || strings.Contains(root, "..") {
 		return "", "", errors.New("Некорректный путь к файлу модели")
 	}
-	abs = filepath.Join(s.repoRoot, filepath.FromSlash(root), filepath.FromSlash(relInput))
-	modelRootAbs := filepath.Join(s.repoRoot, filepath.FromSlash(root))
+	repoRoot := s.RepoRoot()
+	abs = filepath.Join(repoRoot, filepath.FromSlash(root), filepath.FromSlash(relInput))
+	modelRootAbs := filepath.Join(repoRoot, filepath.FromSlash(root))
 	relToModel, e := filepath.Rel(modelRootAbs, abs)
 	if e != nil || strings.HasPrefix(relToModel, "..") || filepath.IsAbs(relToModel) {
 		return "", "", errors.New("Путь выходит за пределы каталога модели")

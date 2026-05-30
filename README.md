@@ -132,7 +132,7 @@ npm run build:win
 
 | Переменная | Назначение |
 |------------|------------|
-| `GIT_REPO_ROOT` | Абсолютный путь к корню git-репозитория на диске (по умолчанию — текущий рабочий каталог при `go run ./cmd/git-api`). В десктопном приложении задаётся каталог данных пользователя. |
+| `GIT_REPO_ROOT` | Абсолютный путь к корню git-репозитория на диске (по умолчанию — текущий рабочий каталог при `go run ./cmd/git-api`). В десктопном приложении путь по умолчанию: macOS — `~/Library/Application Support/ArchiMate Viewer/repositories`, Windows — `%APPDATA%\ArchiMate Viewer\repositories`, Linux — `$XDG_DATA_HOME/archimate-viewer/repositories` (или `~/.local/share/...`). Путь можно изменить во вкладке **Администрирование → Git**; выбор сохраняется в `config.json` рядом с каталогом данных. |
 | `GIT_API_PORT` | Порт HTTP-сервера API (по умолчанию **5151**). |
 | `SERVE_STATIC` / `STATIC_DIR` | Включение раздачи собранного UI из каталога (опционально, для standalone-режима). |
 

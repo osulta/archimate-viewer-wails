@@ -72,7 +72,44 @@ func mergeGitResult(m map[string]any, r gitResult) {
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "repoRoot": s.repoRoot})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "repoRoot": s.RepoRoot()})
+}
+
+// handleRepoRoot exposes the configured GIT_REPO_ROOT. GET returns the current
+// and default paths; POST { repoRoot } switches it for subsequent operations.
+func (s *Server) handleRepoRoot(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":              true,
+			"repoRoot":        s.RepoRoot(),
+			"defaultRepoRoot": s.DefaultRepoRoot(),
+		})
+		return
+	}
+	if r.Method != http.MethodPost {
+		errJSON(w, http.StatusMethodNotAllowed, "Метод не поддерживается")
+		return
+	}
+	body := readBody(r)
+	next := strings.TrimSpace(bodyStr(body, "repoRoot"))
+	if bodyTrue(body, "reset") {
+		next = s.DefaultRepoRoot()
+	}
+	applied, err := s.SetRepoRoot(next)
+	if err != nil {
+		// SetRepoRoot may return a non-empty path together with a persistence error.
+		resp := map[string]any{"ok": false, "error": err.Error()}
+		if applied != "" {
+			resp["repoRoot"] = applied
+		}
+		writeJSON(w, http.StatusBadRequest, resp)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":              true,
+		"repoRoot":        applied,
+		"defaultRepoRoot": s.DefaultRepoRoot(),
+	})
 }
 
 func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
@@ -100,7 +137,7 @@ func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if entry := findModelEntryUnder(abs); entry != nil {
-			if mp, e := filepath.Rel(s.repoRoot, entry.absPath); e == nil {
+			if mp, e := filepath.Rel(s.RepoRoot(), entry.absPath); e == nil {
 				resp["modelPath"] = filepath.ToSlash(mp)
 				resp["modelLayout"] = string(entry.layout)
 			}
@@ -332,13 +369,14 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 		args = append(args, "--depth", "1")
 	}
 	args = append(args, cloneURL, rel)
-	result := runGitInWorkTree(s.repoRoot, args)
+	repoRoot := s.RepoRoot()
+	result := runGitInWorkTree(repoRoot, args)
 	exitCode := result.Code
 
 	originSanitized := false
 	if exitCode == 0 && usedPat {
 		clean := httpsURLWithoutCredentials(url)
-		workTree := filepath.Join(s.repoRoot, filepath.FromSlash(rel))
+		workTree := filepath.Join(repoRoot, filepath.FromSlash(rel))
 		setR := runGitInWorkTree(workTree, []string{"remote", "set-url", "origin", clean})
 		originSanitized = setR.Code == 0
 	}
@@ -346,9 +384,9 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 	var modelPath any
 	var modelLayout any
 	if exitCode == 0 {
-		clonedRoot := filepath.Join(s.repoRoot, filepath.FromSlash(rel))
+		clonedRoot := filepath.Join(repoRoot, filepath.FromSlash(rel))
 		if entry := findModelEntryUnder(clonedRoot); entry != nil {
-			if mp, relErr := filepath.Rel(s.repoRoot, entry.absPath); relErr == nil {
+			if mp, relErr := filepath.Rel(repoRoot, entry.absPath); relErr == nil {
 				modelPath = filepath.ToSlash(mp)
 				modelLayout = string(entry.layout)
 			}
@@ -666,7 +704,7 @@ func (s *Server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) 
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	relFromRoot, e := filepath.Rel(s.repoRoot, abs)
+	relFromRoot, e := filepath.Rel(s.RepoRoot(), abs)
 	if e != nil || relFromRoot == "" || relFromRoot == "." || strings.HasPrefix(relFromRoot, "..") {
 		errJSON(w, http.StatusBadRequest, "Нельзя удалить корень GIT_REPO_ROOT")
 		return
@@ -834,7 +872,7 @@ func (s *Server) handleModelReadSplit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	modelRootAbs := filepath.Dir(abs)
-	modelRoot, relErr := filepath.Rel(s.repoRoot, modelRootAbs)
+	modelRoot, relErr := filepath.Rel(s.RepoRoot(), modelRootAbs)
 	if relErr != nil {
 		errJSON(w, http.StatusBadRequest, relErr.Error())
 		return

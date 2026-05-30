@@ -20,10 +20,11 @@ func main() {
 	}
 
 	cfg := apiserver.Config{
-		RepoRoot:    repoRoot,
-		Port:        apiserver.ParsePort(),
-		ServeStatic: os.Getenv("SERVE_STATIC") == "1",
-		StaticDir:   os.Getenv("STATIC_DIR"),
+		RepoRoot:        repoRoot,
+		DefaultRepoRoot: repoRoot,
+		Port:            apiserver.ParsePort(),
+		ServeStatic:     os.Getenv("SERVE_STATIC") == "1",
+		StaticDir:       os.Getenv("STATIC_DIR"),
 	}
 
 	srv, err := apiserver.Start(context.Background(), cfg)

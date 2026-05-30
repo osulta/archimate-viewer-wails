@@ -5,3 +5,7 @@
 export function GetAPIBaseURL() {
   return window['go']['main']['App']['GetAPIBaseURL']();
 }
+
+export function SelectDirectory(arg1) {
+  return window['go']['main']['App']['SelectDirectory'](arg1);
+}
