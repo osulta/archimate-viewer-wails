@@ -29,7 +29,7 @@ export function ElementPalettePanel(): React.JSX.Element {
       <Collapse
         className="element-palette-groups tree-collapse"
         bordered={false}
-        defaultActiveKey={[CREATABLE_ELEMENT_TYPE_GROUPS[0]?.layer]}
+        defaultActiveKey={[]}
         items={CREATABLE_ELEMENT_TYPE_GROUPS.map(
           (group: { layer: string; label: string; options: { value: string; label: string }[] }) => ({
             key: group.layer,
