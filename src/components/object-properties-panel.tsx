@@ -1,9 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { Button, Empty, Input, Tabs } from 'antd'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
+import { Button, ColorPicker, Empty, Input, Tabs } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { ObjectRelationshipsPanel } from './object-relationships-panel'
 import { flattenNodes } from '../lib/archimate/diagram-model'
 import { formatArchimateTypeLabel } from '../lib/archimate/model-folder-tree'
+import { getElementNotationStyle } from '../lib/archimate/notation'
 import {
   formatRelationshipEndpointLabel,
   getRelationshipDisplayLabel,
@@ -42,6 +43,161 @@ function flushElementOverride(
   }
 }
 
+interface ElementPropertiesEditorProps {
+  elementId: string
+  properties: ElementProperty[]
+  disabled?: boolean
+  onChange: (next: ElementProperty[]) => void
+  onCommit: (next: ElementProperty[]) => void
+}
+
+function ElementPropertiesEditor({
+  elementId,
+  properties,
+  disabled = false,
+  onChange,
+  onCommit,
+}: ElementPropertiesEditorProps): React.JSX.Element {
+  const latestRef = useRef(properties)
+  latestRef.current = properties
+
+  const handleChange = (index: number, patch: Partial<ElementProperty>) => {
+    const next = properties.map((prop, idx) => (idx === index ? { ...prop, ...patch } : prop))
+    latestRef.current = next
+    onChange(next)
+  }
+
+  const handleRemove = (index: number) => {
+    const next = properties.filter((_, idx) => idx !== index)
+    latestRef.current = next
+    onChange(next)
+    onCommit(next)
+  }
+
+  const handleAdd = () => {
+    if (disabled) {
+      return
+    }
+    const next = [...properties, { key: '', value: '' }]
+    latestRef.current = next
+    onChange(next)
+  }
+
+  const handleBlur = () => {
+    onCommit(latestRef.current)
+  }
+
+  return (
+    <div className="props-field-full props-properties-block">
+      <div className="props-properties-head">
+        <span className="props-label">Properties</span>
+        <Button size="small" icon={<PlusOutlined />} onClick={handleAdd} disabled={disabled}>
+          Добавить
+        </Button>
+      </div>
+      {disabled ? (
+        <p className="props-hint props-properties-empty">Загрузка свойств…</p>
+      ) : properties.length === 0 ? (
+        <p className="props-hint props-properties-empty">Свойства не заданы.</p>
+      ) : (
+        <ul className="props-list props-properties-list" aria-label="Properties">
+          <li className="props-properties-header" aria-hidden="true">
+            <span>Key</span>
+            <span>Value</span>
+            <span />
+          </li>
+          {properties.map((prop, idx) => (
+            <li key={`${elementId}-prop-${idx}`} className="prop-row">
+              <Input
+                className="prop-input"
+                placeholder="key"
+                value={prop.key ?? ''}
+                disabled={disabled}
+                aria-label={`Property key ${idx + 1}`}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleChange(idx, { key: e.target.value })
+                }
+                onBlur={handleBlur}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <Input
+                className="prop-input"
+                placeholder="value"
+                value={prop.value ?? ''}
+                disabled={disabled}
+                aria-label={`Property value ${idx + 1}`}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  handleChange(idx, { value: e.target.value })
+                }
+                onBlur={handleBlur}
+                spellCheck={false}
+                autoComplete="off"
+              />
+              <Button
+                danger
+                size="small"
+                icon={<DeleteOutlined />}
+                disabled={disabled}
+                aria-label={`Удалить property ${idx + 1}`}
+                onClick={() => handleRemove(idx)}
+              />
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+interface NodeDisplayEditorProps {
+  node: DiagramNode
+  elementType: string
+  onFillColorChange: (fillColor: string | null) => void
+}
+
+function NodeDisplayEditor({
+  node,
+  elementType,
+  onFillColorChange,
+}: NodeDisplayEditorProps): React.JSX.Element {
+  const defaultFill = getElementNotationStyle(elementType).fill
+  const hasCustomFill = node.fillColor != null && node.fillColor.trim() !== ''
+  const displayFill = hasCustomFill ? node.fillColor!.trim() : defaultFill
+
+  return (
+    <div className="props-grid props-display-panel">
+      <div className="props-field-full">
+        <span className="props-label">Фон объекта</span>
+        <div className="props-display-color-row">
+          <ColorPicker
+            value={displayFill}
+            disabledAlpha
+            showText
+            onChangeComplete={(color) => onFillColorChange(color.toHexString())}
+          />
+          <Button
+            size="small"
+            disabled={!hasCustomFill}
+            onClick={() => onFillColorChange(null)}
+          >
+            По умолчанию
+          </Button>
+        </div>
+        <p className="props-hint">
+          Цвет по умолчанию для типа:{' '}
+          <span
+            className="props-display-swatch"
+            style={{ backgroundColor: defaultFill }}
+            aria-hidden="true"
+          />{' '}
+          {defaultFill}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function flushRelationshipMeta(
   relationshipId: string,
   patch: Partial<RelationshipMetaOverride>,
@@ -76,6 +232,8 @@ interface ObjectPropertiesPanelProps {
   onNavigateToDiagram: (payload: { diagramId: string; nodes: DiagramNode[] }) => void
   selectedDiagramId: string | null
   onUpdateDiagramMetadata?: (diagramId: string, patch: { name: string }) => void
+  onUpdateNodeFillColor?: (nodeId: string, fillColor: string | null) => void
+  elementLoadingId?: string
 }
 
 export function ObjectPropertiesPanel({
@@ -102,6 +260,8 @@ export function ObjectPropertiesPanel({
   onNavigateToDiagram,
   selectedDiagramId,
   onUpdateDiagramMetadata,
+  onUpdateNodeFillColor,
+  elementLoadingId = '',
 }: ObjectPropertiesPanelProps): React.JSX.Element | null {
   const [nameDraft, setNameDraft] = useState('')
   const [documentationDraft, setDocumentationDraft] = useState('')
@@ -110,6 +270,8 @@ export function ObjectPropertiesPanel({
   const [diagramNameDraft, setDiagramNameDraft] = useState('')
 
   const elementId = selectedElement?.id ?? ''
+  const isElementPropertiesLoading =
+    Boolean(elementLoadingId && elementId === elementLoadingId) || Boolean(selectedElement?.lite)
   const diagramNodeCount = useMemo(
     () => (selectedDiagram?.nodes ? flattenNodes(selectedDiagram.nodes).length : 0),
     [selectedDiagram?.nodes],
@@ -135,8 +297,8 @@ export function ObjectPropertiesPanel({
     setPropertiesDraft(
       selectedElement.properties ? selectedElement.properties.map((p) => ({ ...p })) : [],
     )
-    // Sync local drafts only when the selected element changes, not on debounced override updates.
-  }, [elementId])
+    // Resync when selection changes or a split lite stub loads its full XML (properties, docs).
+  }, [elementId, selectedElement?.lite])
 
   useEffect(() => {
     setRelationshipNameDraft(getRelationshipExplicitName(selectedRelationship))
@@ -344,6 +506,7 @@ export function ObjectPropertiesPanel({
         onChange={onObjectPropsTabChange}
         items={[
           { key: 'details', label: 'Детали' },
+          { key: 'display', label: 'Отображение' },
           {
             key: 'relationships',
             label: `Связи объекта${
@@ -411,6 +574,17 @@ export function ObjectPropertiesPanel({
                 />
               </div>
             ) : null}
+            {selectedElement ? (
+              <ElementPropertiesEditor
+                elementId={elementId}
+                properties={propertiesDraft}
+                disabled={isElementPropertiesLoading}
+                onChange={setPropertiesDraft}
+                onCommit={(next) =>
+                  flushElementOverride(elementId, { properties: next }, onUpdateElementOverride)
+                }
+              />
+            ) : null}
             <div>
               <b>Bounds:</b>{' '}
               {selectedNodeLive
@@ -440,76 +614,23 @@ export function ObjectPropertiesPanel({
               ) : null}
             </div>
           </div>
-          {selectedElement ? (
-            <>
-              <ul className="props-list">
-                {propertiesDraft.map((prop, idx) => (
-                  <li key={`${prop.key}-${idx}`} className="prop-row">
-                    <Input
-                      className="prop-input"
-                      placeholder="key"
-                      value={prop.key ?? ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const next = [...propertiesDraft]
-                        next[idx] = { ...next[idx], key: e.target.value }
-                        setPropertiesDraft(next)
-                      }}
-                      onBlur={() =>
-                        flushElementOverride(
-                          elementId,
-                          { properties: propertiesDraft },
-                          onUpdateElementOverride,
-                        )
-                      }
-                    />
-                    <Input
-                      className="prop-input"
-                      placeholder="value"
-                      value={prop.value ?? ''}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                        const next = [...propertiesDraft]
-                        next[idx] = { ...next[idx], value: e.target.value }
-                        setPropertiesDraft(next)
-                      }}
-                      onBlur={() =>
-                        flushElementOverride(
-                          elementId,
-                          { properties: propertiesDraft },
-                          onUpdateElementOverride,
-                        )
-                      }
-                    />
-                    <Button
-                      danger
-                      size="small"
-                      icon={<DeleteOutlined />}
-                      onClick={() => {
-                        const next = [...propertiesDraft]
-                        next.splice(idx, 1)
-                        setPropertiesDraft(next)
-                        flushElementOverride(
-                          elementId,
-                          { properties: next },
-                          onUpdateElementOverride,
-                        )
-                      }}
-                    />
-                  </li>
-                ))}
-              </ul>
-              <Button
-                className="add-prop-btn"
-                icon={<PlusOutlined />}
-                onClick={() => {
-                  const next = [...propertiesDraft, { key: '', value: '' }]
-                  setPropertiesDraft(next)
-                }}
-              >
-                Добавить property
-              </Button>
-            </>
-          ) : null}
         </>
+      ) : null}
+      {objectPropsTab === 'display' ? (
+        selectedNodeLive ? (
+          <NodeDisplayEditor
+            node={selectedNodeLive}
+            elementType={selectedElement?.type || selectedNodeLive.type || ''}
+            onFillColorChange={(fillColor) =>
+              onUpdateNodeFillColor?.(selectedNodeLive.id, fillColor)
+            }
+          />
+        ) : (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Объект не на текущей диаграмме — откройте диаграмму с этим объектом, чтобы изменить отображение."
+          />
+        )
       ) : null}
       {objectPropsTab === 'relationships' && (selectedElement || selectedElementId) ? (
         <ObjectRelationshipsPanel

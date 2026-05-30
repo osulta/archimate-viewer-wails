@@ -7,6 +7,7 @@ import {
   getType,
   getDiagramObjectLabel,
   parseConnectionBendpoints,
+  parseDiagramObjectColors,
 } from '../../xml-utils'
 import {
   idFromArchimateChildHref,
@@ -76,6 +77,7 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
     const children = getDiagramObjectChildren(childNode).map((nested) =>
       parseDiagramObject(nested, absX, absY),
     )
+    const colors = parseDiagramObjectColors(childNode)
 
     return {
       id: getId(childNode),
@@ -87,6 +89,7 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
       width,
       height,
       children,
+      ...colors,
     }
   }
 
@@ -127,6 +130,7 @@ export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagra
   function parseNodeTree(node: Element): DiagramNode {
     const boundsNode = getDirectChildByTag(node, 'bounds')
     const children = getDirectChildrenByTag(node, 'node').map(parseNodeTree)
+    const colors = parseDiagramObjectColors(node)
 
     return {
       id: getId(node),
@@ -138,6 +142,7 @@ export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagra
       width: Number(boundsNode?.getAttribute('w') ?? 120),
       height: Number(boundsNode?.getAttribute('h') ?? 55),
       children,
+      ...colors,
     }
   }
 

@@ -11,7 +11,7 @@ interface AdminPanelProps {
 
 export function AdminPanel(props: AdminPanelProps) {
   const { git } = props
-  const [activeSection, setActiveSection] = useState('metamodel')
+  const [activeSection, setActiveSection] = useState('git')
 
   return (
     <div className="layout admin-layout" role="tabpanel" aria-label="Администрирование">

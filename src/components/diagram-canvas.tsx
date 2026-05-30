@@ -54,6 +54,29 @@ import type {
 
 const RESIZE_HANDLE_SIZE = 10
 
+interface NodeDrawColors {
+  fill: string
+  header: string
+  border: string
+  text: string
+}
+
+function resolveNodeDrawColors(
+  node: DiagramNode,
+  style: ReturnType<typeof getElementNotationStyle>,
+  flags: { isSelected: boolean; isChanged: boolean },
+): NodeDrawColors {
+  const customFill = node.fillColor?.trim()
+  const customLine = node.lineColor?.trim()
+  const customFont = node.fontColor?.trim()
+  return {
+    fill: flags.isSelected ? '#d6e4ff' : flags.isChanged ? '#fff9c4' : customFill || style.fill,
+    header: flags.isSelected ? '#bfd4ff' : flags.isChanged ? '#fff59d' : customFill || style.header,
+    border: flags.isSelected ? '#1f47bf' : flags.isChanged ? '#e65100' : customLine || style.border,
+    text: customFont || style.text,
+  }
+}
+
 function getResizeHandleRect(node: DiagramNode, translateX: number, translateY: number) {
   const left = node.x + translateX + node.width - RESIZE_HANDLE_SIZE
   const top = node.y + translateY + node.height - RESIZE_HANDLE_SIZE
@@ -475,11 +498,12 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
       const isChanged = Boolean(
         hlNodes && (hlNodes instanceof Set ? hlNodes.has(node.id) : (hlNodes as string[]).includes(node.id)),
       )
+      const colors = resolveNodeDrawColors(node, style, { isSelected, isChanged })
       const isLinkSource = Boolean(linkMode && linkSourceId === node.id)
       const x = node.x + translateX
       const y = node.y + translateY
 
-      context.strokeStyle = isSelected ? '#1f47bf' : isChanged ? '#e65100' : style.border
+      context.strokeStyle = colors.border
       context.lineWidth = isSelected ? 2 : isChanged ? 2.5 : 1.2
 
       if (visual.borderDash?.length) {
@@ -500,7 +524,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
         context.fill()
         context.stroke()
       } else {
-        context.fillStyle = isSelected ? '#d6e4ff' : isChanged ? '#fff9c4' : style.fill
+        context.fillStyle = colors.fill
         context.fill()
         context.stroke()
       }
@@ -516,7 +540,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
           node.width,
           node.height,
           visual.shape,
-          isSelected ? '#1f47bf' : style.border,
+          isSelected ? '#1f47bf' : colors.border,
         )
       }
 
@@ -540,7 +564,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
       if (!isNote && visual.shape === 'object') {
         const fold = Math.min(14, node.width * 0.15)
         const headerH = Math.min(16, node.height * 0.25)
-        context.fillStyle = isSelected ? '#bfd4ff' : isChanged ? '#fff59d' : style.header
+        context.fillStyle = colors.header
         context.beginPath()
         context.moveTo(x, y)
         context.lineTo(x + node.width - fold, y)
@@ -549,14 +573,14 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
         context.lineTo(x, y + headerH)
         context.closePath()
         context.fill()
-        context.strokeStyle = isSelected ? '#1f47bf' : isChanged ? '#e65100' : style.border
+        context.strokeStyle = colors.border
         context.beginPath()
         context.moveTo(x, y + headerH)
         context.lineTo(x + node.width, y + headerH)
         context.stroke()
       }
 
-      context.fillStyle = style.text
+      context.fillStyle = colors.text
       context.font = 'bold 12px system-ui, sans-serif'
       const lineHeight = 14
       const maxLines = Math.max(1, Math.floor((node.height - 14) / lineHeight))
@@ -575,7 +599,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
       if (!hideCornerIcon) {
         const ix = x + node.width - 20
         const iy = y + 6
-        drawElementIcon(context, ix, iy, visual.icon, style.border, style.fill)
+        drawElementIcon(context, ix, iy, visual.icon, colors.border, colors.fill)
       }
 
       if (isSelected) {

@@ -15,6 +15,7 @@ import {
   getType,
   getDirectChildByTag,
   getDirectChildrenByTag,
+  applyDiagramObjectVisualToXml,
 } from './xml-utils'
 
 export function flattenNodes(nodes: DiagramNode[]): DiagramNode[] {
@@ -174,12 +175,17 @@ export function applyOverridesToNodes(
     const delta = overrides?.get(node.id) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
     const dx = accDx + (delta.dx ?? 0)
     const dy = accDy + (delta.dy ?? 0)
+    let fillColor = node.fillColor
+    if (delta.fillColor !== undefined) {
+      fillColor = delta.fillColor === null ? undefined : delta.fillColor
+    }
     return {
       ...node,
       x: roundDiagramCoord(node.x + dx),
       y: roundDiagramCoord(node.y + dy),
       width: Math.max(30, roundDiagramCoord(node.width + (delta.dw ?? 0))),
       height: Math.max(24, roundDiagramCoord(node.height + (delta.dh ?? 0))),
+      fillColor,
       children: applyOverridesToNodes(node.children, overrides, dx, dy),
     }
   })
@@ -400,6 +406,7 @@ function syncArchiDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], 
       bounds.setAttribute('width', formatDiagramCoord(node.width))
       bounds.setAttribute('height', formatDiagramCoord(node.height))
     }
+    applyDiagramObjectVisualToXml(xmlChild, node)
     syncArchiDiagramChildrenToXml(xmlChild, node.children, node.x, node.y)
   }
 }
@@ -423,6 +430,7 @@ function syncViewDiagramNodesToXml(parentEl: Element, nodes: DiagramNode[], pare
         bounds.setAttribute('height', formatDiagramCoord(node.height))
       }
     }
+    applyDiagramObjectVisualToXml(xmlNode, node)
     syncViewDiagramNodesToXml(xmlNode, node.children, node.x, node.y)
   }
 }

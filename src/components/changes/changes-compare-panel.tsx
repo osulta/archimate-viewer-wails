@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Empty, Select, Spin, Typography } from 'antd'
+import { Alert, Empty, Select, Spin, TreeSelect, Typography } from 'antd'
 import { DiagramCanvas } from '../diagram-canvas'
 import {
   findDiagramInModel,
   resolveDiagramWithOverrides,
 } from '../../lib/archimate/diagram-model'
+import { buildDiagramTreeSelectData } from '../../lib/archimate/model-folder-tree'
 import { computeDiagramCompareDiff } from '../../lib/archimate/diagram-compare'
 import {
   fetchSingleFileModelAtRef,
@@ -13,13 +14,16 @@ import {
 import { CompareCanvasSyncProvider } from './compare-canvas-sync'
 import type {
   ParsedModel,
-  ParsedDiagram,
   DiagramOverridesMap,
   RelationshipOverridesMap,
 } from '../../types/model'
 
-function formatDiagramOption(diagram: ParsedDiagram): string {
-  return diagram.folderPath ? `${diagram.folderPath} / ${diagram.name}` : diagram.name
+function filterDiagramTreeNode(input: string, treeNode: { title?: unknown }): boolean {
+  const needle = input.trim().toLowerCase()
+  if (!needle) {
+    return true
+  }
+  return String(treeNode.title ?? '').toLowerCase().includes(needle)
 }
 
 function resolveModelManifestPath(modelPath: string | undefined | null, model: ParsedModel | null): string {
@@ -79,6 +83,11 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
   )
 
   const diagramOptions = useMemo(() => model?.diagrams ?? [], [model])
+
+  const diagramTreeData = useMemo(
+    () => buildDiagramTreeSelectData(diagramOptions),
+    [diagramOptions],
+  )
 
   const selectedDiagramStub = useMemo(
     () => diagramOptions.find((d) => d.id === selectedDiagramId) ?? null,
@@ -249,12 +258,17 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
       <section className="compare-toolbar" aria-label="Параметры сравнения">
         <label className="git-label compare-toolbar-field">
           <span>Диаграмма</span>
-          <Select
+          <TreeSelect
+            showSearch
+            treeNodeFilterProp="title"
+            filterTreeNode={filterDiagramTreeNode}
+            treeDefaultExpandAll
             value={selectedDiagramId || undefined}
-            onChange={(value) => onSelectedDiagramIdChange?.(value)}
+            onChange={(value) => onSelectedDiagramIdChange?.(String(value))}
             disabled={!model || diagramOptions.length === 0}
             placeholder="— нет диаграмм —"
-            options={diagramOptions.map((d) => ({ value: d.id, label: formatDiagramOption(d) }))}
+            treeData={diagramTreeData}
+            notFoundContent="Диаграммы не найдены"
           />
         </label>
         <label className="git-label compare-toolbar-field">

@@ -686,10 +686,9 @@ function App() {
       const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
       const nextOverrides = new Map(overrides)
       nextOverrides.set(nodeId, {
+        ...prev,
         dx: roundDiagramCoord((prev.dx ?? 0) + dx),
         dy: roundDiagramCoord((prev.dy ?? 0) + dy),
-        dw: prev.dw ?? 0,
-        dh: prev.dh ?? 0,
       })
       const nextAll = new Map(prevAll)
       nextAll.set(diagramId, nextOverrides)
@@ -723,8 +722,7 @@ function App() {
       const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
       const nextOverrides = new Map(overrides)
       nextOverrides.set(nodeId, {
-        dx: prev.dx ?? 0,
-        dy: prev.dy ?? 0,
+        ...prev,
         dw: (prev.dw ?? 0) + appliedDw,
         dh: (prev.dh ?? 0) + appliedDh,
       })
@@ -765,6 +763,38 @@ function App() {
       markSplitDiagramDirty(diagramId)
     }
   }
+
+  const updateNodeFillColor = useCallback(
+    (diagramId: string, nodeId: string, fillColor: string | null) => {
+      if (!diagramId || !nodeId) {
+        return
+      }
+      saveForUndo('Изменение фона объекта')
+      commitDiagramOverrides((prevAll) => {
+        const overrides = prevAll.get(diagramId) ?? new Map()
+        const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
+        const nextOverrides = new Map(overrides)
+        const nextEntry: NodeOverride = { ...prev, fillColor }
+        const layoutEmpty =
+          (nextEntry.dx ?? 0) === 0 &&
+          (nextEntry.dy ?? 0) === 0 &&
+          (nextEntry.dw ?? 0) === 0 &&
+          (nextEntry.dh ?? 0) === 0
+        if (layoutEmpty && fillColor === undefined) {
+          nextOverrides.delete(nodeId)
+        } else {
+          nextOverrides.set(nodeId, nextEntry)
+        }
+        const nextAll = new Map(prevAll)
+        nextAll.set(diagramId, nextOverrides)
+        return nextAll
+      })
+      if (isSplitFilesModel(model)) {
+        markSplitDiagramDirty(diagramId)
+      }
+    },
+    [commitDiagramOverrides, markSplitDiagramDirty, model, saveForUndo],
+  )
 
   const updateDiagramMetadata = useCallback(
     (diagramId: string, patch: Partial<ParsedDiagram>) => {
@@ -2385,6 +2415,12 @@ function App() {
               setSelectedElementId(selectedElementRefForUsage)
               setSelectedRelationshipRef(null)
             }}
+            onUpdateNodeFillColor={(nodeId, fillColor) => {
+              if (selectedDiagramId) {
+                updateNodeFillColor(selectedDiagramId, nodeId, fillColor)
+              }
+            }}
+            elementLoadingId={splitRuntime.elementLoadingId}
           />
         ) : (
           <Empty

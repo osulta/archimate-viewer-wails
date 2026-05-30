@@ -39,6 +39,12 @@ export interface DiagramNode {
   width: number
   height: number
   children: DiagramNode[]
+  /** Diagram visual fill from Archi (fillColor attribute or exchange style). */
+  fillColor?: string
+  /** Diagram visual border from Archi (lineColor attribute or exchange style). */
+  lineColor?: string
+  /** Diagram label color from Archi (fontColor attribute). */
+  fontColor?: string
 }
 
 export interface Bendpoint {
@@ -87,6 +93,8 @@ export interface NodeOverride {
   dy: number
   dw: number
   dh: number
+  /** Diagram fill override; null clears custom fill (layer default). */
+  fillColor?: string | null
 }
 
 export interface ElementOverride {

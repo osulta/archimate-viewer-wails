@@ -39,6 +39,7 @@ import {
   applyDocumentationToElementXml,
   clearConnectionBendpoints,
   appendConnectionBendpoints,
+  applyDiagramObjectVisualToXml,
 } from './xml-utils'
 const DIAGRAM_OBJECT_TAGS = ['child', 'children']
 const CONNECTION_TAGS = ['sourceConnection', 'sourceConnections']
@@ -97,6 +98,7 @@ function syncSplitDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], 
         bounds.setAttribute('height', formatDiagramCoord(node.height))
       }
     }
+    applyDiagramObjectVisualToXml(xmlChild, node)
     syncSplitDiagramChildrenToXml(xmlChild, node.children, node.x, node.y)
   }
 }
@@ -184,7 +186,7 @@ export function buildSplitElementSaveXml(content: string, element: ParsedElement
     getDirectChildrenByTag(root, 'properties').forEach((node) => root.removeChild(node))
     override.properties.forEach((prop) => {
       const propNode = documentNode.createElement(
-        root.prefix ? `${root.prefix}:properties` : 'properties',
+        root.prefix ? `${root.prefix}:property` : 'property',
       )
       propNode.setAttribute('key', prop.key)
       propNode.setAttribute('value', prop.value ?? '')

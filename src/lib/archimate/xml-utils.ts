@@ -1,4 +1,4 @@
-import type { Bendpoint, ElementProperty } from '../../types/model'
+import type { Bendpoint, DiagramNode, ElementProperty } from '../../types/model'
 
 export function getName(element: Element | null): string {
   if (!element) {
@@ -131,6 +131,75 @@ export function parseProperties(node: Element): ElementProperty[] {
     }
   })
   return props
+}
+
+export interface DiagramObjectColors {
+  fillColor?: string
+  lineColor?: string
+  fontColor?: string
+}
+
+function normalizeDiagramHexColor(raw: string | null | undefined): string | undefined {
+  const trimmed = String(raw ?? '').trim()
+  if (!trimmed) {
+    return undefined
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(trimmed) || /^#[0-9a-fA-F]{8}$/.test(trimmed)) {
+    return trimmed.toLowerCase()
+  }
+  return trimmed
+}
+
+function rgbColorElementToHex(colorEl: Element | null): string | undefined {
+  if (!colorEl) {
+    return undefined
+  }
+  const r = colorEl.getAttribute('r')
+  const g = colorEl.getAttribute('g')
+  const b = colorEl.getAttribute('b')
+  if (r == null || g == null || b == null) {
+    return undefined
+  }
+  const rn = Number(r)
+  const gn = Number(g)
+  const bn = Number(b)
+  if (!Number.isFinite(rn) || !Number.isFinite(gn) || !Number.isFinite(bn)) {
+    return undefined
+  }
+  const toHex = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')
+  return `#${toHex(rn)}${toHex(gn)}${toHex(bn)}`
+}
+
+/** Reads fill/line/font colors from Archi diagram object XML (attributes or exchange style). */
+export function parseDiagramObjectColors(node: Element): DiagramObjectColors {
+  const colors: DiagramObjectColors = {
+    fillColor: normalizeDiagramHexColor(node.getAttribute('fillColor')),
+    lineColor: normalizeDiagramHexColor(node.getAttribute('lineColor')),
+    fontColor: normalizeDiagramHexColor(node.getAttribute('fontColor')),
+  }
+
+  const styleEl = getDirectChildByTag(node, 'style')
+  if (styleEl) {
+    if (!colors.fillColor) {
+      colors.fillColor = rgbColorElementToHex(getDirectChildByTag(styleEl, 'fillColor'))
+    }
+    if (!colors.lineColor) {
+      colors.lineColor = rgbColorElementToHex(getDirectChildByTag(styleEl, 'lineColor'))
+    }
+  }
+
+  return colors
+}
+
+/** Writes diagram object fill color to Archi XML (attribute on children/child/node). */
+export function applyDiagramObjectVisualToXml(xmlEl: Element, node: DiagramNode): void {
+  const fill = node.fillColor?.trim()
+  if (fill) {
+    xmlEl.setAttribute('fillColor', fill)
+  } else {
+    xmlEl.removeAttribute('fillColor')
+  }
 }
 
 const CONNECTION_BENDPOINT_TAGS = ['bendpoints', 'bendpoint']

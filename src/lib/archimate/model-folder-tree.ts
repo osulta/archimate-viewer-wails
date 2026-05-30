@@ -1,4 +1,7 @@
+import type { TreeSelectProps } from 'antd'
 import type { ParsedElement, ParsedRelationship, ParsedDiagram } from '../../types/model'
+
+export type DiagramTreeSelectNode = NonNullable<TreeSelectProps['treeData']>[number]
 
 export type ModelTreeItemKind = 'element' | 'relationship' | 'diagram'
 
@@ -151,4 +154,38 @@ export function buildDiagramFolderTree(diagrams: ParsedDiagram[]): {
     folders: sortModelFolderNodes(folders),
     rootDiagrams: rootDiagrams.sort((a, b) => compareNames(a.name ?? '', b.name ?? '')),
   }
+}
+
+function diagramTreeSelectTitle(diagram: ParsedDiagram): string {
+  return diagram.folderPath ? `${diagram.folderPath} / ${diagram.name}` : diagram.name
+}
+
+function folderNodesToTreeSelectData(folders: ModelFolderNode[]): DiagramTreeSelectNode[] {
+  return folders.map((folder) => {
+    const children: DiagramTreeSelectNode[] = [
+      ...folderNodesToTreeSelectData(folder.folders ?? []),
+      ...(folder.diagrams ?? []).map((diagram) => ({
+        value: diagram.id,
+        title: diagramTreeSelectTitle(diagram),
+      })),
+    ]
+    return {
+      value: folder.key,
+      title: folder.name,
+      selectable: false,
+      children: children.length > 0 ? children : undefined,
+    }
+  })
+}
+
+/** Builds Ant Design TreeSelect data for diagram pickers (folder tree + search by name/path). */
+export function buildDiagramTreeSelectData(diagrams: ParsedDiagram[]): DiagramTreeSelectNode[] {
+  const { folders, rootDiagrams } = buildDiagramFolderTree(diagrams)
+  return [
+    ...folderNodesToTreeSelectData(folders),
+    ...rootDiagrams.map((diagram) => ({
+      value: diagram.id,
+      title: diagramTreeSelectTitle(diagram),
+    })),
+  ]
 }

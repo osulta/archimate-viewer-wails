@@ -8,9 +8,9 @@ interface AdminSection {
 }
 
 const ADMIN_SECTIONS: AdminSection[] = [
+  { id: 'git', label: 'Git', icon: <BranchesOutlined /> },
   { id: 'metamodel', label: 'Метамодель', icon: <ApartmentOutlined /> },
   { id: 'accounts', label: 'Учетные записи', icon: <TeamOutlined /> },
-  { id: 'git', label: 'Git', icon: <BranchesOutlined /> },
 ]
 
 interface AdminSidebarProps {

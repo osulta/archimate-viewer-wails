@@ -65,7 +65,7 @@ export function TreeFolderBranch({
     <li className="tree-folder">
       <Collapse
         className="tree-collapse"
-        defaultActiveKey={depth < 2 ? [folder.key] : []}
+        defaultActiveKey={[]}
         items={[
           {
             key: folder.key,
