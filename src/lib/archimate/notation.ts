@@ -56,7 +56,7 @@ const ELEMENT_BY_TYPE: Record<string, ElementVisualSpec> = {
   DataObject: { layer: 'application', shape: 'passive-rect', icon: 'object' },
 
   // Technology
-  Node: { layer: 'technology', shape: 'cut-corner', icon: 'component' },
+  Node: { layer: 'technology', shape: 'passive-rect', icon: 'node' },
   Device: { layer: 'technology', shape: 'passive-rect', icon: 'device' },
   SystemSoftware: { layer: 'technology', shape: 'passive-rect', icon: 'system-software' },
   TechnologyCollaboration: {
@@ -329,7 +329,7 @@ function inferElementSpec(typeName: string): ElementVisualSpec {
     return { layer: 'technology', shape: 'passive-rect', icon: 'device' }
   }
   if (/Node$/i.test(t)) {
-    return { layer: inferLayerFromName(t), shape: 'cut-corner', icon: 'component' }
+    return { layer: inferLayerFromName(t), shape: 'passive-rect', icon: 'node' }
   }
   if (/Equipment$/i.test(t)) {
     return { layer: 'physical', shape: 'passive-rect', icon: 'equipment' }

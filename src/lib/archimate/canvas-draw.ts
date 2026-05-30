@@ -288,6 +288,49 @@ export function drawElementInnerGlyph(
   }
 }
 
+function drawIsometricNodeCube(
+  ctx: CanvasRenderingContext2D,
+  fx: number,
+  fy: number,
+  fw: number,
+  fh: number,
+  depth: number,
+  fill: string,
+  stroke: string,
+): void {
+  const dx = depth
+  const dy = depth
+
+  ctx.strokeStyle = stroke
+  ctx.lineWidth = 1.2
+
+  ctx.beginPath()
+  ctx.moveTo(fx, fy)
+  ctx.lineTo(fx + dx, fy - dy)
+  ctx.lineTo(fx + fw + dx, fy - dy)
+  ctx.lineTo(fx + fw, fy)
+  ctx.closePath()
+  ctx.fillStyle = fill
+  ctx.fill()
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.moveTo(fx + fw, fy)
+  ctx.lineTo(fx + fw + dx, fy - dy)
+  ctx.lineTo(fx + fw + dx, fy + fh - dy)
+  ctx.lineTo(fx + fw, fy + fh)
+  ctx.closePath()
+  ctx.fillStyle = fill
+  ctx.fill()
+  ctx.stroke()
+
+  ctx.beginPath()
+  ctx.rect(fx, fy, fw, fh)
+  ctx.fillStyle = fill
+  ctx.fill()
+  ctx.stroke()
+}
+
 export function drawElementIcon(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -551,6 +594,9 @@ export function drawElementIcon(
     ctx.lineTo(mid - 2.2, standTop + 2)
     ctx.closePath()
     ctx.stroke()
+  } else if (icon === 'node') {
+    const fill = fillColor ?? '#c1fba4'
+    drawIsometricNodeCube(ctx, x + 1, y + 4, 8.5, 6.5, 3, fill, color)
   } else if (icon === 'component' || icon === 'tech') {
     ctx.beginPath()
     ctx.moveTo(x, y + 1)
