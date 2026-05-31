@@ -104,6 +104,27 @@ export function computeSnappedNodeOffset(
   }
 }
 
+export function computeSnappedNodeResize(
+  startNodeX: number,
+  startNodeY: number,
+  startWidth: number,
+  startHeight: number,
+  pointerDx: number,
+  pointerDy: number,
+  currentWidth: number,
+  currentHeight: number,
+  minWidth: number = 30,
+  minHeight: number = 24,
+  step: number = DIAGRAM_GRID_STEP,
+): { dw: number; dh: number } {
+  const snappedWidth = Math.max(minWidth, snapToGrid(startNodeX + startWidth + pointerDx, step) - startNodeX)
+  const snappedHeight = Math.max(minHeight, snapToGrid(startNodeY + startHeight + pointerDy, step) - startNodeY)
+  return {
+    dw: roundDiagramCoord(snappedWidth - currentWidth),
+    dh: roundDiagramCoord(snappedHeight - currentHeight),
+  }
+}
+
 export function getNodeAtPosition(nodes: DiagramNode[], x: number, y: number): DiagramNode | null {
   const flattened = flattenNodes(nodes)
   for (let i = flattened.length - 1; i >= 0; i -= 1) {

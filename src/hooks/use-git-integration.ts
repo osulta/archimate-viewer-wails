@@ -18,6 +18,30 @@ interface BranchEntry {
   local?: boolean
 }
 
+interface GitCommandBlock {
+  stdout?: string
+  stderr?: string
+}
+
+function formatGitCommandOutput(
+  label: string,
+  block: GitCommandBlock | null | undefined,
+  fallback = '',
+): string {
+  const text = [block?.stdout, block?.stderr].filter(Boolean).join('\n').trim()
+  if (text) {
+    return `${label}:\n${text}`
+  }
+  return fallback ? `${label}: ${fallback}` : ''
+}
+
+function joinGitCommandOutput(parts: Array<string | null | undefined>): string {
+  return parts
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join('\n\n')
+}
+
 function preferLocalBranchSelection(
   selected: string | null | undefined,
   branches: BranchEntry[],
@@ -389,22 +413,45 @@ export function useGitIntegration({
           }
           if (data.ok && Array.isArray(data.branches)) {
             setGitBranches({ loading: false, list: data.branches, error: null })
+            if (fetchRemote) {
+              const count = data.branches.length
+              const localCount = data.branches.filter((b: BranchEntry) => b.local !== false).length
+              setGitOutput(
+                joinGitCommandOutput([
+                  formatGitCommandOutput('git fetch', data.fetch as GitCommandBlock | undefined),
+                  `Список веток обновлён: ${count} (${localCount} локальных).`,
+                ]),
+              )
+            }
           } else {
+            const errText = typeof data.error === 'string' ? data.error : 'Ошибка списка веток'
             setGitBranches((s) => ({
               ...s,
               loading: false,
-              error: typeof data.error === 'string' ? data.error : 'Ошибка списка веток',
+              error: errText,
             }))
+            if (fetchRemote) {
+              setGitOutput(
+                joinGitCommandOutput([
+                  formatGitCommandOutput('git fetch', data.fetch as GitCommandBlock | undefined),
+                  errText,
+                ]),
+              )
+            }
           }
         } catch (e) {
           if (branchesRequestSeqRef.current !== requestId) {
             return
           }
+          const errText = e instanceof Error ? e.message : String(e)
           setGitBranches((s) => ({
             ...s,
             loading: false,
-            error: e instanceof Error ? e.message : String(e),
+            error: errText,
           }))
+          if (fetchRemote) {
+            setGitOutput(`Обновление списка веток: ${errText}`)
+          }
         }
       }
       if (fetchRemote) {
@@ -999,7 +1046,9 @@ export function useGitIntegration({
       const pushBlock = data.push ?? data
       if (data.ok) {
         const text = [pushBlock.stdout, pushBlock.stderr].filter(Boolean).join('\n').trim()
-        let msg = text || 'git push выполнен'
+        let msg = joinGitCommandOutput([
+          formatGitCommandOutput('git push', pushBlock as GitCommandBlock, text || 'выполнен'),
+        ])
         if (data.workTree) {
           msg += `\n(work tree: ${data.workTree})`
         }
@@ -1011,11 +1060,14 @@ export function useGitIntegration({
       } else {
         const pushErr = [pushBlock.stderr, pushBlock.stdout].filter(Boolean).join('\n').trim()
         setGitOutput(
-          data.error ||
-            pushErr ||
-            data.remoteGetUrl?.stderr ||
-            data.remoteSetUrl?.stderr ||
-            JSON.stringify(data),
+          joinGitCommandOutput([
+            formatGitCommandOutput('git push', pushBlock as GitCommandBlock),
+            data.error ||
+              pushErr ||
+              data.remoteGetUrl?.stderr ||
+              data.remoteSetUrl?.stderr ||
+              JSON.stringify(data),
+          ]),
         )
       }
     } catch (err) {
@@ -1115,16 +1167,22 @@ export function useGitIntegration({
       })
       const data = await response.json()
       if (data.ok) {
-        const out = [data.commit?.stdout, data.commit?.stderr].filter(Boolean).join('\n')
-        let msg = out.trim() || 'Коммит создан'
+        let msg = joinGitCommandOutput([
+          formatGitCommandOutput('git add', data.add as GitCommandBlock | undefined),
+          formatGitCommandOutput('git commit', data.commit as GitCommandBlock | undefined, 'коммит создан'),
+        ])
         if (data.workTree) {
           msg += `\n(work tree: ${data.workTree})`
         }
         setGitOutput(msg)
       } else {
         setGitOutput(
-          data.error ||
-            [data.commit?.stderr, data.add?.stderr, data.stdout].filter(Boolean).join('\n'),
+          joinGitCommandOutput([
+            formatGitCommandOutput('git add', data.add as GitCommandBlock | undefined),
+            formatGitCommandOutput('git commit', data.commit as GitCommandBlock | undefined),
+            data.error ||
+              [data.commit?.stderr, data.add?.stderr, data.stdout].filter(Boolean).join('\n'),
+          ]),
         )
       }
     } catch (err) {

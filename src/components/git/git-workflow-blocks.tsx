@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { Button, Checkbox, Input, Select, Space, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { GitCommandLoader } from './git-command-loader'
@@ -46,6 +47,27 @@ interface GitState {
 
 interface GitSidebarWorkflowProps {
   git: { [key: string]: unknown } | null
+}
+
+interface GitSidebarInfoBlockProps {
+  gitOutput: string
+}
+
+function GitSidebarInfoBlock({ gitOutput }: GitSidebarInfoBlockProps): JSX.Element {
+  return (
+    <div className="git-block git-block-info sidebar-git-info" aria-live="polite">
+      <Typography.Title level={5} className="git-block-title">
+        Информация
+      </Typography.Title>
+      {gitOutput ? (
+        <pre className="git-output sidebar-git-output">{gitOutput}</pre>
+      ) : (
+        <p className="sidebar-git-info-placeholder">
+          Здесь отображается вывод git commit, git push и обновления списка веток.
+        </p>
+      )}
+    </div>
+  )
 }
 
 export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
@@ -105,6 +127,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
   return (
     <section className="sidebar-git-workflow" aria-label="Работа с Git">
       <GitCommandLoader active={gitCommandLoading} label={gitCommandLabel} />
+      <GitSidebarInfoBlock gitOutput={gitOutput} />
 
       <div className="git-block git-block-branches">
         <Typography.Title level={5} className="git-block-title">
@@ -188,8 +211,6 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
           </Button>
         </Space>
       </div>
-
-      {gitOutput ? <pre className="git-output sidebar-git-output">{gitOutput}</pre> : null}
     </section>
   )
 }

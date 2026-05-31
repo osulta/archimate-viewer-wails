@@ -568,15 +568,18 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pat := strings.TrimSpace(bodyStr(body, "pat"))
+	var fetchResult gitResult
+	fetchRan := false
 	if doFetch {
+		fetchRan = true
 		if pat == "" {
-			runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
+			fetchResult = runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
 		} else if gr := runGitInWorkTree(workTree, []string{"remote", "get-url", remote}); gr.Code == 0 {
 			remoteURL := strings.TrimSpace(gr.Stdout)
 			if applied, e := applyHTTPSPat(remoteURL, pat, bodyStr(body, "patUsername")); e == nil && applied.usedPat {
 				restoreURL := httpsURLWithoutCredentials(remoteURL)
 				if setPat := runGitInWorkTree(workTree, []string{"remote", "set-url", remote, applied.cloneURL}); setPat.Code == 0 {
-					runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
+					fetchResult = runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
 					runGitInWorkTree(workTree, []string{"remote", "set-url", remote, restoreURL})
 				}
 			}
@@ -588,11 +591,15 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 		"refs/heads", "refs/remotes",
 	})
 	if res.Code != 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{
+		resp := map[string]any{
 			"ok":       false,
 			"error":    firstNonEmpty(strings.TrimSpace(res.Stderr), "Не удалось получить список веток"),
 			"workTree": workTree,
-		})
+		}
+		if fetchRan {
+			resp["fetch"] = fetchResult
+		}
+		writeJSON(w, http.StatusBadRequest, resp)
 		return
 	}
 	branches := []any{}
@@ -618,7 +625,11 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 			"local":   strings.HasPrefix(full, "refs/heads/"),
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "branches": branches, "workTree": workTree})
+	resp := map[string]any{"ok": true, "branches": branches, "workTree": workTree}
+	if fetchRan {
+		resp["fetch"] = fetchResult
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {

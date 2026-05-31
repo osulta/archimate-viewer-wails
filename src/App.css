@@ -696,6 +696,17 @@
   font-size: 11px;
 }
 
+.sidebar-git-info .sidebar-git-output {
+  margin-top: 8px;
+}
+
+.sidebar-git-info-placeholder {
+  margin: 0;
+  font-size: 12px;
+  color: #6479a3;
+  line-height: 1.45;
+}
+
 .refresh-model-btn {
   width: 100%;
   border: 1px solid #cad6ef;

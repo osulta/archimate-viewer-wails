@@ -7,6 +7,7 @@ import {
   getDiagramNodeDisplayTitle,
   applyDragPreviewToNodes,
   computeSnappedNodeOffset,
+  computeSnappedNodeResize,
   findNodeById,
   roundDiagramCoord,
   snapPointToGrid,
@@ -133,6 +134,8 @@ interface ResizeInteraction {
   nodeId: string
   startLogicalX: number
   startLogicalY: number
+  startNodeX: number
+  startNodeY: number
   baseWidth: number
   baseHeight: number
 }
@@ -748,7 +751,11 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     if (preview.type === 'resize' && (preview.dw || preview.dh)) {
-      onNodeResize?.(preview.nodeId, preview.dw, preview.dh)
+      onNodeResize?.(
+        preview.nodeId,
+        roundDiagramCoord(preview.dw),
+        roundDiagramCoord(preview.dh),
+      )
       return
     }
     if (preview.type === 'bendpoint') {
@@ -877,18 +884,28 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
     }
 
     if (inter.type === 'resize') {
-      const totalDx = ptr.logicalX - inter.startLogicalX
-      const totalDy = ptr.logicalY - inter.startLogicalY
-      const nextWidth = Math.max(30, inter.baseWidth + totalDx)
-      const nextHeight = Math.max(24, inter.baseHeight + totalDy)
+      const pointerDx = ptr.logicalX - inter.startLogicalX
+      const pointerDy = ptr.logicalY - inter.startLogicalY
       const currentDiagram = paintContextRef.current.diagram as ParsedDiagram | null
       const baseNode = findNodeById(currentDiagram?.nodes ?? [], inter.nodeId)
       if (!baseNode) {
         return
       }
-      const dw = nextWidth - baseNode.width
-      const dh = nextHeight - baseNode.height
-      if (dw === 0 && dh === 0) {
+      const { dw: newDw, dh: newDh } = computeSnappedNodeResize(
+        inter.startNodeX,
+        inter.startNodeY,
+        inter.baseWidth,
+        inter.baseHeight,
+        pointerDx,
+        pointerDy,
+        baseNode.width,
+        baseNode.height,
+      )
+      const prev = dragPreviewRef.current
+      if (prev?.type === 'resize' && prev.dw === newDw && prev.dh === newDh) {
+        return
+      }
+      if (newDw === 0 && newDh === 0) {
         return
       }
       suppressClickRef.current = true
@@ -897,8 +914,8 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
         nodeId: inter.nodeId,
         dx: 0,
         dy: 0,
-        dw,
-        dh,
+        dw: newDw,
+        dh: newDh,
       }
       scheduleRepaint()
       return
@@ -1090,6 +1107,8 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
           nodeId: hitNode.id,
           startLogicalX: logicalX,
           startLogicalY: logicalY,
+          startNodeX: hitNode.x,
+          startNodeY: hitNode.y,
           baseWidth: hitNode.width,
           baseHeight: hitNode.height,
         })
