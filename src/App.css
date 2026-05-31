@@ -1393,6 +1393,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .canvas-toolbar {
@@ -1430,6 +1431,11 @@
 
 .canvas-toolbar .canvas-export-btn {
   margin-left: auto;
+}
+
+.canvas-scroll.is-panning,
+.canvas-scroll.is-panning .diagram-canvas {
+  cursor: grabbing;
 }
 
 .diagram-canvas {

@@ -151,7 +151,16 @@ interface BendpointInteraction {
   lastLogicalY: number
 }
 
-type Interaction = MoveInteraction | ResizeInteraction | BendpointInteraction
+interface PanInteraction {
+  type: 'pan'
+  pointerId: number
+  startClientX: number
+  startClientY: number
+  startScrollLeft: number
+  startScrollTop: number
+}
+
+type Interaction = MoveInteraction | ResizeInteraction | BendpointInteraction | PanInteraction
 
 interface RenderedConnection {
   id: string
@@ -237,21 +246,49 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
   const paintContextRef = useRef<Record<string, unknown>>({})
   const compareSync = useCompareCanvasSync()
   const compareSyncCleanupRef = useRef<(() => void) | undefined>(undefined)
+  const wheelCleanupRef = useRef<(() => void) | undefined>(undefined)
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null)
+  const zoomRef = useRef(1)
   const [internalZoom, setInternalZoom] = useState(1)
   const zoom = compareSync?.zoom ?? internalZoom
+  zoomRef.current = zoom
   const [isDragging, setIsDragging] = useState(false)
+  const [isPanning, setIsPanning] = useState(false)
   const [isElementDropTarget, setIsElementDropTarget] = useState(false)
 
   const handleScrollContainerRef = useCallback(
     (element: HTMLDivElement | null) => {
+      wheelCleanupRef.current?.()
+      wheelCleanupRef.current = undefined
+      scrollContainerRef.current = element
       compareSyncCleanupRef.current?.()
       compareSyncCleanupRef.current = compareSync?.registerScrollElement(element)
+
+      if (element) {
+        const onWheel = (event: WheelEvent) => {
+          event.preventDefault()
+          event.stopPropagation()
+          if (event.deltaY === 0) {
+            return
+          }
+          const factor = event.deltaY < 0 ? 1.1 : 0.9
+          const clamped = Math.max(0.3, Math.min(3, zoomRef.current * factor))
+          if (compareSync) {
+            compareSync.setZoom(clamped)
+          } else {
+            setInternalZoom(clamped)
+          }
+        }
+        element.addEventListener('wheel', onWheel, { passive: false })
+        wheelCleanupRef.current = () => element.removeEventListener('wheel', onWheel)
+      }
     },
     [compareSync],
   )
 
   useEffect(() => {
     return () => {
+      wheelCleanupRef.current?.()
       compareSyncCleanupRef.current?.()
     }
   }, [])
@@ -820,16 +857,21 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
 
   function releaseInteraction(pointerId: number) {
     const canvas = canvasRef.current
+    const scrollEl = scrollContainerRef.current
     const inter = interactionRef.current
     if (!inter || inter.pointerId !== pointerId) {
       return
     }
     interactionRef.current = null
     setIsDragging(false)
-    commitDragPreview()
-    if (canvas) {
+    setIsPanning(false)
+    if (inter.type !== 'pan') {
+      commitDragPreview()
+    }
+    const captureTarget = scrollEl ?? canvas
+    if (captureTarget) {
       try {
-        canvas.releasePointerCapture(pointerId)
+        captureTarget.releasePointerCapture(pointerId)
       } catch {
         /* pointer already released */
       }
@@ -839,11 +881,50 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
   function beginInteraction(canvas: HTMLCanvasElement, interaction: Interaction) {
     interactionRef.current = interaction
     setIsDragging(interaction.type === 'move' || interaction.type === 'resize')
+    setIsPanning(interaction.type === 'pan')
+    const captureTarget = scrollContainerRef.current ?? canvas
     try {
-      canvas.setPointerCapture(interaction.pointerId)
+      captureTarget.setPointerCapture(interaction.pointerId)
     } catch {
       /* ignore */
     }
+  }
+
+  function startPanView(event: React.PointerEvent) {
+    if (!diagram || event.button !== 1) {
+      return
+    }
+    const scrollEl = scrollContainerRef.current
+    const canvas = canvasRef.current
+    if (!scrollEl || !canvas) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    suppressClickRef.current = true
+    beginInteraction(canvas, {
+      type: 'pan',
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: scrollEl.scrollLeft,
+      startScrollTop: scrollEl.scrollTop,
+    })
+  }
+
+  function applyPanDelta(event: React.PointerEvent) {
+    const inter = interactionRef.current
+    if (!inter || inter.type !== 'pan') {
+      return
+    }
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) {
+      return
+    }
+    event.preventDefault()
+    suppressClickRef.current = true
+    scrollEl.scrollLeft = inter.startScrollLeft - (event.clientX - inter.startClientX)
+    scrollEl.scrollTop = inter.startScrollTop - (event.clientY - inter.startClientY)
   }
 
   function applyPointerDelta(ptr: CanvasPointer) {
@@ -1072,7 +1153,14 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handlePointerDown(event: React.PointerEvent) {
-    if (readOnly || !diagram || event.button !== 0) {
+    if (!diagram) {
+      return
+    }
+    if (event.button === 1) {
+      startPanView(event)
+      return
+    }
+    if (readOnly || event.button !== 0) {
       return
     }
     const canvas = canvasRef.current
@@ -1189,7 +1277,15 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handlePointerMove(event: React.PointerEvent) {
-    if (readOnly || !interactionRef.current || interactionRef.current.pointerId !== event.pointerId) {
+    const inter = interactionRef.current
+    if (!inter || inter.pointerId !== event.pointerId) {
+      return
+    }
+    if (inter.type === 'pan') {
+      applyPanDelta(event)
+      return
+    }
+    if (readOnly) {
       return
     }
     const ptr = getCanvasPointer(event)
@@ -1205,6 +1301,12 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
 
   function handlePointerCancel(event: React.PointerEvent) {
     releaseInteraction(event.pointerId)
+  }
+
+  function handleAuxClick(event: React.MouseEvent) {
+    if (event.button === 1) {
+      event.preventDefault()
+    }
   }
 
   function handleCanvasDoubleClick(event: React.MouseEvent) {
@@ -1250,20 +1352,17 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
     })
   }
 
-  function setZoomClamped(nextZoom: number) {
-    const clamped = Math.max(0.3, Math.min(3, nextZoom))
-    if (compareSync) {
-      compareSync.setZoom(clamped)
-    } else {
-      setInternalZoom(clamped)
-    }
-  }
-
-  function handleWheel(event: React.WheelEvent) {
-    event.preventDefault()
-    const factor = event.deltaY < 0 ? 1.1 : 0.9
-    setZoomClamped(zoom * factor)
-  }
+  const setZoomClamped = useCallback(
+    (nextZoom: number) => {
+      const clamped = Math.max(0.3, Math.min(3, nextZoom))
+      if (compareSync) {
+        compareSync.setZoom(clamped)
+      } else {
+        setInternalZoom(clamped)
+      }
+    },
+    [compareSync],
+  )
 
   function exportDiagramPng() {
     const canvas = canvasRef.current
@@ -1347,16 +1446,23 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
           PNG
         </Button>
       </div>
-      <div className="canvas-scroll" ref={handleScrollContainerRef} onWheel={handleWheel}>
+      <div
+        className={
+          isPanning ? 'canvas-scroll is-panning' : 'canvas-scroll'
+        }
+        ref={handleScrollContainerRef}
+        onPointerDown={startPanView}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
+      >
         <canvas
           ref={canvasRef}
           className={isDragging ? 'diagram-canvas is-dragging' : 'diagram-canvas'}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
           onClick={handleCanvasClick}
+          onAuxClick={handleAuxClick}
           onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerCancel}
           onDoubleClick={handleCanvasDoubleClick}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
