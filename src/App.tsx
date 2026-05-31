@@ -25,8 +25,6 @@ function App() {
     save,
     git,
     splitRuntime,
-    performUndo,
-    performRedo,
     handleOpenCompareChanges,
   } = app
 
@@ -35,16 +33,7 @@ function App() {
 
   return (
     <Layout className="app-shell">
-      <AppHeader
-        activeTab={appTab}
-        onTabChange={(tab) => setAppTab(tab as AppTab)}
-        canUndo={editState.undoRedo.canUndo}
-        canRedo={editState.undoRedo.canRedo}
-        undoLabel={editState.undoRedo.undoLabel}
-        redoLabel={editState.undoRedo.redoLabel}
-        onUndo={performUndo}
-        onRedo={performRedo}
-      />
+      <AppHeader activeTab={appTab} onTabChange={(tab) => setAppTab(tab as AppTab)} />
       <Layout.Content className="app-body">
         {appTab === 'modeling' ? (
           <ModelingWorkspace

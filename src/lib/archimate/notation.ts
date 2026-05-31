@@ -110,7 +110,13 @@ const ELEMENT_BY_TYPE: Record<string, ElementVisualSpec> = {
   Gap: { layer: 'implementation', shape: 'passive-rect', icon: 'gap' },
 
   // Composite
-  Grouping: { layer: 'composite', shape: 'grouping', icon: 'grouping', borderDash: [8, 5] },
+  Grouping: {
+    layer: 'composite',
+    shape: 'grouping',
+    icon: 'grouping',
+    borderDash: [6, 4],
+    style: { fill: '#ffffff', border: '#000000', header: '#ffffff', text: '#000000' },
+  },
   Location: { layer: 'composite', shape: 'passive-rect', icon: 'location' },
   AndJunction: { layer: 'composite', shape: 'and-junction', icon: 'junction' },
   OrJunction: { layer: 'composite', shape: 'junction', icon: 'junction' },
@@ -183,12 +189,7 @@ function inferElementSpec(typeName: string): ElementVisualSpec {
     return { layer: 'composite', shape: 'passive-rect', icon: 'location' }
   }
   if (/Grouping/i.test(t)) {
-    return {
-      layer: 'composite',
-      shape: 'grouping',
-      icon: 'grouping',
-      borderDash: [8, 5],
-    }
+    return ELEMENT_BY_TYPE.Grouping
   }
   if (/Collaboration/i.test(t)) {
     const layer = /Application/i.test(t) ? 'application' : /Technology/i.test(t) ? 'technology' : 'business'
@@ -440,7 +441,11 @@ export function getElementVisualSpec(elementType: string): ElementVisualSpec {
 
 export function getElementNotationStyle(elementType: string): LayerStyle {
   const spec = getElementVisualSpec(elementType)
-  return LAYER_STYLES[spec.layer] ?? LAYER_STYLES.generic
+  const base = LAYER_STYLES[spec.layer] ?? LAYER_STYLES.generic
+  if (!spec.style) {
+    return base
+  }
+  return { ...base, ...spec.style }
 }
 
 export function getRelationshipNotation(relationshipType: string, options: { accessType?: string | number } = {}): RelationshipNotation {

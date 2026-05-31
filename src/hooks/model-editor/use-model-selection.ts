@@ -43,16 +43,6 @@ export interface ModelSelectionState {
   relationshipByIdForUi: Map<string, import('../../types/model').ParsedRelationship>
   selectedRelationship: import('../../types/model').ParsedRelationship | null
   elementByIdForCanvas: Map<string, ParsedElement>
-  getSelectionSnapshot: () => {
-    selectedDiagramId: string
-    selectedElementId: string | null
-    selectedRelationshipRef: string | null
-  }
-  restoreSelectionSnapshot: (snap: {
-    selectedDiagramId: string
-    selectedElementId: string | null
-    selectedRelationshipRef: string | null
-  }) => void
   clearSelection: () => void
   handleSelectDiagram: (diagramId: string) => void
   handleSelectRelationshipType: (relationshipType: string) => void
@@ -260,30 +250,6 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     return next
   }, [model, selectedDiagram, elementOverrides])
 
-  const getSelectionSnapshot = useCallback(
-    () => ({
-      selectedDiagramId,
-      selectedElementId,
-      selectedRelationshipRef,
-    }),
-    [selectedDiagramId, selectedElementId, selectedRelationshipRef],
-  )
-
-  const restoreSelectionSnapshot = useCallback(
-    (snap: {
-      selectedDiagramId: string
-      selectedElementId: string | null
-      selectedRelationshipRef: string | null
-    }) => {
-      setSelectedDiagramId(snap.selectedDiagramId)
-      setSelectedElementId(snap.selectedElementId)
-      setSelectedRelationshipRef(snap.selectedRelationshipRef)
-      setSelectedNode(null)
-      setSelectedBendpointIndex(null)
-    },
-    [],
-  )
-
   const clearSelection = useCallback(() => {
     setSelectedDiagramId('')
     setSelectedNode(null)
@@ -415,8 +381,6 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     relationshipByIdForUi,
     selectedRelationship,
     elementByIdForCanvas,
-    getSelectionSnapshot,
-    restoreSelectionSnapshot,
     clearSelection,
     handleSelectDiagram,
     handleSelectRelationshipType,

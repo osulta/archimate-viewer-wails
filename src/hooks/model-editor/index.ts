@@ -1,5 +1,5 @@
 export { useModelEditState } from './use-model-edit-state'
-export type { ModelEditState, SelectionSnapshot } from './use-model-edit-state'
+export type { ModelEditState } from './use-model-edit-state'
 export { useModelSelection } from './use-model-selection'
 export type { ModelSelectionState } from './use-model-selection'
 export { useModelMutations } from './use-model-mutations'

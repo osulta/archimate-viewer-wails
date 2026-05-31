@@ -1,6 +1,4 @@
 import { useRef, useState, useCallback } from 'react'
-import { useUndoRedo } from '../use-undo-redo'
-import type { EditSnapshot } from '../use-undo-redo'
 import type {
   ParsedModel,
   NodeOverride,
@@ -10,12 +8,6 @@ import type {
   CreatedObject,
   CreatedRelationship,
 } from '../../types/model'
-
-export interface SelectionSnapshot {
-  selectedDiagramId: string
-  selectedElementId: string | null
-  selectedRelationshipRef: string | null
-}
 
 export interface ModelEditState {
   model: ParsedModel | null
@@ -70,12 +62,6 @@ export interface ModelEditState {
   elementOverridesRef: React.MutableRefObject<Map<string, ElementOverride>>
   relationshipMetaOverridesRef: React.MutableRefObject<Map<string, RelationshipMetaOverride>>
   dirtySplitDiagramIdsRef: React.MutableRefObject<Set<string>>
-  undoRedo: ReturnType<typeof useUndoRedo>
-  captureSnapshot: (selection: SelectionSnapshot) => EditSnapshot
-  restoreEditSnapshot: (snap: EditSnapshot) => void
-  saveForUndo: (label: string, selection: SelectionSnapshot) => void
-  performUndo: (selection: SelectionSnapshot, restoreSelection: (snap: EditSnapshot) => void) => void
-  performRedo: (selection: SelectionSnapshot, restoreSelection: (snap: EditSnapshot) => void) => void
   commitDiagramOverrides: (
     updater:
       | Map<string, Map<string, NodeOverride>>
@@ -132,9 +118,7 @@ export function useModelEditState(): ModelEditState {
   )
   const [deletedDiagramNodeIds, setDeletedDiagramNodeIds] = useState<Set<string>>(() => new Set())
   const [deletedElementIds, setDeletedElementIds] = useState<Set<string>>(() => new Set())
-  const [deletedRelationshipIds, setDeletedRelationshipIds] = useState<Set<string>>(
-    () => new Set(),
-  )
+  const [deletedRelationshipIds, setDeletedRelationshipIds] = useState<Set<string>>(() => new Set())
   const [deletedConnectionIds, setDeletedConnectionIds] = useState<Set<string>>(() => new Set())
   const [originalConnectionIds, setOriginalConnectionIds] = useState<Set<string>>(() => new Set())
   const [loadedXml, setLoadedXml] = useState('')
@@ -149,90 +133,6 @@ export function useModelEditState(): ModelEditState {
   const dirtySplitDiagramIdsRef = useRef<Set<string>>(new Set())
   const [saveStatusMessage, setSaveStatusMessage] = useState('')
   const [modelSaving, setModelSaving] = useState(false)
-
-  const undoRedo = useUndoRedo()
-
-  const captureSnapshot = useCallback(
-    (selection: SelectionSnapshot): EditSnapshot => ({
-      model,
-      diagramOverrides,
-      relationshipOverrides,
-      elementOverrides,
-      relationshipMetaOverrides,
-      createdObjects,
-      createdRelationships,
-      createdDiagramIds,
-      deletedElementIds,
-      deletedRelationshipIds,
-      deletedConnectionIds,
-      deletedDiagramNodeIds,
-      selectedDiagramId: selection.selectedDiagramId,
-      selectedElementId: selection.selectedElementId,
-      selectedRelationshipRef: selection.selectedRelationshipRef,
-    }),
-    [
-      model,
-      diagramOverrides,
-      relationshipOverrides,
-      elementOverrides,
-      relationshipMetaOverrides,
-      createdObjects,
-      createdRelationships,
-      createdDiagramIds,
-      deletedElementIds,
-      deletedRelationshipIds,
-      deletedConnectionIds,
-      deletedDiagramNodeIds,
-    ],
-  )
-
-  const restoreEditSnapshot = useCallback((snap: EditSnapshot) => {
-    setModel(snap.model)
-    setDiagramOverrides(snap.diagramOverrides)
-    setRelationshipOverrides(snap.relationshipOverrides)
-    setElementOverrides(snap.elementOverrides)
-    setRelationshipMetaOverrides(snap.relationshipMetaOverrides)
-    setCreatedObjects(snap.createdObjects)
-    setCreatedRelationships(snap.createdRelationships)
-    setCreatedDiagramIds(snap.createdDiagramIds)
-    setDeletedElementIds(snap.deletedElementIds)
-    setDeletedRelationshipIds(snap.deletedRelationshipIds)
-    setDeletedConnectionIds(snap.deletedConnectionIds)
-    setDeletedDiagramNodeIds(snap.deletedDiagramNodeIds)
-    diagramOverridesRef.current = snap.diagramOverrides
-    relationshipOverridesRef.current = snap.relationshipOverrides
-    elementOverridesRef.current = snap.elementOverrides
-    relationshipMetaOverridesRef.current = snap.relationshipMetaOverrides
-  }, [])
-
-  const saveForUndo = useCallback(
-    (label: string, selection: SelectionSnapshot) => {
-      undoRedo.saveBeforeMutation(label, captureSnapshot(selection))
-    },
-    [undoRedo, captureSnapshot],
-  )
-
-  const performUndo = useCallback(
-    (selection: SelectionSnapshot, restoreSelection: (snap: EditSnapshot) => void) => {
-      const snap = undoRedo.undo(captureSnapshot(selection))
-      if (snap) {
-        restoreEditSnapshot(snap)
-        restoreSelection(snap)
-      }
-    },
-    [undoRedo, captureSnapshot, restoreEditSnapshot],
-  )
-
-  const performRedo = useCallback(
-    (selection: SelectionSnapshot, restoreSelection: (snap: EditSnapshot) => void) => {
-      const snap = undoRedo.redo(captureSnapshot(selection))
-      if (snap) {
-        restoreEditSnapshot(snap)
-        restoreSelection(snap)
-      }
-    },
-    [undoRedo, captureSnapshot, restoreEditSnapshot],
-  )
 
   const commitDiagramOverrides = useCallback(
     (
@@ -315,8 +215,7 @@ export function useModelEditState(): ModelEditState {
     setRelationshipOverrides(emptyMap)
     setElementOverrides(emptyMap)
     setRelationshipMetaOverrides(emptyMap)
-    undoRedo.clear()
-  }, [undoRedo])
+  }, [])
 
   const clearCreatedAndDeletedTracking = useCallback(() => {
     setCreatedObjects([])
@@ -430,12 +329,6 @@ export function useModelEditState(): ModelEditState {
     elementOverridesRef,
     relationshipMetaOverridesRef,
     dirtySplitDiagramIdsRef,
-    undoRedo,
-    captureSnapshot,
-    restoreEditSnapshot,
-    saveForUndo,
-    performUndo,
-    performRedo,
     commitDiagramOverrides,
     commitRelationshipOverrides,
     commitElementOverrides,

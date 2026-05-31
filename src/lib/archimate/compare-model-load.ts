@@ -47,10 +47,31 @@ export async function fetchSplitCompareBundleAtRef(
     throw new Error('Сервер не вернул диаграмму для сравнения')
   }
 
-  const diagram: ParsedDiagram = {
-    ...data.diagram,
-    folderPath: diagramFolderPath || data.diagram.folderPath || undefined,
-    loaded: true,
+  const stubFromApi = data.diagram as ParsedDiagram
+  const modelRoot = String(data.modelRoot ?? '').trim()
+  const repoDiagramPath = buildSplitRepoFilePath(modelRoot, diagramSourceFile)
+
+  let diagram: ParsedDiagram
+  if (repoDiagramPath) {
+    const content = await fetchRepoFileContentAtRef(repoDiagramPath, ref)
+    diagram = parseLoadedCompareDiagram(
+      {
+        id: stubFromApi.id,
+        name: stubFromApi.name,
+        type: stubFromApi.type,
+        sourceFile: diagramSourceFile,
+        folderPath: diagramFolderPath || stubFromApi.folderPath || '',
+        nodes: [],
+        connections: [],
+      },
+      content,
+    )
+  } else {
+    diagram = {
+      ...stubFromApi,
+      folderPath: diagramFolderPath || stubFromApi.folderPath || undefined,
+      loaded: true,
+    }
   }
 
   return createParsedModel({

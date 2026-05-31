@@ -36,11 +36,6 @@
   padding-inline: 12px;
 }
 
-.app-header-actions {
-  margin-left: auto;
-  flex-shrink: 0;
-}
-
 .app-body {
   flex: 1;
   min-height: 0;

@@ -94,14 +94,6 @@ export function useArchimateApp() {
     editState.pendingElementFocusRef.current = null
   }, [editState, selection, splitRuntime])
 
-  const performUndo = useCallback(() => {
-    editState.performUndo(selection.getSelectionSnapshot(), selection.restoreSelectionSnapshot)
-  }, [editState, selection])
-
-  const performRedo = useCallback(() => {
-    editState.performRedo(selection.getSelectionSnapshot(), selection.restoreSelectionSnapshot)
-  }, [editState, selection])
-
   const handleOpenCompareChanges = useCallback(() => {
     if (!selection.selectedDiagramId) {
       return
@@ -159,32 +151,6 @@ export function useArchimateApp() {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selection, mutations])
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      const mod = event.metaKey || event.ctrlKey
-      if (!mod || event.key.toLowerCase() !== 'z') {
-        return
-      }
-      const t = event.target as HTMLElement
-      if (
-        t.tagName === 'INPUT' ||
-        t.tagName === 'TEXTAREA' ||
-        t.tagName === 'SELECT' ||
-        t.isContentEditable
-      ) {
-        return
-      }
-      event.preventDefault()
-      if (event.shiftKey) {
-        performRedo()
-      } else {
-        performUndo()
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [performUndo, performRedo])
-
   return {
     appTab,
     setAppTab,
@@ -196,8 +162,6 @@ export function useArchimateApp() {
     save,
     git,
     splitRuntime,
-    performUndo,
-    performRedo,
     handleOpenCompareChanges,
   }
 }

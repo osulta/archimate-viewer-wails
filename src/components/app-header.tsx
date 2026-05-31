@@ -1,6 +1,5 @@
 import React from 'react'
-import { Button, Layout, Menu, Space, Tooltip, Typography } from 'antd'
-import { UndoOutlined, RedoOutlined } from '@ant-design/icons'
+import { Layout, Menu, Typography } from 'antd'
 
 interface Tab {
   id: string
@@ -21,24 +20,9 @@ const TABS: Tab[] = [
 interface AppHeaderProps {
   activeTab: string
   onTabChange: (tabId: string) => void
-  canUndo?: boolean
-  canRedo?: boolean
-  undoLabel?: string
-  redoLabel?: string
-  onUndo?: () => void
-  onRedo?: () => void
 }
 
-export function AppHeader({
-  activeTab,
-  onTabChange,
-  canUndo = false,
-  canRedo = false,
-  undoLabel = '',
-  redoLabel = '',
-  onUndo,
-  onRedo,
-}: AppHeaderProps): React.JSX.Element {
+export function AppHeader({ activeTab, onTabChange }: AppHeaderProps): React.JSX.Element {
   return (
     <Layout.Header className="app-header">
       <Typography.Text className="app-header-brand">ArchiMate Viewer</Typography.Text>
@@ -50,28 +34,6 @@ export function AppHeader({
         items={TABS.map((tab) => ({ key: tab.id, label: tab.label }))}
         aria-label="Разделы приложения"
       />
-      <Space className="app-header-actions" size={4}>
-        <Tooltip title={undoLabel ? `Отменить: ${undoLabel} (Ctrl+Z)` : 'Отменить (Ctrl+Z)'}>
-          <Button
-            type="text"
-            icon={<UndoOutlined />}
-            disabled={!canUndo}
-            aria-label="Отменить"
-            onClick={onUndo}
-          />
-        </Tooltip>
-        <Tooltip
-          title={redoLabel ? `Повторить: ${redoLabel} (Ctrl+Shift+Z)` : 'Повторить (Ctrl+Shift+Z)'}
-        >
-          <Button
-            type="text"
-            icon={<RedoOutlined />}
-            disabled={!canRedo}
-            aria-label="Повторить"
-            onClick={onRedo}
-          />
-        </Tooltip>
-      </Space>
     </Layout.Header>
   )
 }

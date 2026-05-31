@@ -251,7 +251,8 @@ export function drawElementShape(
     return
   }
   if (shape === 'grouping') {
-    roundedRect(ctx, x, y, w, h, 8)
+    ctx.beginPath()
+    ctx.rect(x, y, w, h)
     return
   }
   if (shape === 'plateau') {
@@ -1025,8 +1026,27 @@ export function drawElementIcon(
     ctx.closePath()
     ctx.stroke()
   } else if (icon === 'grouping') {
-    ctx.strokeRect(x + 2, y + 2, 10, 7)
+    const ix = x + 1
+    const iy = y + 1.5
+    const w = 12
+    const h = 8.5
+    const tabH = h * 0.38
+    const tabW = w * 0.68
+    ctx.save()
+    ctx.setLineDash([2.5, 2])
+    ctx.beginPath()
+    ctx.moveTo(ix, iy)
+    ctx.lineTo(ix + tabW, iy)
+    ctx.lineTo(ix + tabW, iy + tabH)
+    ctx.lineTo(ix + w, iy + tabH)
+    ctx.lineTo(ix + w, iy + h)
+    ctx.lineTo(ix, iy + h)
+    ctx.lineTo(ix, iy + tabH)
+    ctx.lineTo(ix + tabW, iy + tabH)
+    ctx.lineTo(ix, iy + tabH)
+    ctx.lineTo(ix, iy)
     ctx.stroke()
+    ctx.restore()
   } else if (icon === 'actor') {
     const cx = x + 7
     ctx.beginPath()

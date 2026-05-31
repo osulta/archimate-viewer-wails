@@ -67,7 +67,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     pendingLinkType, linkCreateSourceId, setLinkCreateSourceId, setPendingLinkType,
     commitDiagramOverrides, commitRelationshipOverrides, commitElementOverrides,
     commitRelationshipMetaOverrides, markSplitDiagramDirty, clearLinkCreation,
-    saveForUndo,
   } = editState
 
   const {
@@ -77,10 +76,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     selectedRelationshipRef, setSelectedRelationshipRef,
     setSelectedBendpointIndex,
     selectedDiagram, selectedElement, selectedNodeLive,
-    getSelectionSnapshot,
   } = selection
-
-  const saveUndo = (label: string) => saveForUndo(label, getSelectionSnapshot())
 
   const removeRelationshipBendpoint = useCallback(
     (relationshipRef: string, bendpointIndex: number) => {
@@ -97,7 +93,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       if (bendpointIndex < 0 || bendpointIndex >= nextBendpoints.length) {
         return
       }
-      saveUndo('Удаление точки перегиба')
       nextBendpoints.splice(bendpointIndex, 1)
       const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
       diagramMap.set(relationshipRef, nextBendpoints)
@@ -113,7 +108,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!diagramId || !nodeId || (dx === 0 && dy === 0)) {
       return
     }
-    saveUndo('Перемещение объекта')
     commitDiagramOverrides((prevAll) => {
       const overrides = prevAll.get(diagramId) ?? new Map()
       const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
@@ -149,7 +143,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    saveUndo('Изменение размера объекта')
     commitDiagramOverrides((prevAll) => {
       const overrides = prevAll.get(diagramId) ?? new Map()
       const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
@@ -202,7 +195,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       if (!diagramId || !nodeId) {
         return
       }
-      saveUndo('Изменение фона объекта')
       commitDiagramOverrides((prevAll) => {
         const overrides = prevAll.get(diagramId) ?? new Map()
         const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
@@ -226,7 +218,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         markSplitDiagramDirty(diagramId)
       }
     },
-    [commitDiagramOverrides, markSplitDiagramDirty, model, saveForUndo],
+    [commitDiagramOverrides, markSplitDiagramDirty, model],
   )
 
   const updateDiagramMetadata = useCallback(
@@ -246,7 +238,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       if (!nameChanged) {
         return
       }
-      saveUndo('Изменение диаграммы')
       setModel({
         ...model,
         diagrams: model.diagrams.map((diagram) =>
@@ -255,7 +246,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       })
       markSplitDiagramDirty(diagramId)
     },
-    [model, markSplitDiagramDirty, saveForUndo],
+    [model, markSplitDiagramDirty],
   )
 
   const updateRelationshipMetaOverride = useCallback((relationshipId: string, patch: Partial<RelationshipMetaOverride>) => {
@@ -266,7 +257,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!base) {
       return
     }
-    saveUndo('Изменение связи')
     const prev = relationshipMetaOverrides.get(relationshipId) ?? {
       name: base.name,
     }
@@ -283,7 +273,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!base) {
       return
     }
-    saveUndo('Изменение элемента')
     const prev = elementOverrides.get(elementId) ?? {
       name: base.name,
       documentation: base.documentation ?? '',
@@ -302,7 +291,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId) {
       return
     }
-    saveUndo('Создание элемента')
     const type = String(elementType ?? 'BusinessProcess')
       .trim()
       .replace(/^archimate:/i, '') || 'BusinessProcess'
@@ -394,7 +382,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!element) {
       return
     }
-    saveUndo('Размещение элемента на диаграмме')
 
     const targetDiagram = model.diagrams.find((d) => d.id === selectedDiagramId)
     if (!targetDiagram) {
@@ -470,7 +457,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model) {
       return
     }
-    saveUndo('Создание диаграммы')
     const name = String(nameOverride ?? '').trim() || 'New view'
     const nonce = Math.random().toString(36).slice(2, 8)
     const id = `id-new-diagram-${Date.now()}-${nonce}`
@@ -538,7 +524,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         return false
       }
 
-      saveUndo('Создание связи')
       const relId = generateArchimateModelId()
       const connId = generateArchimateModelId()
       const newRel = {
@@ -663,7 +648,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    saveUndo('Удаление объекта с диаграммы')
     const root = selectedNodeLive
     const subtreeIds = new Set(collectSubtreeIds(root))
     const subtreeRefs = collectSubtreeElementRefs(root)
@@ -818,7 +802,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    saveUndo('Удаление связи с диаграммы')
     const removedConnIds = toRemove.map((c) => c.id)
 
     const nextDiagrams = model.diagrams.map((d) => {
@@ -904,7 +887,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    saveUndo('Удаление связи из модели')
     const removedConnIds: string[] = []
     model.diagrams.forEach((d) => {
       d.connections.forEach((c) => {
@@ -986,7 +968,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    saveUndo('Удаление элемента из модели')
     const removedNodeIds = new Set<string>()
     model.diagrams.forEach((d) => {
       collectNodeIdsRemovedForElement(d.nodes, elementId).forEach((id) => removedNodeIds.add(id))
@@ -1142,7 +1123,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!nextBendpoints[bendpointIndex]) {
       return
     }
-    saveUndo('Перемещение точки перегиба')
     nextBendpoints[bendpointIndex] = bendpoint
     const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
     diagramMap.set(relationshipRef, nextBendpoints)
@@ -1161,7 +1141,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!currentConnection) {
       return
     }
-    saveUndo('Добавление точки перегиба')
     const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
     const insertAt = Math.max(0, Math.min(nextBendpoints.length, segmentIndex))
     nextBendpoints.splice(insertAt, 0, bendpoint)

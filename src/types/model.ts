@@ -169,6 +169,8 @@ export interface ElementVisualSpec {
   icon: string
   borderDash?: number[]
   bare?: boolean
+  /** Per-type palette override (e.g. Grouping: white fill, black dashed border). */
+  style?: Partial<LayerStyle>
 }
 
 export interface RelationshipNotation {
