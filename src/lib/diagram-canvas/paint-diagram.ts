@@ -25,10 +25,18 @@ import {
   normalizeElementType,
 } from '../archimate/canvas-draw'
 import type { Point } from '../../types/model'
+import { CONNECTION_FLOW_COLOR } from './constants'
 import { applyDragPreviewToDiagram } from './diagram-preview'
 import { resolveNodeDrawColors } from './node-colors'
 import { getResizeHandleRect } from './resize-handle'
 import type { DiagramPaintContext, PaintDiagramResult, RenderedConnection } from './types'
+
+function highlightIdSetHas(ids: string[] | Set<string> | undefined, id: string): boolean {
+  if (!ids) {
+    return false
+  }
+  return ids instanceof Set ? ids.has(id) : ids.includes(id)
+}
 
 export function paintDiagramCanvas(
   canvas: HTMLCanvasElement,
@@ -40,6 +48,8 @@ export function paintDiagramCanvas(
     relationshipById: relationships,
     highlightNodeIds: hlNodes,
     highlightConnectionIds: hlConns,
+    flowConnectionIds: flowConns,
+    connectionFlowPhase,
     selectedNodeId: selNodeId,
     selectedRelationshipRef: selRelRef,
     selectedBendpointIndex: selBpIndex,
@@ -98,6 +108,7 @@ export function paintDiagramCanvas(
     dash: number[]
     isSelectedRelationship: boolean
     isChangedConnection: boolean
+    isFlowConnection: boolean
   }> = []
 
   diagramForPaint.connections.forEach((connection) => {
@@ -114,9 +125,12 @@ export function paintDiagramCanvas(
     })
     const isSelectedRelationship = Boolean(selRelRef && connection.relationshipRef === selRelRef)
     const isChangedConnection = Boolean(
-      hlConns &&
-        (hlConns instanceof Set ? hlConns.has(connection.id) : (hlConns as string[]).includes(connection.id)),
+      hlConns && highlightIdSetHas(hlConns, connection.id),
     )
+    const isFlowConnection =
+      !isSelectedRelationship &&
+      !isChangedConnection &&
+      highlightIdSetHas(flowConns, connection.id)
 
     const resolved = resolveConnectionPolyline(
       connection,
@@ -136,15 +150,19 @@ export function paintDiagramCanvas(
       ? '#ff7a00'
       : isChangedConnection
         ? '#e65100'
-        : '#242424'
+        : isFlowConnection
+          ? CONNECTION_FLOW_COLOR
+          : '#242424'
 
     const lineWidth = isSelectedRelationship
       ? 3
       : isChangedConnection
         ? 2.5
-        : layout === 'nested'
-          ? 1.25
-          : Math.max(1.2, style.width ?? 1.6)
+        : isFlowConnection
+          ? 2.4
+          : layout === 'nested'
+            ? 1.25
+            : Math.max(1.2, style.width ?? 1.6)
 
     let startMarker = style.startMarker
     let endMarker = style.endMarker
@@ -176,11 +194,14 @@ export function paintDiagramCanvas(
       dash:
         isSelectedRelationship || isChangedConnection
           ? []
-          : layout === 'nested'
-            ? []
-            : style.dash ?? [],
+          : isFlowConnection
+            ? [10, 7]
+            : layout === 'nested'
+              ? []
+              : style.dash ?? [],
       isSelectedRelationship,
       isChangedConnection,
+      isFlowConnection,
     })
   })
 
@@ -318,40 +339,59 @@ export function paintDiagramCanvas(
     }
   })
 
-  connectionsToDraw.forEach(({ points, lineColor, lineWidth, startMarker, endMarker, dash }) => {
-    context.save()
-    context.strokeStyle = lineColor
-    context.fillStyle = lineColor
-    context.lineWidth = lineWidth
-    context.lineJoin = 'miter'
-    context.lineCap = 'butt'
-    context.setLineDash(dash)
+  connectionsToDraw.forEach(
+    ({ points, lineColor, lineWidth, startMarker, endMarker, dash, isFlowConnection }) => {
+      context.save()
+      context.strokeStyle = lineColor
+      context.fillStyle = lineColor
+      context.lineWidth = lineWidth
+      context.lineJoin = 'miter'
+      context.lineCap = isFlowConnection ? 'round' : 'butt'
+      context.setLineDash(dash)
+      if (isFlowConnection && connectionFlowPhase != null) {
+        const dashPeriod = 17
+        context.lineDashOffset = -connectionFlowPhase * dashPeriod
+      }
 
-    context.beginPath()
-    context.moveTo(points[0].x, points[0].y)
-    for (let i = 1; i < points.length; i += 1) {
-      context.lineTo(points[i].x, points[i].y)
-    }
-    context.stroke()
+      context.beginPath()
+      context.moveTo(points[0].x, points[0].y)
+      for (let i = 1; i < points.length; i += 1) {
+        context.lineTo(points[i].x, points[i].y)
+      }
+      context.stroke()
 
-    const markerSize = 10
-    if (points.length >= 2) {
-      const p0 = points[0]
-      const p1 = points[1]
-      const pPrev = points.at(-2)!
-      const pEnd = points.at(-1)!
+      const markerSize = isFlowConnection ? 11 : 10
+      if (points.length >= 2) {
+        const p0 = points[0]
+        const p1 = points[1]
+        const pPrev = points.at(-2)!
+        const pEnd = points.at(-1)!
 
-      const startAngle = Math.atan2(p1.y - p0.y, p1.x - p0.x)
-      const endAngle = Math.atan2(pEnd.y - pPrev.y, pEnd.x - pPrev.x)
+        const startAngle = Math.atan2(p1.y - p0.y, p1.x - p0.x)
+        const endAngle = Math.atan2(pEnd.y - pPrev.y, pEnd.x - pPrev.x)
 
-      drawStartMarker(context, p0.x, p0.y, startAngle, startMarker, markerSize)
-      drawEndMarker(context, pEnd.x, pEnd.y, endAngle, endMarker, markerSize)
-    }
+        drawStartMarker(context, p0.x, p0.y, startAngle, startMarker, markerSize)
+        drawEndMarker(context, pEnd.x, pEnd.y, endAngle, endMarker, markerSize)
 
-    context.restore()
-  })
+        if (isFlowConnection && endMarker !== 'none' && connectionFlowPhase != null) {
+          const pulse = 0.65 + 0.35 * Math.sin(connectionFlowPhase * Math.PI * 2)
+          const flowArrowSize = markerSize * (0.72 + 0.28 * pulse)
+          const inset = flowArrowSize * 0.85
+          const tipX = pEnd.x - Math.cos(endAngle) * inset
+          const tipY = pEnd.y - Math.sin(endAngle) * inset
+          context.save()
+          context.globalAlpha = 0.35 + 0.45 * pulse
+          drawEndMarker(context, tipX, tipY, endAngle, endMarker, flowArrowSize)
+          context.restore()
+        }
+      }
 
-  connectionsToDraw.forEach(({ points, label, lineColor, isSelectedRelationship, isChangedConnection }) => {
+      context.restore()
+    },
+  )
+
+  connectionsToDraw.forEach(
+    ({ points, label, lineColor, isSelectedRelationship, isChangedConnection, isFlowConnection }) => {
     if (!label) {
       return
     }
@@ -365,9 +405,12 @@ export function paintDiagramCanvas(
         ? 'rgba(255, 122, 0, 0.45)'
         : isChangedConnection
           ? 'rgba(230, 81, 0, 0.4)'
-          : undefined,
+          : isFlowConnection
+            ? 'rgba(24, 144, 255, 0.35)'
+            : undefined,
     })
-  })
+  },
+  )
 
   connectionsToDraw.forEach(({ connection, sourceCenter, isSelectedRelationship }) => {
     if (!isSelectedRelationship || !connection.bendpoints?.length) {

@@ -22,6 +22,7 @@ import {
   paintDiagramCanvas,
   pickRelationshipAtScreenPoint,
   ZOOM_WHEEL_FACTOR,
+  CONNECTION_FLOW_CYCLE_MS,
 } from '../../lib/diagram-canvas'
 import type {
   DiagramCanvasProps,
@@ -40,6 +41,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     readOnly = false,
     highlightNodeIds,
     highlightConnectionIds,
+    flowConnectionIds,
+    animateConnectionFlow = false,
     selectedNodeId,
     selectedRelationshipRef,
     linkCreateMode,
@@ -66,6 +69,9 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   const renderedConnectionsRef = useRef<RenderedConnection[]>([])
   const dragPreviewRef = useRef<DragPreview | null>(null)
   const paintRafRef = useRef<number | null>(null)
+  const flowAnimRafRef = useRef<number | null>(null)
+  const connectionFlowPhaseRef = useRef(0)
+  const flowAnimStartRef = useRef(0)
   const compareSync = useCompareCanvasSync()
   const compareSyncCleanupRef = useRef<(() => void) | undefined>(undefined)
   const wheelCleanupRef = useRef<(() => void) | undefined>(undefined)
@@ -128,6 +134,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       readOnly,
       highlightNodeIds,
       highlightConnectionIds,
+      flowConnectionIds,
+      connectionFlowPhase: animateConnectionFlow ? connectionFlowPhaseRef.current : undefined,
       selectedNodeId,
       selectedRelationshipRef,
       selectedBendpointIndex,
@@ -147,6 +155,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     readOnly,
     highlightNodeIds,
     highlightConnectionIds,
+    flowConnectionIds,
+    animateConnectionFlow,
     selectedNodeId,
     selectedRelationshipRef,
     selectedBendpointIndex,
@@ -164,6 +174,40 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     })
   }, [paintDiagram])
 
+  const hasFlowConnections =
+    animateConnectionFlow &&
+    (flowConnectionIds instanceof Set
+      ? flowConnectionIds.size > 0
+      : (flowConnectionIds?.length ?? 0) > 0)
+
+  useEffect(() => {
+    if (!hasFlowConnections) {
+      if (flowAnimRafRef.current !== null) {
+        cancelAnimationFrame(flowAnimRafRef.current)
+        flowAnimRafRef.current = null
+      }
+      connectionFlowPhaseRef.current = 0
+      return
+    }
+
+    flowAnimStartRef.current = performance.now()
+    const tick = (now: number) => {
+      const elapsed = now - flowAnimStartRef.current
+      connectionFlowPhaseRef.current =
+        (elapsed % CONNECTION_FLOW_CYCLE_MS) / CONNECTION_FLOW_CYCLE_MS
+      scheduleRepaint()
+      flowAnimRafRef.current = requestAnimationFrame(tick)
+    }
+    flowAnimRafRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (flowAnimRafRef.current !== null) {
+        cancelAnimationFrame(flowAnimRafRef.current)
+        flowAnimRafRef.current = null
+      }
+    }
+  }, [hasFlowConnections, scheduleRepaint])
+
   useEffect(() => {
     paintDiagram()
     return () => {
@@ -178,6 +222,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     relationshipById,
     highlightNodeIds,
     highlightConnectionIds,
+    flowConnectionIds,
     selectedNodeId,
     selectedRelationshipRef,
     selectedBendpointIndex,

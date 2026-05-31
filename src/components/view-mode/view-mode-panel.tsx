@@ -1,7 +1,7 @@
 import { useMemo } from 'react'
 import { Empty, Typography } from 'antd'
 import { DiagramCanvas } from '../diagram-canvas'
-import { collectDiagramHighlightsForElement } from '../../lib/archimate/diagram-model'
+import { collectConnectionIdsForDiagramNode } from '../../lib/archimate/diagram-model'
 import { Sidebar } from '../sidebar/sidebar'
 import { ViewModeProperties } from './view-mode-properties'
 import type {
@@ -98,24 +98,12 @@ export function ViewModePanel(props: ViewModePanelProps) {
 
   const selectedNodeId = selectedNodeLive?.id ?? ''
 
-  const diagramHighlights = useMemo(() => {
-    if (selectedRelationshipRef || !selectedDiagram) {
-      return { nodeIds: [], connectionIds: [] }
+  const flowConnectionIds = useMemo(() => {
+    if (!selectedDiagram || !selectedNodeId || selectedRelationshipRef) {
+      return []
     }
-    if (!selectedNodeId && !selectedElementRefForUsage) {
-      return { nodeIds: [], connectionIds: [] }
-    }
-    return collectDiagramHighlightsForElement(
-      selectedDiagram,
-      selectedElementRefForUsage,
-      selectedNodeId,
-    )
-  }, [
-    selectedDiagram,
-    selectedElementRefForUsage,
-    selectedNodeId,
-    selectedRelationshipRef,
-  ])
+    return collectConnectionIdsForDiagramNode(selectedDiagram, selectedNodeId)
+  }, [selectedDiagram, selectedNodeId, selectedRelationshipRef])
 
   return (
     <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
@@ -165,8 +153,8 @@ export function ViewModePanel(props: ViewModePanelProps) {
               relationshipById={model.relationshipById}
               selectedNodeId={selectedNodeId}
               selectedRelationshipRef={selectedRelationshipRef}
-              highlightNodeIds={diagramHighlights.nodeIds}
-              highlightConnectionIds={diagramHighlights.connectionIds}
+              flowConnectionIds={flowConnectionIds}
+              animateConnectionFlow={flowConnectionIds.length > 0}
               onNodeSelect={onCanvasNodeSelect}
               onRelationshipSelect={onCanvasRelationshipSelect}
             />

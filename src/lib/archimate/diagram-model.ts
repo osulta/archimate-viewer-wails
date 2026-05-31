@@ -725,6 +725,19 @@ export function findNodeByElementRefInDiagram(diagram: ParsedDiagram, elementId:
   return flattened.find((n) => n.elementRef === elementId) ?? null
 }
 
+/** Connection ids on a diagram that touch the given diagram object (source or target). */
+export function collectConnectionIdsForDiagramNode(
+  diagram: ParsedDiagram | null | undefined,
+  nodeId: string,
+): string[] {
+  if (!diagram?.connections?.length || !nodeId) {
+    return []
+  }
+  return diagram.connections
+    .filter((connection) => connection.source === nodeId || connection.target === nodeId)
+    .map((connection) => connection.id)
+}
+
 export function collectDiagramHighlightsForElement(
   diagram: ParsedDiagram | null | undefined,
   elementRef?: string,

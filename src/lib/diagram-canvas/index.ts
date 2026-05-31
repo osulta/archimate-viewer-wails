@@ -16,7 +16,14 @@ export type {
   PaintDiagramResult,
 } from './types'
 
-export { RESIZE_HANDLE_SIZE, ZOOM_MIN, ZOOM_MAX, ZOOM_WHEEL_FACTOR } from './constants'
+export {
+  RESIZE_HANDLE_SIZE,
+  ZOOM_MIN,
+  ZOOM_MAX,
+  ZOOM_WHEEL_FACTOR,
+  CONNECTION_FLOW_CYCLE_MS,
+  CONNECTION_FLOW_COLOR,
+} from './constants'
 export { resolveNodeDrawColors } from './node-colors'
 export { getResizeHandleRect, isPointInResizeHandle } from './resize-handle'
 export { applyDragPreviewToDiagram } from './diagram-preview'

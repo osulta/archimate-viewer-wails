@@ -113,6 +113,8 @@ export interface DiagramPaintContext {
   readOnly?: boolean
   highlightNodeIds?: string[] | Set<string>
   highlightConnectionIds?: string[] | Set<string>
+  flowConnectionIds?: string[] | Set<string>
+  connectionFlowPhase?: number
   selectedNodeId?: string
   selectedRelationshipRef?: string | null
   selectedBendpointIndex?: number | null
@@ -129,6 +131,8 @@ export interface DiagramCanvasProps {
   readOnly?: boolean
   highlightNodeIds?: string[] | Set<string>
   highlightConnectionIds?: string[] | Set<string>
+  flowConnectionIds?: string[] | Set<string>
+  animateConnectionFlow?: boolean
   selectedNodeId?: string
   selectedRelationshipRef?: string | null
   linkCreateMode?: boolean
