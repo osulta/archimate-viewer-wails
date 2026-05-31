@@ -313,14 +313,25 @@ export function ObjectPropertiesPanel({
   }, [selectedDiagramId, selectedDiagram?.name])
 
   useEffect(() => {
-    if (!showDiagramProperties || !selectedDiagramId) {
+    if (!showDiagramProperties || !selectedDiagramId || !selectedDiagram) {
+      return undefined
+    }
+    const nextName = diagramNameDraft.trim()
+    const currentName = (selectedDiagram.name ?? '').trim()
+    if (nextName === currentName) {
       return undefined
     }
     const handle = window.setTimeout(() => {
       onUpdateDiagramMetadata?.(selectedDiagramId, { name: diagramNameDraft })
     }, 300)
     return () => window.clearTimeout(handle)
-  }, [diagramNameDraft, selectedDiagramId, showDiagramProperties, onUpdateDiagramMetadata])
+  }, [
+    diagramNameDraft,
+    selectedDiagramId,
+    showDiagramProperties,
+    onUpdateDiagramMetadata,
+    selectedDiagram,
+  ])
 
   useEffect(() => {
     if (!elementId) {

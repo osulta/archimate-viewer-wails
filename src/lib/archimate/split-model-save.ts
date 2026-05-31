@@ -120,15 +120,21 @@ export function buildSplitDiagramSaveXml(
   const documentNode = parseXmlDocument(content)
   const diagramRoot = getDocumentRootElement(documentNode)
   if (diagram.name != null && diagramRoot.hasAttribute('name')) {
-    diagramRoot.setAttribute('name', diagram.name)
+    const currentName = diagramRoot.getAttribute('name') ?? ''
+    if (diagram.name !== currentName) {
+      diagramRoot.setAttribute('name', diagram.name)
+    }
   }
-  const nodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
-  syncSplitDiagramChildrenToXml(diagramRoot, nodes, 0, 0)
+  if (nodeOverrides.size > 0) {
+    const nodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
+    syncSplitDiagramChildrenToXml(diagramRoot, nodes, 0, 0)
+  }
 
   if (saveContext?.elementById) {
+    const layoutNodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
     appendMissingDiagramNodesToXml(
       diagramRoot,
-      nodes,
+      layoutNodes,
       documentNode,
       saveContext.elementById,
       saveContext.pendingElementPaths ?? new Map(),
@@ -453,6 +459,9 @@ export async function saveSplitModelChanges({
       relOverrides,
       saveContext,
     )
+    if (updated === originalContent) {
+      continue
+    }
     await writeOnce(diagramPath, updated)
   }
 

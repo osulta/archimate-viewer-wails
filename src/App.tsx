@@ -805,6 +805,14 @@ function App() {
       if (!hasPatch) {
         return
       }
+      const current = model.diagrams.find((diagram) => diagram.id === diagramId)
+      if (!current) {
+        return
+      }
+      const nameChanged = patch.name != null && patch.name !== current.name
+      if (!nameChanged) {
+        return
+      }
       saveForUndo('Изменение диаграммы')
       setModel({
         ...model,
@@ -814,7 +822,7 @@ function App() {
       })
       markSplitDiagramDirty(diagramId)
     },
-    [model, markSplitDiagramDirty],
+    [model, markSplitDiagramDirty, saveForUndo],
   )
 
   const handleSelectDiagram = useCallback((diagramId: string) => {

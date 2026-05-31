@@ -78,11 +78,11 @@ export function roundDiagramCoord(value: number): number {
   if (!Number.isFinite(value)) {
     return 0
   }
-  return Math.round(value * 10) / 10
+  return Math.round(value)
 }
 
 export function formatDiagramCoord(value: number): string {
-  return roundDiagramCoord(value).toFixed(1)
+  return String(roundDiagramCoord(value))
 }
 
 export function snapToGrid(value: number, step: number = DIAGRAM_GRID_STEP): number {

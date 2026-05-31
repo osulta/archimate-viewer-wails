@@ -12,6 +12,7 @@ import {
 import {
   idFromArchimateChildHref,
 } from '../xml/href-utils'
+import { roundDiagramCoord } from '../../diagram-model'
 
 const DIAGRAM_OBJECT_TAGS = ['child', 'children']
 const CONNECTION_TAGS = ['sourceConnection', 'sourceConnections']
@@ -63,13 +64,28 @@ function getConnectionRelationshipType(connectionNode: Element): string {
   return match ? `archimate:${match[1]}` : ''
 }
 
+function parseDiagramBounds(boundsNode: Element | null): {
+  x: number
+  y: number
+  width: number
+  height: number
+} {
+  return {
+    x: roundDiagramCoord(Number(boundsNode?.getAttribute('x') ?? 0)),
+    y: roundDiagramCoord(Number(boundsNode?.getAttribute('y') ?? 0)),
+    width: roundDiagramCoord(
+      Number(boundsNode?.getAttribute('width') ?? boundsNode?.getAttribute('w') ?? 120),
+    ),
+    height: roundDiagramCoord(
+      Number(boundsNode?.getAttribute('height') ?? boundsNode?.getAttribute('h') ?? 55),
+    ),
+  }
+}
+
 export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: string): ParsedDiagram {
   function parseDiagramObject(childNode: Element, parentAbsX: number, parentAbsY: number): DiagramNode {
     const boundsNode = getDirectChildByTag(childNode, 'bounds')
-    const x = Number(boundsNode?.getAttribute('x') ?? 0)
-    const y = Number(boundsNode?.getAttribute('y') ?? 0)
-    const width = Number(boundsNode?.getAttribute('width') ?? 120)
-    const height = Number(boundsNode?.getAttribute('height') ?? 55)
+    const { x, y, width, height } = parseDiagramBounds(boundsNode)
 
     const absX = parentAbsX + x
     const absY = parentAbsY + y
@@ -129,6 +145,7 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
 export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagram {
   function parseNodeTree(node: Element): DiagramNode {
     const boundsNode = getDirectChildByTag(node, 'bounds')
+    const { x, y, width, height } = parseDiagramBounds(boundsNode)
     const children = getDirectChildrenByTag(node, 'node').map(parseNodeTree)
     const colors = parseDiagramObjectColors(node)
 
@@ -137,10 +154,10 @@ export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagra
       elementRef: node.getAttribute('elementRef') ?? '',
       type: getType(node, 'Node'),
       label: getDiagramObjectLabel(node),
-      x: Number(boundsNode?.getAttribute('x') ?? 0),
-      y: Number(boundsNode?.getAttribute('y') ?? 0),
-      width: Number(boundsNode?.getAttribute('w') ?? 120),
-      height: Number(boundsNode?.getAttribute('h') ?? 55),
+      x,
+      y,
+      width,
+      height,
       children,
       ...colors,
     }
