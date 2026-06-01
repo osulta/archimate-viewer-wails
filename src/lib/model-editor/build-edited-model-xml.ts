@@ -2,6 +2,7 @@ import {
   getDirectChildByTag,
   getDirectChildrenByTag,
   applyDocumentationToElementXml,
+  applyPropertiesToElementXml,
   clearConnectionBendpoints,
   appendConnectionBendpoints,
 } from '../archimate/xml-utils'
@@ -119,17 +120,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
         }
 
         if (override.properties) {
-          getDirectChildrenByTag(el, 'property').forEach((p) => el.removeChild(p))
-          override.properties.forEach((prop) => {
-            const propNode = documentNode.createElement(
-              el.prefix ? `${el.prefix}:property` : 'property',
-            )
-            if (prop.key) {
-              propNode.setAttribute('key', prop.key)
-            }
-            propNode.setAttribute('value', prop.value ?? '')
-            el.appendChild(propNode)
-          })
+          applyPropertiesToElementXml(el, documentNode, override.properties)
         }
 
         if (Object.prototype.hasOwnProperty.call(override, 'documentation')) {

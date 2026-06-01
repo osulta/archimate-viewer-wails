@@ -18,7 +18,11 @@ dist-ssr
 .vscode/*
 !.vscode/extensions.json
 .idea
+
+# macOS Finder metadata (any directory)
 .DS_Store
+**/.DS_Store
+
 *.suo
 *.ntvs*
 *.njsproj

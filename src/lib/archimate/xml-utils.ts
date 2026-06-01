@@ -109,6 +109,22 @@ export function applyDocumentationToElementXml(el: Element, documentNode: Docume
   docNode.textContent = text
 }
 
+/** Archi split-model format: `<properties key="…" value="…"/>` (not archimate:property). */
+export function applyPropertiesToElementXml(
+  el: Element,
+  documentNode: Document,
+  properties: ElementProperty[],
+): void {
+  getDirectChildrenByTag(el, 'property').forEach((node) => el.removeChild(node))
+  getDirectChildrenByTag(el, 'properties').forEach((node) => el.removeChild(node))
+  properties.forEach((prop) => {
+    const propNode = documentNode.createElement('properties')
+    propNode.setAttribute('key', prop.key)
+    propNode.setAttribute('value', prop.value ?? '')
+    el.appendChild(propNode)
+  })
+}
+
 export function parseProperties(node: Element): ElementProperty[] {
   const props: ElementProperty[] = []
   getDirectChildrenByTag(node, 'property').forEach((propNode) => {

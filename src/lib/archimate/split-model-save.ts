@@ -37,6 +37,7 @@ import {
   getDirectChildrenByTag,
   getId,
   applyDocumentationToElementXml,
+  applyPropertiesToElementXml,
   clearConnectionBendpoints,
   appendConnectionBendpoints,
   applyDiagramObjectVisualToXml,
@@ -188,16 +189,7 @@ export function buildSplitElementSaveXml(content: string, element: ParsedElement
   }
 
   if (override.properties) {
-    getDirectChildrenByTag(root, 'property').forEach((node) => root.removeChild(node))
-    getDirectChildrenByTag(root, 'properties').forEach((node) => root.removeChild(node))
-    override.properties.forEach((prop) => {
-      const propNode = documentNode.createElement(
-        root.prefix ? `${root.prefix}:property` : 'property',
-      )
-      propNode.setAttribute('key', prop.key)
-      propNode.setAttribute('value', prop.value ?? '')
-      root.appendChild(propNode)
-    })
+    applyPropertiesToElementXml(root, documentNode, override.properties)
   }
 
   return serializeXml(documentNode)
