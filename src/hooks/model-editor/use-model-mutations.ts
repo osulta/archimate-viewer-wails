@@ -17,6 +17,7 @@ import {
   snapToGrid,
 } from '../../lib/archimate/diagram-model'
 import { isSplitFilesModel } from '../../lib/model-editor/is-split-files-model'
+import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type {
   ParsedDiagram,
   ParsedElement,
@@ -50,6 +51,15 @@ export interface ModelMutations {
   removeRelationshipBendpoint: (relationshipRef: string, bendpointIndex: number) => void
   updateRelationshipBendpoint: (relationshipRef: string, bendpointIndex: number, bendpoint: Bendpoint) => void
   addRelationshipBendpoint: (relationshipRef: string, segmentIndex: number, bendpoint: Bendpoint) => void
+  undoCanvasCommand: () => void
+  redoCanvasCommand: () => void
+  clearCanvasHistory: () => void
+  canvasHistory: {
+    canUndo: boolean
+    canRedo: boolean
+    undoLabel: string
+    redoLabel: string
+  }
 }
 
 interface UseModelMutationsOptions {
@@ -58,6 +68,7 @@ interface UseModelMutationsOptions {
 }
 
 export function useModelMutations({ editState, selection }: UseModelMutationsOptions): ModelMutations {
+  const commandHistory = useCommandHistory()
   const {
     model, setModel,
     diagramOverrides, relationshipOverrides, elementOverrides, relationshipMetaOverrides,
@@ -78,6 +89,33 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     selectedDiagram, selectedElement, selectedNodeLive,
   } = selection
 
+  const cloneNodeOverrideMap = (source: Map<string, Map<string, NodeOverride>>) =>
+    new Map(Array.from(source.entries(), ([diagramId, nodeMap]) => [diagramId, new Map(nodeMap)]))
+  const cloneBendpointMap = (source: Map<string, Map<string, Bendpoint[]>>) =>
+    new Map(
+      Array.from(source.entries(), ([diagramId, relMap]) => [
+        diagramId,
+        new Map(Array.from(relMap.entries(), ([ref, points]) => [ref, [...points]])),
+      ]),
+    )
+
+  const pushSnapshotCommand = useCallback(
+    (
+      label: string,
+      applyBefore: () => void,
+      applyAfter: () => void,
+    ) => {
+      commandHistory.pushExecuted(
+        createSnapshotCommand({
+          label,
+          applyBefore,
+          applyAfter,
+        }),
+      )
+    },
+    [commandHistory],
+  )
+
   const removeRelationshipBendpoint = useCallback(
     (relationshipRef: string, bendpointIndex: number) => {
       if (!selectedDiagramId || !selectedDiagram) {
@@ -94,36 +132,59 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         return
       }
       nextBendpoints.splice(bendpointIndex, 1)
+      const beforeAll = cloneBendpointMap(relationshipOverrides)
       const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
       diagramMap.set(relationshipRef, nextBendpoints)
-      const all = new Map(relationshipOverrides)
-      all.set(selectedDiagramId, diagramMap)
-      commitRelationshipOverrides(all)
+      const nextAll = new Map(relationshipOverrides)
+      nextAll.set(selectedDiagramId, diagramMap)
+      commitRelationshipOverrides(nextAll)
       setSelectedBendpointIndex(null)
+      pushSnapshotCommand(
+        'Удаление точки перегиба',
+        () => {
+          commitRelationshipOverrides(cloneBendpointMap(beforeAll))
+          setSelectedBendpointIndex(bendpointIndex)
+        },
+        () => {
+          commitRelationshipOverrides(cloneBendpointMap(nextAll))
+          setSelectedBendpointIndex(null)
+        },
+      )
     },
-    [selectedDiagramId, selectedDiagram, relationshipOverrides],
+    [
+      selectedDiagramId,
+      selectedDiagram,
+      relationshipOverrides,
+      commitRelationshipOverrides,
+      pushSnapshotCommand,
+    ],
   )
 
   function moveNode(diagramId: string, nodeId: string, dx: number, dy: number) {
     if (!diagramId || !nodeId || (dx === 0 && dy === 0)) {
       return
     }
-    commitDiagramOverrides((prevAll) => {
-      const overrides = prevAll.get(diagramId) ?? new Map()
-      const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-      const nextOverrides = new Map(overrides)
-      nextOverrides.set(nodeId, {
-        ...prev,
-        dx: roundDiagramCoord((prev.dx ?? 0) + dx),
-        dy: roundDiagramCoord((prev.dy ?? 0) + dy),
-      })
-      const nextAll = new Map(prevAll)
-      nextAll.set(diagramId, nextOverrides)
-      return nextAll
+    const beforeAll = cloneNodeOverrideMap(diagramOverrides)
+    const overrides = diagramOverrides.get(diagramId) ?? new Map()
+    const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
+    const nextOverrides = new Map(overrides)
+    nextOverrides.set(nodeId, {
+      ...prev,
+      dx: roundDiagramCoord((prev.dx ?? 0) + dx),
+      dy: roundDiagramCoord((prev.dy ?? 0) + dy),
     })
+    const nextAll = new Map(diagramOverrides)
+    nextAll.set(diagramId, nextOverrides)
+
+    commitDiagramOverrides(nextAll)
     if (isSplitFilesModel(model)) {
       markSplitDiagramDirty(diagramId)
     }
+    pushSnapshotCommand(
+      'Перемещение объекта',
+      () => commitDiagramOverrides(cloneNodeOverrideMap(beforeAll)),
+      () => commitDiagramOverrides(cloneNodeOverrideMap(nextAll)),
+    )
   }
 
   function resizeNode(diagramId: string, nodeId: string, dw: number, dh: number) {
@@ -143,51 +204,63 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    commitDiagramOverrides((prevAll) => {
-      const overrides = prevAll.get(diagramId) ?? new Map()
-      const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-      const nextOverrides = new Map(overrides)
-      nextOverrides.set(nodeId, {
-        ...prev,
-        dw: (prev.dw ?? 0) + appliedDw,
-        dh: (prev.dh ?? 0) + appliedDh,
-      })
-      const nextAll = new Map(prevAll)
-      nextAll.set(diagramId, nextOverrides)
-      return nextAll
-    })
+    const beforeDiagramOverrides = cloneNodeOverrideMap(diagramOverrides)
+    const beforeRelOverrides = cloneBendpointMap(relationshipOverrides)
 
-    commitRelationshipOverrides((prevAll) => {
-      const relMap = new Map(prevAll.get(diagramId) ?? new Map())
-      let changed = false
-      selectedDiagram.connections.forEach((connection) => {
-        if (connection.source !== nodeId && connection.target !== nodeId) {
-          return
-        }
-        if (!connection.bendpoints?.length) {
-          return
-        }
-        const current = relMap.get(connection.relationshipRef) ?? connection.bendpoints
-        const next = adjustBendpointsForNodeResize(
-          current,
-          connection,
-          nodeId,
-          appliedDw,
-          appliedDh,
-        )
-        relMap.set(connection.relationshipRef, next)
-        changed = true
-      })
-      if (!changed) {
-        return prevAll
-      }
-      const nextAll = new Map(prevAll)
-      nextAll.set(diagramId, relMap)
-      return nextAll
+    const overrides = diagramOverrides.get(diagramId) ?? new Map()
+    const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
+    const nextOverrides = new Map(overrides)
+    nextOverrides.set(nodeId, {
+      ...prev,
+      dw: (prev.dw ?? 0) + appliedDw,
+      dh: (prev.dh ?? 0) + appliedDh,
     })
+    const nextDiagramOverrides = new Map(diagramOverrides)
+    nextDiagramOverrides.set(diagramId, nextOverrides)
+
+    const relMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
+    let relChanged = false
+    selectedDiagram.connections.forEach((connection) => {
+      if (connection.source !== nodeId && connection.target !== nodeId) {
+        return
+      }
+      if (!connection.bendpoints?.length) {
+        return
+      }
+      const current = relMap.get(connection.relationshipRef) ?? connection.bendpoints
+      const next = adjustBendpointsForNodeResize(
+        current,
+        connection,
+        nodeId,
+        appliedDw,
+        appliedDh,
+      )
+      relMap.set(connection.relationshipRef, next)
+      relChanged = true
+    })
+    const nextRelOverrides = new Map(relationshipOverrides)
+    if (relChanged) {
+      nextRelOverrides.set(diagramId, relMap)
+    }
+
+    commitDiagramOverrides(nextDiagramOverrides)
+    if (relChanged) {
+      commitRelationshipOverrides(nextRelOverrides)
+    }
     if (isSplitFilesModel(model)) {
       markSplitDiagramDirty(diagramId)
     }
+    pushSnapshotCommand(
+      'Изменение размера объекта',
+      () => {
+        commitDiagramOverrides(cloneNodeOverrideMap(beforeDiagramOverrides))
+        commitRelationshipOverrides(cloneBendpointMap(beforeRelOverrides))
+      },
+      () => {
+        commitDiagramOverrides(cloneNodeOverrideMap(nextDiagramOverrides))
+        commitRelationshipOverrides(cloneBendpointMap(nextRelOverrides))
+      },
+    )
   }
 
   const updateNodeFillColor = useCallback(
@@ -195,30 +268,34 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       if (!diagramId || !nodeId) {
         return
       }
-      commitDiagramOverrides((prevAll) => {
-        const overrides = prevAll.get(diagramId) ?? new Map()
-        const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-        const nextOverrides = new Map(overrides)
-        const nextEntry: NodeOverride = { ...prev, fillColor }
-        const layoutEmpty =
-          (nextEntry.dx ?? 0) === 0 &&
-          (nextEntry.dy ?? 0) === 0 &&
-          (nextEntry.dw ?? 0) === 0 &&
-          (nextEntry.dh ?? 0) === 0
-        if (layoutEmpty && fillColor === undefined) {
-          nextOverrides.delete(nodeId)
-        } else {
-          nextOverrides.set(nodeId, nextEntry)
-        }
-        const nextAll = new Map(prevAll)
-        nextAll.set(diagramId, nextOverrides)
-        return nextAll
-      })
+      const beforeAll = cloneNodeOverrideMap(diagramOverrides)
+      const overrides = diagramOverrides.get(diagramId) ?? new Map()
+      const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
+      const nextOverrides = new Map(overrides)
+      const nextEntry: NodeOverride = { ...prev, fillColor }
+      const layoutEmpty =
+        (nextEntry.dx ?? 0) === 0 &&
+        (nextEntry.dy ?? 0) === 0 &&
+        (nextEntry.dw ?? 0) === 0 &&
+        (nextEntry.dh ?? 0) === 0
+      if (layoutEmpty && fillColor === undefined) {
+        nextOverrides.delete(nodeId)
+      } else {
+        nextOverrides.set(nodeId, nextEntry)
+      }
+      const nextAll = new Map(diagramOverrides)
+      nextAll.set(diagramId, nextOverrides)
+      commitDiagramOverrides(nextAll)
       if (isSplitFilesModel(model)) {
         markSplitDiagramDirty(diagramId)
       }
+      pushSnapshotCommand(
+        'Изменение фона объекта',
+        () => commitDiagramOverrides(cloneNodeOverrideMap(beforeAll)),
+        () => commitDiagramOverrides(cloneNodeOverrideMap(nextAll)),
+      )
     },
-    [commitDiagramOverrides, markSplitDiagramDirty, model],
+    [diagramOverrides, commitDiagramOverrides, markSplitDiagramDirty, model, pushSnapshotCommand],
   )
 
   const updateDiagramMetadata = useCallback(
@@ -1124,11 +1201,17 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
     nextBendpoints[bendpointIndex] = bendpoint
+    const beforeAll = cloneBendpointMap(relationshipOverrides)
     const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
     diagramMap.set(relationshipRef, nextBendpoints)
-    const all = new Map(relationshipOverrides)
-    all.set(selectedDiagramId, diagramMap)
-    commitRelationshipOverrides(all)
+    const nextAll = new Map(relationshipOverrides)
+    nextAll.set(selectedDiagramId, diagramMap)
+    commitRelationshipOverrides(nextAll)
+    pushSnapshotCommand(
+      'Перемещение точки перегиба',
+      () => commitRelationshipOverrides(cloneBendpointMap(beforeAll)),
+      () => commitRelationshipOverrides(cloneBendpointMap(nextAll)),
+    )
   }
 
   function addRelationshipBendpoint(relationshipRef: string, segmentIndex: number, bendpoint: Bendpoint) {
@@ -1144,13 +1227,37 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
     const insertAt = Math.max(0, Math.min(nextBendpoints.length, segmentIndex))
     nextBendpoints.splice(insertAt, 0, bendpoint)
+    const beforeAll = cloneBendpointMap(relationshipOverrides)
     const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
     diagramMap.set(relationshipRef, nextBendpoints)
-    const all = new Map(relationshipOverrides)
-    all.set(selectedDiagramId, diagramMap)
-    commitRelationshipOverrides(all)
+    const nextAll = new Map(relationshipOverrides)
+    nextAll.set(selectedDiagramId, diagramMap)
+    commitRelationshipOverrides(nextAll)
     setSelectedBendpointIndex(insertAt)
+    pushSnapshotCommand(
+      'Добавление точки перегиба',
+      () => {
+        commitRelationshipOverrides(cloneBendpointMap(beforeAll))
+        setSelectedBendpointIndex(null)
+      },
+      () => {
+        commitRelationshipOverrides(cloneBendpointMap(nextAll))
+        setSelectedBendpointIndex(insertAt)
+      },
+    )
   }
+
+  const undoCanvasCommand = useCallback(() => {
+    commandHistory.undo()
+  }, [commandHistory])
+
+  const redoCanvasCommand = useCallback(() => {
+    commandHistory.redo()
+  }, [commandHistory])
+
+  const clearCanvasHistory = useCallback(() => {
+    commandHistory.clear()
+  }, [commandHistory])
 
   return {
     moveNode,
@@ -1172,5 +1279,14 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     removeRelationshipBendpoint,
     updateRelationshipBendpoint,
     addRelationshipBendpoint,
+    undoCanvasCommand,
+    redoCanvasCommand,
+    clearCanvasHistory,
+    canvasHistory: {
+      canUndo: commandHistory.canUndo,
+      canRedo: commandHistory.canRedo,
+      undoLabel: commandHistory.undoLabel,
+      redoLabel: commandHistory.redoLabel,
+    },
   }
 }

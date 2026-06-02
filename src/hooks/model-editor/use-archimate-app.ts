@@ -15,6 +15,8 @@ export function useArchimateApp() {
 
   const editState = useModelEditState()
   const selection = useModelSelection({ editState })
+  const mutations = useModelMutations({ editState, selection })
+  const { clearCanvasHistory, undoCanvasCommand, redoCanvasCommand, canvasHistory } = mutations
 
   const applyParsedModelFromPayload = useCallback(
     (payload: ModelLoadPayload) => {
@@ -42,8 +44,9 @@ export function useArchimateApp() {
       editState.setOriginalConnectionIds(derived.originalConnectionIds)
       editState.setLoadedXml(derived.loadedXml)
       editState.setLoadedFilename(derived.loadedFilename)
+      clearCanvasHistory()
     },
-    [editState, selection],
+    [editState, selection, clearCanvasHistory],
   )
 
   const git = useGitIntegration({
@@ -66,6 +69,7 @@ export function useArchimateApp() {
     onRepositoryDeleted: () => {
       editState.resetModelAfterRepoDelete()
       selection.clearSelection()
+      clearCanvasHistory()
     },
   })
 
@@ -76,7 +80,6 @@ export function useArchimateApp() {
     selectedElementId: selection.selectedElementId,
   })
 
-  const mutations = useModelMutations({ editState, selection })
   const save = useModelSave({ editState, git })
 
   useEffect(() => {
@@ -150,6 +153,39 @@ export function useArchimateApp() {
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [selection, mutations])
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const mod = event.metaKey || event.ctrlKey
+      if (!mod || event.key.toLowerCase() !== 'z') {
+        return
+      }
+      const target = event.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable
+      ) {
+        return
+      }
+      if (event.shiftKey) {
+        if (!canvasHistory.canRedo) {
+          return
+        }
+        event.preventDefault()
+        redoCanvasCommand()
+        return
+      }
+      if (!canvasHistory.canUndo) {
+        return
+      }
+      event.preventDefault()
+      undoCanvasCommand()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [canvasHistory.canRedo, canvasHistory.canUndo, redoCanvasCommand, undoCanvasCommand])
 
   return {
     appTab,

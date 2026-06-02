@@ -33,7 +33,16 @@ function App() {
 
   return (
     <Layout className="app-shell">
-      <AppHeader activeTab={appTab} onTabChange={(tab) => setAppTab(tab as AppTab)} />
+      <AppHeader
+        activeTab={appTab}
+        onTabChange={(tab) => setAppTab(tab as AppTab)}
+        canUndo={mutations.canvasHistory.canUndo}
+        canRedo={mutations.canvasHistory.canRedo}
+        undoLabel={mutations.canvasHistory.undoLabel}
+        redoLabel={mutations.canvasHistory.redoLabel}
+        onUndo={mutations.undoCanvasCommand}
+        onRedo={mutations.redoCanvasCommand}
+      />
       <Layout.Content className="app-body">
         {appTab === 'modeling' ? (
           <ModelingWorkspace
