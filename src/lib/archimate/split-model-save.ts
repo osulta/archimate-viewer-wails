@@ -109,6 +109,8 @@ interface SaveContext {
   relationshipById?: Map<string, ParsedRelationship>
   pendingElementPaths?: Map<string, string>
   pendingRelationshipPaths?: Map<string, string>
+  diagramById?: Map<string, ParsedDiagram>
+  pendingDiagramPaths?: Map<string, string>
 }
 
 export function buildSplitDiagramSaveXml(
@@ -139,6 +141,8 @@ export function buildSplitDiagramSaveXml(
       documentNode,
       saveContext.elementById,
       saveContext.pendingElementPaths ?? new Map(),
+      saveContext.diagramById ?? new Map(),
+      saveContext.pendingDiagramPaths ?? new Map(),
     )
     appendMissingDiagramConnectionsToXml(
       diagramRoot,
@@ -401,6 +405,8 @@ export async function saveSplitModelChanges({
     relationshipById: model.relationshipById,
     pendingElementPaths,
     pendingRelationshipPaths,
+    diagramById: new Map(model.diagrams.map((item) => [item.id, item])),
+    pendingDiagramPaths,
   }
 
   const diagramIdsToSave = new Set<string>(dirtyDiagramIds ?? [])

@@ -48,6 +48,7 @@ interface ModelTreeProps {
   focusElementInDiagram?: (elementId: string) => FocusElementResult
   focusRelationshipInDiagram?: (relationshipId: string) => string | null
   allowElementDrag?: boolean
+  allowDiagramDrag?: boolean
   onCreateDiagram?: () => void
 }
 
@@ -69,6 +70,7 @@ export function ModelTree({
   focusElementInDiagram,
   focusRelationshipInDiagram,
   allowElementDrag = false,
+  allowDiagramDrag = false,
   onCreateDiagram,
 }: ModelTreeProps): React.JSX.Element {
   function handleElementDragStart(event: React.DragEvent<HTMLElement>, elementId: string): void {
@@ -274,6 +276,7 @@ export function ModelTree({
           onSelectElement={onSelectElement}
           onSelectRelationship={onSelectRelationship}
           onSelectDiagram={onSelectDiagram}
+          allowDiagramDrag={allowDiagramDrag}
           findDiagramForElement={
             focusElementInDiagram
               ? (elementId: string) => {

@@ -1,6 +1,8 @@
 import {
   flattenNodes,
   getDiagramNodeDisplayTitle,
+  isDiagramReferenceNode,
+  resolveReferencedDiagramName,
 } from '../archimate/diagram-model'
 import {
   getRelationshipExplicitName,
@@ -57,6 +59,7 @@ export function paintDiagramCanvas(
     linkCreateMode: linkMode,
     linkCreateSourceId: linkSourceId,
     dragPreview,
+    diagramById,
   } = ctx
 
   if (!diagramProp) {
@@ -206,9 +209,15 @@ export function paintDiagramCanvas(
   })
 
   allNodes.forEach((node) => {
-    const linkedElement = elements.get(node.elementRef)
-    const title = getDiagramNodeDisplayTitle(node, linkedElement)
-    const subtitle = normalizeElementType(linkedElement?.type || node.type)
+    const isReference = isDiagramReferenceNode(node)
+    const linkedElement = isReference ? undefined : elements.get(node.elementRef)
+    const referencedDiagramName = isReference
+      ? resolveReferencedDiagramName(node, diagramById)
+      : undefined
+    const title = getDiagramNodeDisplayTitle(node, linkedElement, referencedDiagramName)
+    const subtitle = isReference
+      ? 'Diagram reference'
+      : normalizeElementType(linkedElement?.type || node.type)
     const style = getElementNotationStyle(subtitle)
     const visual = elementVisualKind(subtitle)
     const isNote = Boolean(visual.bare)
@@ -221,6 +230,56 @@ export function paintDiagramCanvas(
     const isLinkSource = Boolean(linkMode && linkSourceId === node.id)
     const x = node.x + translateX
     const y = node.y + translateY
+
+    if (isReference) {
+      context.save()
+      context.fillStyle = isSelected ? '#eef3ff' : '#f8f9fb'
+      context.strokeStyle = isSelected ? '#1f47bf' : '#7986cb'
+      context.lineWidth = isSelected ? 2 : 1.2
+      context.setLineDash([5, 3])
+      context.beginPath()
+      context.rect(x, y, node.width, node.height)
+      context.fill()
+      context.stroke()
+      context.setLineDash([])
+
+      context.fillStyle = isSelected ? '#1f47bf' : '#3949ab'
+      context.font = '12px system-ui, sans-serif'
+      const textX = x + 8
+      const textY = y + Math.min(node.height - 6, 18)
+      const maxTextWidth = Math.max(20, node.width - 28)
+      drawWrappedText(context, title, textX, textY, maxTextWidth, 1, 14)
+
+      const textWidth = Math.min(context.measureText(title).width, maxTextWidth)
+      context.beginPath()
+      context.moveTo(textX, textY + 2)
+      context.lineTo(textX + textWidth, textY + 2)
+      context.strokeStyle = context.fillStyle as string
+      context.lineWidth = 1
+      context.stroke()
+
+      context.strokeStyle = isSelected ? '#1f47bf' : '#7986cb'
+      context.lineWidth = 1.5
+      context.beginPath()
+      context.moveTo(x + node.width - 16, y + 6)
+      context.lineTo(x + node.width - 6, y + 6)
+      context.lineTo(x + node.width - 6, y + 16)
+      context.stroke()
+
+      if (isSelected) {
+        const handle = getResizeHandleRect(node, translateX, translateY)
+        context.fillStyle = '#ffffff'
+        context.strokeStyle = '#1f47bf'
+        context.lineWidth = 1.8
+        context.beginPath()
+        context.rect(handle.left, handle.top, handle.size, handle.size)
+        context.fill()
+        context.stroke()
+      }
+
+      context.restore()
+      return
+    }
 
     context.strokeStyle = colors.border
     context.lineWidth = isSelected ? 2 : isChanged ? 2.5 : 1.2

@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import {
   getNodeAtPosition,
   roundDiagramCoord,
@@ -9,6 +9,7 @@ import {
   getSidebarElementDragId,
   getSidebarNewElementDragType,
   getSidebarNewRelationshipDragType,
+  getSidebarDiagramDragId,
   hasSidebarDiagramDrop,
 } from '../../lib/archimate/sidebar-drag'
 import {
@@ -60,7 +61,15 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     onDropElementAtPoint,
     onDropNewElementAtPoint,
     onDropNewRelationshipAtPoint,
+    onDropDiagramReferenceAtPoint,
+    onOpenDiagramReference,
+    diagrams,
   } = props
+
+  const diagramById = useMemo(
+    () => (diagrams?.length ? new Map(diagrams.map((item) => [item.id, item])) : undefined),
+    [diagrams],
+  )
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const viewBoxRef = useRef({ translateX: 0, translateY: 0 })
@@ -142,6 +151,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       linkCreateMode,
       linkCreateSourceId,
       dragPreview: dragPreviewRef.current,
+      diagramById,
     })
 
     if (result) {
@@ -162,6 +172,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     selectedBendpointIndex,
     linkCreateMode,
     linkCreateSourceId,
+    diagramById,
   ])
 
   const scheduleRepaint = useCallback(() => {
@@ -327,9 +338,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     const canDropExisting = Boolean(onDropElementAtPoint)
     const canDropNewElement = Boolean(onDropNewElementAtPoint)
     const canDropNewRelationship = Boolean(onDropNewRelationshipAtPoint)
+    const canDropDiagramReference = Boolean(onDropDiagramReferenceAtPoint)
     if (
       readOnly ||
-      (!canDropExisting && !canDropNewElement && !canDropNewRelationship) ||
+      (!canDropExisting &&
+        !canDropNewElement &&
+        !canDropNewRelationship &&
+        !canDropDiagramReference) ||
       !hasSidebarDiagramDrop(event.dataTransfer)
     ) {
       return
@@ -360,7 +375,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     const elementId = getSidebarElementDragId(event.dataTransfer)
     const newElementType = getSidebarNewElementDragType(event.dataTransfer)
     const newRelationshipType = getSidebarNewRelationshipDragType(event.dataTransfer)
-    if (!elementId && !newElementType && !newRelationshipType) {
+    const diagramReferenceId = getSidebarDiagramDragId(event.dataTransfer)
+    if (!elementId && !newElementType && !newRelationshipType && !diagramReferenceId) {
       return
     }
     if (elementId && !onDropElementAtPoint) {
@@ -370,6 +386,9 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     if (newRelationshipType && !onDropNewRelationshipAtPoint) {
+      return
+    }
+    if (diagramReferenceId && !onDropDiagramReferenceAtPoint) {
       return
     }
     event.preventDefault()
@@ -383,6 +402,10 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     const { x: dropX, y: dropY } = snapPointToGrid(ptr.logicalX, ptr.logicalY)
+    if (diagramReferenceId) {
+      onDropDiagramReferenceAtPoint!(diagramReferenceId, dropX, dropY)
+      return
+    }
     if (elementId) {
       onDropElementAtPoint!(elementId, dropX, dropY)
       return
@@ -631,13 +654,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handleCanvasDoubleClick(event: React.MouseEvent) {
-    if (readOnly || !selectedRelationshipRef) {
-      return
-    }
-    const connection = renderedConnectionsRef.current.find(
-      (c) => c.relationshipRef === selectedRelationshipRef,
-    )
-    if (!connection) {
+    if (!diagram) {
       return
     }
     const canvas = canvasRef.current
@@ -646,6 +663,21 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
     const ptr = getCanvasPointer(canvas, viewBoxRef.current, event)
     if (!ptr) {
+      return
+    }
+    const hitNode = getNodeAtPosition(diagram.nodes, ptr.logicalX, ptr.logicalY)
+    if (hitNode?.referencedDiagramId) {
+      onOpenDiagramReference?.(hitNode.referencedDiagramId)
+      return
+    }
+
+    if (readOnly || !selectedRelationshipRef) {
+      return
+    }
+    const connection = renderedConnectionsRef.current.find(
+      (c) => c.relationshipRef === selectedRelationshipRef,
+    )
+    if (!connection) {
       return
     }
     const { x, y } = ptr

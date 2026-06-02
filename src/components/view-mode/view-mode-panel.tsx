@@ -151,12 +151,14 @@ export function ViewModePanel(props: ViewModePanelProps) {
               diagramExportName={selectedDiagram.name}
               elementById={elementByIdForCanvas}
               relationshipById={model.relationshipById}
+              diagrams={model.diagrams}
               selectedNodeId={selectedNodeId}
               selectedRelationshipRef={selectedRelationshipRef}
               flowConnectionIds={flowConnectionIds}
               animateConnectionFlow={flowConnectionIds.length > 0}
               onNodeSelect={onCanvasNodeSelect}
               onRelationshipSelect={onCanvasRelationshipSelect}
+              onOpenDiagramReference={onSelectDiagram}
             />
             <ViewModeProperties
               selectedRelationship={selectedRelationship}

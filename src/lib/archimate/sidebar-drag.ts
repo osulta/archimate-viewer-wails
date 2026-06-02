@@ -49,10 +49,28 @@ export function hasSidebarNewRelationshipDrag(dataTransfer: DataTransfer): boole
   return dataTransfer.types.includes(SIDEBAR_NEW_RELATIONSHIP_TYPE_DRAG)
 }
 
+/** MIME type for dragging a diagram from the sidebar tree onto the diagram canvas. */
+export const SIDEBAR_DIAGRAM_DRAG_TYPE = 'application/x-archimate-diagram-id'
+
+export function setSidebarDiagramDragData(dataTransfer: DataTransfer, diagramId: string): void {
+  dataTransfer.setData(SIDEBAR_DIAGRAM_DRAG_TYPE, diagramId)
+  dataTransfer.effectAllowed = 'copy'
+}
+
+export function getSidebarDiagramDragId(dataTransfer: DataTransfer): string | null {
+  const id = dataTransfer.getData(SIDEBAR_DIAGRAM_DRAG_TYPE)
+  return id?.trim() ? id.trim() : null
+}
+
+export function hasSidebarDiagramReferenceDrag(dataTransfer: DataTransfer): boolean {
+  return dataTransfer.types.includes(SIDEBAR_DIAGRAM_DRAG_TYPE)
+}
+
 export function hasSidebarDiagramDrop(dataTransfer: DataTransfer): boolean {
   return (
     hasSidebarElementDrag(dataTransfer) ||
     hasSidebarNewElementDrag(dataTransfer) ||
-    hasSidebarNewRelationshipDrag(dataTransfer)
+    hasSidebarNewRelationshipDrag(dataTransfer) ||
+    hasSidebarDiagramReferenceDrag(dataTransfer)
   )
 }

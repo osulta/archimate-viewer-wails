@@ -1,4 +1,4 @@
-import type { ParsedElement, ParsedRelationship, DiagramNode, DiagramConnection } from '../../types/model'
+import type { ParsedElement, ParsedRelationship, ParsedDiagram, DiagramNode, DiagramConnection } from '../../types/model'
 import {
   buildSplitElementRelativePath,
   buildSplitRelationshipRelativePath,
@@ -6,7 +6,7 @@ import {
   resolveElementSourceFile,
   typeLocalName,
 } from './split-model-paths'
-import { formatDiagramCoord } from './diagram-model'
+import { formatDiagramCoord, isDiagramReferenceNode } from './diagram-model'
 import { getDirectChildByTag, getDirectChildrenByTag, getId } from './xml-utils'
 
 function escapeXmlAttr(value: string): string {
@@ -162,6 +162,25 @@ function createArchimateElementChild(
   return archEl
 }
 
+function createReferencedModelChild(
+  documentNode: Document,
+  diagramRoot: Element,
+  referencedDiagram: ParsedDiagram,
+  pendingDiagramPaths: Map<string, string>,
+): Element {
+  const prefix = diagramRoot.prefix
+  const refEl = documentNode.createElement(
+    prefix ? `${prefix}:referencedModel` : 'referencedModel',
+  )
+  refEl.setAttribute('xsi:type', referencedDiagram.type || 'archimate:ArchimateDiagramModel')
+  const sourceFile =
+    pendingDiagramPaths.get(referencedDiagram.id) ??
+    referencedDiagram.sourceFile ??
+    buildSplitDiagramRelativePath(referencedDiagram.id)
+  refEl.setAttribute('href', buildSplitFileHref(sourceFile, referencedDiagram.id))
+  return refEl
+}
+
 function appendNodeUnderXmlParent(
   documentNode: Document,
   diagramRoot: Element,
@@ -171,13 +190,19 @@ function appendNodeUnderXmlParent(
   parentAbsY: number,
   elementById: Map<string, ParsedElement>,
   pendingElementPaths: Map<string, string>,
+  diagramById: Map<string, ParsedDiagram>,
+  pendingDiagramPaths: Map<string, string>,
 ): void {
   let xmlChild = findDiagramXmlObjectById(diagramRoot, node.id)
   if (!xmlChild) {
     const prefix = parentXmlEl.prefix
     xmlChild = documentNode.createElement(prefix ? `${prefix}:children` : 'children')
-    xmlChild.setAttribute('xsi:type', 'archimate:DiagramModelArchimateObject')
     xmlChild.setAttribute('id', node.id)
+    if (isDiagramReferenceNode(node)) {
+      xmlChild.setAttribute('xsi:type', 'archimate:DiagramModelReference')
+    } else {
+      xmlChild.setAttribute('xsi:type', 'archimate:DiagramModelArchimateObject')
+    }
 
     const bounds = documentNode.createElement(prefix ? `${prefix}:bounds` : 'bounds')
     bounds.setAttribute('x', formatDiagramCoord(node.x - parentAbsX))
@@ -186,15 +211,29 @@ function appendNodeUnderXmlParent(
     bounds.setAttribute('height', formatDiagramCoord(node.height))
     xmlChild.appendChild(bounds)
 
-    const element = elementById.get(node.elementRef)
-    if (element) {
-      let sourceFile = resolveElementSourceFile(elementById, element.id, pendingElementPaths)
-      if (!sourceFile) {
-        sourceFile = buildSplitElementRelativePath(element)
+    if (isDiagramReferenceNode(node) && node.referencedDiagramId) {
+      const referencedDiagram = diagramById.get(node.referencedDiagramId)
+      if (referencedDiagram) {
+        xmlChild.appendChild(
+          createReferencedModelChild(
+            documentNode,
+            diagramRoot,
+            referencedDiagram,
+            pendingDiagramPaths,
+          ),
+        )
       }
-      xmlChild.appendChild(
-        createArchimateElementChild(documentNode, parentXmlEl, element, sourceFile),
-      )
+    } else {
+      const element = elementById.get(node.elementRef)
+      if (element) {
+        let sourceFile = resolveElementSourceFile(elementById, element.id, pendingElementPaths)
+        if (!sourceFile) {
+          sourceFile = buildSplitElementRelativePath(element)
+        }
+        xmlChild.appendChild(
+          createArchimateElementChild(documentNode, parentXmlEl, element, sourceFile),
+        )
+      }
     }
 
     parentXmlEl.appendChild(xmlChild)
@@ -210,6 +249,8 @@ function appendNodeUnderXmlParent(
       node.y,
       elementById,
       pendingElementPaths,
+      diagramById,
+      pendingDiagramPaths,
     )
   }
 }
@@ -220,6 +261,8 @@ export function appendMissingDiagramNodesToXml(
   documentNode: Document,
   elementById: Map<string, ParsedElement>,
   pendingElementPaths: Map<string, string>,
+  diagramById: Map<string, ParsedDiagram> = new Map(),
+  pendingDiagramPaths: Map<string, string> = new Map(),
 ): void {
   for (const node of nodes ?? []) {
     appendNodeUnderXmlParent(
@@ -231,6 +274,8 @@ export function appendMissingDiagramNodesToXml(
       0,
       elementById,
       pendingElementPaths,
+      diagramById,
+      pendingDiagramPaths,
     )
   }
 }

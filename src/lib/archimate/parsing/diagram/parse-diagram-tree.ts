@@ -41,6 +41,10 @@ function getDiagramObjectElementRef(diagramObjectNode: Element): string {
   return idFromArchimateChildHref(diagramObjectNode, 'archimateElement')
 }
 
+function getDiagramObjectReferencedDiagramId(diagramObjectNode: Element): string {
+  return idFromArchimateChildHref(diagramObjectNode, 'referencedModel')
+}
+
 function getConnectionRelationshipRef(connectionNode: Element): string {
   const attrRef = connectionNode.getAttribute('archimateRelationship')
   if (attrRef?.trim()) {
@@ -94,12 +98,17 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
       parseDiagramObject(nested, absX, absY),
     )
     const colors = parseDiagramObjectColors(childNode)
+    const nodeType = getType(childNode, 'DiagramObject')
+    const referencedDiagramId = nodeType.includes('DiagramModelReference')
+      ? getDiagramObjectReferencedDiagramId(childNode)
+      : undefined
 
     return {
       id: getId(childNode),
       elementRef: getDiagramObjectElementRef(childNode),
-      type: getType(childNode, 'DiagramObject'),
+      type: nodeType,
       label: getDiagramObjectLabel(childNode),
+      ...(referencedDiagramId ? { referencedDiagramId } : {}),
       x: absX,
       y: absY,
       width,

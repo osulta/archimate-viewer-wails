@@ -34,13 +34,37 @@ export function flattenNodes(nodes: DiagramNode[]): DiagramNode[] {
  * Text shown on the diagram canvas for a view object.
  * Prefers diagram label/content over model element name (which may be the id).
  */
+export function isDiagramReferenceNode(node: DiagramNode | null | undefined): boolean {
+  return Boolean(node?.referencedDiagramId) || Boolean(node?.type?.includes('DiagramModelReference'))
+}
+
+export function resolveReferencedDiagramName(
+  node: DiagramNode,
+  diagrams: ParsedDiagram[] | Map<string, ParsedDiagram> | undefined,
+): string {
+  const refId = node.referencedDiagramId
+  if (!refId) {
+    return ''
+  }
+  if (diagrams instanceof Map) {
+    return diagrams.get(refId)?.name ?? refId
+  }
+  return diagrams?.find((item) => item.id === refId)?.name ?? refId
+}
+
 export function getDiagramNodeDisplayTitle(
   node: DiagramNode | null | undefined,
   linkedElement: ParsedElement | null | undefined,
+  referencedDiagramName?: string,
 ): string {
   const diagramLabel = node?.label?.trim()
   if (diagramLabel) {
     return diagramLabel
+  }
+
+  const refName = referencedDiagramName?.trim()
+  if (refName) {
+    return refName
   }
 
   const elementName = linkedElement?.name?.trim()
@@ -546,6 +570,97 @@ export function findInnermostContainingNode(
 
   walk(nodes)
   return best
+}
+
+export function findInnermostContainingNodeExcluding(
+  nodes: DiagramNode[] | null | undefined,
+  innerRect: { x: number; y: number; width: number; height: number } | null | undefined,
+  excludeNodeIds: Set<string>,
+): DiagramNode | null {
+  if (!nodes?.length || !innerRect) {
+    return null
+  }
+
+  let best: DiagramNode | null = null
+  let bestArea = Infinity
+
+  function walk(nodeList: DiagramNode[]): void {
+    for (const node of nodeList) {
+      if (!excludeNodeIds.has(node.id) && isRectFullyInside(node, innerRect!)) {
+        const area = node.width * node.height
+        if (area < bestArea) {
+          bestArea = area
+          best = node
+        }
+      }
+      if (node.children?.length) {
+        walk(node.children)
+      }
+    }
+  }
+
+  walk(nodes)
+  return best
+}
+
+export function findDirectParentNodeId(nodes: DiagramNode[], targetId: string): string | null {
+  let parentId: string | null | undefined
+
+  function walk(nodeList: DiagramNode[], currentParentId: string | null): boolean {
+    for (const node of nodeList) {
+      if (node.id === targetId) {
+        parentId = currentParentId
+        return true
+      }
+      if (node.children?.length && walk(node.children, node.id)) {
+        return true
+      }
+    }
+    return false
+  }
+
+  walk(nodes, null)
+  return parentId ?? null
+}
+
+export function extractNodeFromTree(
+  nodes: DiagramNode[],
+  targetId: string,
+): { nodes: DiagramNode[]; extracted: DiagramNode | null } {
+  for (let index = 0; index < nodes.length; index += 1) {
+    const node = nodes[index]
+    if (node.id === targetId) {
+      return {
+        nodes: [...nodes.slice(0, index), ...nodes.slice(index + 1)],
+        extracted: node,
+      }
+    }
+    const nested = extractNodeFromTree(node.children ?? [], targetId)
+    if (nested.extracted) {
+      return {
+        nodes: nodes.map((item, itemIndex) =>
+          itemIndex === index ? { ...item, children: nested.nodes } : item,
+        ),
+        extracted: nested.extracted,
+      }
+    }
+  }
+  return { nodes, extracted: null }
+}
+
+export function reparentNodeInTree(
+  nodes: DiagramNode[],
+  nodeId: string,
+  newParentId: string | null,
+): DiagramNode[] {
+  const { nodes: withoutNode, extracted } = extractNodeFromTree(nodes, nodeId)
+  if (!extracted) {
+    return nodes
+  }
+  if (!newParentId) {
+    return [...withoutNode, extracted]
+  }
+  return insertNodeUnderParent(withoutNode, newParentId, extracted)
 }
 
 export function insertNodeUnderParent(nodes: DiagramNode[], parentId: string | null | undefined, newNode: DiagramNode): DiagramNode[] {

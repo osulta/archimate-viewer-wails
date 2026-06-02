@@ -205,6 +205,7 @@ export function ModelingWorkspace({
           diagramExportName={selectedDiagram?.name}
           elementById={elementByIdForCanvas}
           relationshipById={relationshipByIdForUi}
+          diagrams={model?.diagrams}
           selectedNodeId={selectedNode?.id ?? ''}
           selectedRelationshipRef={selectedRelationshipRef}
           linkCreateMode={linkCreateMode}
@@ -240,6 +241,10 @@ export function ModelingWorkspace({
             mutations.createNewObject(elementType, { x, y } as Point)
           }
           onDropNewRelationshipAtPoint={mutations.handleDropNewRelationshipAtPoint}
+          onDropDiagramReferenceAtPoint={(diagramId, x, y) =>
+            mutations.placeDiagramReferenceOnDiagram(diagramId, { x, y } as Point)
+          }
+          onOpenDiagramReference={handleSelectDiagram}
         />
         {(selectedRelationshipRef && selectedRelationship) ||
         selectedNodeLive ||

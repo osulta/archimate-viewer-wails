@@ -34,6 +34,8 @@ export interface DiagramNode {
   elementRef: string
   type: string
   label: string
+  /** Target diagram id for DiagramModelReference objects. */
+  referencedDiagramId?: string
   x: number
   y: number
   width: number

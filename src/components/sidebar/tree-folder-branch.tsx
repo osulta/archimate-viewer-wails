@@ -1,5 +1,6 @@
 import React from 'react'
 import { Button, Collapse } from 'antd'
+import { setSidebarDiagramDragData } from '../../lib/archimate/sidebar-drag'
 import { formatArchimateTypeLabel } from '../../lib/archimate/model-folder-tree'
 import type { ParsedElement, ParsedRelationship, ParsedDiagram, DiagramNode, ElementOverride } from '../../types/model'
 
@@ -35,6 +36,7 @@ interface TreeFolderBranchProps {
   ) => void
   onSelectRelationship: (id: string, diagramId: string | null) => void
   onSelectDiagram: (id: string) => void
+  allowDiagramDrag?: boolean
   findDiagramForElement?: (elementId: string) => { diagramId: string; node: DiagramNode } | null
   findDiagramForRelationship?: (relationshipId: string) => string | null
 }
@@ -49,6 +51,7 @@ export function TreeFolderBranch({
   onSelectElement,
   onSelectRelationship,
   onSelectDiagram,
+  allowDiagramDrag = false,
   findDiagramForElement,
   findDiagramForRelationship,
 }: TreeFolderBranchProps): React.JSX.Element | null {
@@ -84,6 +87,7 @@ export function TreeFolderBranch({
                     onSelectElement={onSelectElement}
                     onSelectRelationship={onSelectRelationship}
                     onSelectDiagram={onSelectDiagram}
+                    allowDiagramDrag={allowDiagramDrag}
                     findDiagramForElement={findDiagramForElement}
                     findDiagramForRelationship={findDiagramForRelationship}
                   />
@@ -119,7 +123,31 @@ export function TreeFolderBranch({
                   </li>
                 ))}
                 {diagrams.map((diagram) => (
-                  <li key={diagram.id}>
+                  <li
+                    key={diagram.id}
+                    className={allowDiagramDrag ? 'tree-item-draggable' : undefined}
+                    draggable={allowDiagramDrag}
+                    title={
+                      allowDiagramDrag
+                        ? `${diagram.name} (${diagram.id}) — перетащите на диаграмму как ссылку`
+                        : diagram.name
+                    }
+                    onDragStart={
+                      allowDiagramDrag
+                        ? (event: React.DragEvent<HTMLLIElement>) => {
+                            setSidebarDiagramDragData(event.dataTransfer, diagram.id)
+                            event.currentTarget.classList.add('is-dragging')
+                          }
+                        : undefined
+                    }
+                    onDragEnd={
+                      allowDiagramDrag
+                        ? (event: React.DragEvent<HTMLLIElement>) => {
+                            event.currentTarget.classList.remove('is-dragging')
+                          }
+                        : undefined
+                    }
+                  >
                     <Button
                       type={selectedDiagramId === diagram.id ? 'primary' : 'default'}
                       ghost={selectedDiagramId === diagram.id}
@@ -147,6 +175,7 @@ interface TreeSectionProps {
   emptyMessage: string
   selectedDiagramId: string | null
   onSelectDiagram: (id: string) => void
+  allowDiagramDrag?: boolean
   elementOverrides: Map<string, ElementOverride>
   selectedElementId: string | null
   selectedRelationshipRef: string | null
@@ -165,6 +194,7 @@ export function TreeSection({
   emptyMessage,
   selectedDiagramId,
   onSelectDiagram,
+  allowDiagramDrag = false,
   elementOverrides,
   selectedElementId,
   selectedRelationshipRef,
@@ -192,12 +222,37 @@ export function TreeSection({
           onSelectElement={onSelectElement}
           onSelectRelationship={onSelectRelationship}
           onSelectDiagram={onSelectDiagram}
+          allowDiagramDrag={allowDiagramDrag}
           findDiagramForElement={findDiagramForElement}
           findDiagramForRelationship={findDiagramForRelationship}
         />
       ))}
       {rootDiagrams.map((diagram) => (
-        <li key={diagram.id}>
+        <li
+          key={diagram.id}
+          className={allowDiagramDrag ? 'tree-item-draggable' : undefined}
+          draggable={allowDiagramDrag}
+          title={
+            allowDiagramDrag
+              ? `${diagram.name} (${diagram.id}) — перетащите на диаграмму как ссылку`
+              : diagram.name
+          }
+          onDragStart={
+            allowDiagramDrag
+              ? (event: React.DragEvent<HTMLLIElement>) => {
+                  setSidebarDiagramDragData(event.dataTransfer, diagram.id)
+                  event.currentTarget.classList.add('is-dragging')
+                }
+              : undefined
+          }
+          onDragEnd={
+            allowDiagramDrag
+              ? (event: React.DragEvent<HTMLLIElement>) => {
+                  event.currentTarget.classList.remove('is-dragging')
+                }
+              : undefined
+          }
+        >
           <Button
             type={selectedDiagramId === diagram.id ? 'primary' : 'default'}
             ghost={selectedDiagramId === diagram.id}

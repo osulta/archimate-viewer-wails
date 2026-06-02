@@ -121,6 +121,7 @@ export interface DiagramPaintContext {
   linkCreateMode?: boolean
   linkCreateSourceId?: string | null
   dragPreview?: DragPreview | null
+  diagramById?: Map<string, ParsedDiagram>
 }
 
 export interface DiagramCanvasProps {
@@ -150,6 +151,9 @@ export interface DiagramCanvasProps {
   onDropElementAtPoint?: (elementId: string, x: number, y: number) => void
   onDropNewElementAtPoint?: (elementType: string, x: number, y: number) => void
   onDropNewRelationshipAtPoint?: (relationshipType: string, x: number, y: number, targetNodeId: string | null) => void
+  onDropDiagramReferenceAtPoint?: (diagramId: string, x: number, y: number) => void
+  onOpenDiagramReference?: (diagramId: string) => void
+  diagrams?: ParsedDiagram[]
 }
 
 export interface PaintDiagramResult {

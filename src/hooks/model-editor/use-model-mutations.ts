@@ -5,6 +5,9 @@ import {
   flattenNodes,
   applyOverridesToNodes,
   findInnermostContainingNode,
+  findInnermostContainingNodeExcluding,
+  findDirectParentNodeId,
+  reparentNodeInTree,
   insertNodeUnderParent,
   findNodeById,
   collectSubtreeIds,
@@ -15,18 +18,23 @@ import {
   collectElementRefsUsedInDiagrams,
   roundDiagramCoord,
   snapToGrid,
+  isDiagramReferenceNode,
 } from '../../lib/archimate/diagram-model'
 import { isSplitFilesModel } from '../../lib/model-editor/is-split-files-model'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type {
   ParsedDiagram,
   ParsedElement,
+  ParsedRelationship,
   DiagramNode,
+  DiagramConnection,
   Bendpoint,
   NodeOverride,
   ElementOverride,
   RelationshipMetaOverride,
   Point,
+  CreatedRelationship,
+  ParsedModel,
 } from '../../types/model'
 import type { ModelEditState } from './use-model-edit-state'
 import type { ModelSelectionState } from './use-model-selection'
@@ -40,6 +48,7 @@ export interface ModelMutations {
   updateElementOverride: (elementId: string, patch: Partial<ElementOverride>) => void
   createNewObject: (elementType: string, atPoint: Point | null, nameOverride?: string) => void
   placeElementOnDiagram: (elementId: string, atPoint: Point) => void
+  placeDiagramReferenceOnDiagram: (referencedDiagramId: string, atPoint: Point) => void
   createNewDiagram: (nameOverride?: string) => void
   createRelationshipBetweenNodes: (relationshipType: string, sourceNodeId: string, targetNodeId: string) => boolean
   handleDropNewRelationshipAtPoint: (relationshipType: string, x: number, y: number, targetNodeId: string | null) => void
@@ -65,6 +74,156 @@ export interface ModelMutations {
 interface UseModelMutationsOptions {
   editState: ModelEditState
   selection: ModelSelectionState
+}
+
+const AGGREGATION_RELATIONSHIP_TYPE = 'archimate:AggregationRelationship'
+
+function cloneDiagramNodes(nodes: DiagramNode[]): DiagramNode[] {
+  return nodes.map((node) => ({
+    ...node,
+    children: cloneDiagramNodes(node.children ?? []),
+  }))
+}
+
+interface NestAggregationUpdate {
+  relationships: ParsedRelationship[]
+  relationshipById: Map<string, ParsedRelationship>
+  connections: DiagramConnection[]
+  createdRelationship?: CreatedRelationship
+}
+
+function buildNestAggregationUpdate(
+  model: ParsedModel,
+  diagramId: string,
+  diagram: ParsedDiagram,
+  containerNodeId: string,
+  childNodeId: string,
+): NestAggregationUpdate | null {
+  if (containerNodeId === childNodeId) {
+    return null
+  }
+
+  const containerNode = findNodeById(diagram.nodes, containerNodeId)
+  const childNode = findNodeById(diagram.nodes, childNodeId)
+  if (!containerNode?.elementRef || !childNode?.elementRef) {
+    return null
+  }
+  if (containerNode.elementRef === childNode.elementRef) {
+    return null
+  }
+  if (isDiagramReferenceNode(containerNode) || isDiagramReferenceNode(childNode)) {
+    return null
+  }
+
+  const hasConnection = diagram.connections.some(
+    (connection) =>
+      (connection.source === containerNodeId && connection.target === childNodeId) ||
+      (connection.source === childNodeId && connection.target === containerNodeId),
+  )
+  if (hasConnection) {
+    return null
+  }
+
+  const existingAggregation = model.relationships.find(
+    (relationship) =>
+      relationship.type.includes('AggregationRelationship') &&
+      ((relationship.source === containerNode.elementRef &&
+        relationship.target === childNode.elementRef) ||
+        (relationship.source === childNode.elementRef &&
+          relationship.target === containerNode.elementRef)),
+  )
+
+  if (existingAggregation) {
+    if (diagram.connections.some((connection) => connection.relationshipRef === existingAggregation.id)) {
+      return null
+    }
+    const connId = generateArchimateModelId()
+    const sourceIsContainer = existingAggregation.source === containerNode.elementRef
+    const newConn: DiagramConnection = {
+      id: connId,
+      relationshipRef: existingAggregation.id,
+      source: sourceIsContainer ? containerNodeId : childNodeId,
+      target: sourceIsContainer ? childNodeId : containerNodeId,
+      bendpoints: [],
+    }
+    return {
+      relationships: model.relationships,
+      relationshipById: model.relationshipById,
+      connections: [...diagram.connections, newConn],
+      createdRelationship: {
+        diagramId,
+        relationship: existingAggregation,
+        connection: newConn,
+        format: model.format,
+      },
+    }
+  }
+
+  const relId = generateArchimateModelId()
+  const connId = generateArchimateModelId()
+  const newRel: ParsedRelationship = {
+    id: relId,
+    name: '',
+    type: AGGREGATION_RELATIONSHIP_TYPE,
+    source: containerNode.elementRef,
+    target: childNode.elementRef,
+  }
+  const newConn: DiagramConnection = {
+    id: connId,
+    relationshipRef: relId,
+    source: containerNodeId,
+    target: childNodeId,
+    bendpoints: [],
+  }
+  const nextRelationshipById = new Map(model.relationshipById)
+  nextRelationshipById.set(relId, newRel)
+  return {
+    relationships: [...model.relationships, newRel],
+    relationshipById: nextRelationshipById,
+    connections: [...diagram.connections, newConn],
+    createdRelationship: {
+      diagramId,
+      relationship: newRel,
+      connection: newConn,
+      format: model.format,
+    },
+  }
+}
+
+function applyNestAggregationToDiagrams(
+  model: ParsedModel,
+  diagramId: string,
+  diagrams: ParsedDiagram[],
+  containerNodeId: string,
+  childNodeId: string,
+): {
+  diagrams: ParsedDiagram[]
+  relationships: ParsedRelationship[]
+  relationshipById: Map<string, ParsedRelationship>
+  createdRelationship?: CreatedRelationship
+} | null {
+  const diagram = diagrams.find((item) => item.id === diagramId)
+  if (!diagram) {
+    return null
+  }
+  const aggregationUpdate = buildNestAggregationUpdate(
+    model,
+    diagramId,
+    diagram,
+    containerNodeId,
+    childNodeId,
+  )
+  if (!aggregationUpdate) {
+    return null
+  }
+  return {
+    diagrams: diagrams.map((item) =>
+      item.id === diagramId ? { ...item, connections: aggregationUpdate.connections } : item,
+    ),
+    relationships: aggregationUpdate.relationships,
+    relationshipById: aggregationUpdate.relationshipById,
+    createdRelationship: aggregationUpdate.createdRelationship,
+  }
 }
 
 export function useModelMutations({ editState, selection }: UseModelMutationsOptions): ModelMutations {
@@ -161,9 +320,14 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
   )
 
   function moveNode(diagramId: string, nodeId: string, dx: number, dy: number) {
-    if (!diagramId || !nodeId || (dx === 0 && dy === 0)) {
+    if (!diagramId || !nodeId || (dx === 0 && dy === 0) || !model) {
       return
     }
+    const diagram = model.diagrams.find((item) => item.id === diagramId)
+    if (!diagram) {
+      return
+    }
+
     const beforeAll = cloneNodeOverrideMap(diagramOverrides)
     const overrides = diagramOverrides.get(diagramId) ?? new Map()
     const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
@@ -176,14 +340,114 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextAll = new Map(diagramOverrides)
     nextAll.set(diagramId, nextOverrides)
 
+    const layoutNodes = applyOverridesToNodes(diagram.nodes, nextOverrides)
+    const movedNode = findNodeById(layoutNodes, nodeId)
+
+    let nextDiagramNodes = diagram.nodes
+    let nextRelationships = model.relationships
+    let nextRelationshipById = model.relationshipById
+    let nextConnections = diagram.connections
+    let createdRelationship: CreatedRelationship | undefined
+    let nestingChanged = false
+
+    if (movedNode?.elementRef && !isDiagramReferenceNode(movedNode)) {
+      const excludeIds = new Set(collectSubtreeIds(movedNode))
+      const containerNode = findInnermostContainingNodeExcluding(layoutNodes, movedNode, excludeIds)
+      if (
+        containerNode?.elementRef &&
+        !isDiagramReferenceNode(containerNode) &&
+        containerNode.id !== nodeId
+      ) {
+        const currentParentId = findDirectParentNodeId(diagram.nodes, nodeId)
+        if (containerNode.id !== currentParentId) {
+          nextDiagramNodes = reparentNodeInTree(diagram.nodes, nodeId, containerNode.id)
+          nestingChanged = true
+        }
+        const aggregationResult = applyNestAggregationToDiagrams(
+          model,
+          diagramId,
+          model.diagrams.map((item) =>
+            item.id === diagramId ? { ...item, nodes: nextDiagramNodes } : item,
+          ),
+          containerNode.id,
+          nodeId,
+        )
+        if (aggregationResult) {
+          nextDiagramNodes =
+            aggregationResult.diagrams.find((item) => item.id === diagramId)?.nodes ?? nextDiagramNodes
+          nextConnections =
+            aggregationResult.diagrams.find((item) => item.id === diagramId)?.connections ??
+            nextConnections
+          nextRelationships = aggregationResult.relationships
+          nextRelationshipById = aggregationResult.relationshipById
+          createdRelationship = aggregationResult.createdRelationship
+          nestingChanged = true
+        }
+      }
+    }
+
+    const beforeDiagramNodes = cloneDiagramNodes(diagram.nodes)
+    const beforeConnections = [...diagram.connections]
+    const beforeRelationships = model.relationships
+    const beforeRelationshipById = new Map(model.relationshipById)
+
     commitDiagramOverrides(nextAll)
+    if (nestingChanged) {
+      setModel({
+        ...model,
+        relationships: nextRelationships,
+        relationshipById: nextRelationshipById,
+        diagrams: model.diagrams.map((item) =>
+          item.id === diagramId
+            ? { ...item, nodes: nextDiagramNodes, connections: nextConnections }
+            : item,
+        ),
+      })
+      if (createdRelationship) {
+        setCreatedRelationships((prev) => [...prev, createdRelationship!])
+      }
+    }
     if (isSplitFilesModel(model)) {
       markSplitDiagramDirty(diagramId)
     }
+
+    const afterDiagramNodes = nextDiagramNodes
+    const afterConnections = nextConnections
+    const afterRelationships = nextRelationships
+    const afterRelationshipById = nextRelationshipById
+
     pushSnapshotCommand(
       'Перемещение объекта',
-      () => commitDiagramOverrides(cloneNodeOverrideMap(beforeAll)),
-      () => commitDiagramOverrides(cloneNodeOverrideMap(nextAll)),
+      () => {
+        commitDiagramOverrides(cloneNodeOverrideMap(beforeAll))
+        if (nestingChanged) {
+          setModel({
+            ...model,
+            relationships: beforeRelationships,
+            relationshipById: beforeRelationshipById,
+            diagrams: model.diagrams.map((item) =>
+              item.id === diagramId
+                ? { ...item, nodes: beforeDiagramNodes, connections: beforeConnections }
+                : item,
+            ),
+          })
+        }
+      },
+      () => {
+        commitDiagramOverrides(cloneNodeOverrideMap(nextAll))
+        if (nestingChanged) {
+          setModel({
+            ...model,
+            relationships: afterRelationships,
+            relationshipById: afterRelationshipById,
+            diagrams: model.diagrams.map((item) =>
+              item.id === diagramId
+                ? { ...item, nodes: afterDiagramNodes, connections: afterConnections }
+                : item,
+            ),
+          })
+        }
+      },
     )
   }
 
@@ -434,17 +698,43 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextElementById = new Map(model.elementById)
     nextElementById.set(elementId, newElement)
 
+    let finalDiagrams = nextDiagrams
+    let finalRelationships = model.relationships
+    let finalRelationshipById = model.relationshipById
+    let createdRelationship: CreatedRelationship | undefined
+
+    if (containerNode) {
+      const aggregationResult = applyNestAggregationToDiagrams(
+        model,
+        selectedDiagramId,
+        nextDiagrams,
+        containerNode.id,
+        nodeId,
+      )
+      if (aggregationResult) {
+        finalDiagrams = aggregationResult.diagrams
+        finalRelationships = aggregationResult.relationships
+        finalRelationshipById = aggregationResult.relationshipById
+        createdRelationship = aggregationResult.createdRelationship
+      }
+    }
+
     setModel({
       ...model,
       elements: nextElements,
-      diagrams: nextDiagrams,
+      diagrams: finalDiagrams,
       elementById: nextElementById,
+      relationships: finalRelationships,
+      relationshipById: finalRelationshipById,
     })
     markSplitDiagramDirty(selectedDiagramId)
     setCreatedObjects((prev) => [
       ...prev,
       { diagramId: selectedDiagramId, element: newElement, node: newNode, format: model.format },
     ])
+    if (createdRelationship) {
+      setCreatedRelationships((prev) => [...prev, createdRelationship!])
+    }
     setSelectedNode(newNode)
     setSelectedElementId(elementId)
     setSelectedRelationshipRef(null)
@@ -509,9 +799,32 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     })
 
+    let finalDiagrams = nextDiagrams
+    let finalRelationships = model.relationships
+    let finalRelationshipById = model.relationshipById
+    let createdRelationship: CreatedRelationship | undefined
+
+    if (containerNode) {
+      const aggregationResult = applyNestAggregationToDiagrams(
+        model,
+        selectedDiagramId,
+        nextDiagrams,
+        containerNode.id,
+        nodeId,
+      )
+      if (aggregationResult) {
+        finalDiagrams = aggregationResult.diagrams
+        finalRelationships = aggregationResult.relationships
+        finalRelationshipById = aggregationResult.relationshipById
+        createdRelationship = aggregationResult.createdRelationship
+      }
+    }
+
     setModel({
       ...model,
-      diagrams: nextDiagrams,
+      diagrams: finalDiagrams,
+      relationships: finalRelationships,
+      relationshipById: finalRelationshipById,
     })
     markSplitDiagramDirty(selectedDiagramId)
     setCreatedObjects((prev) => [
@@ -524,8 +837,84 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         existingElement: true,
       },
     ])
+    if (createdRelationship) {
+      setCreatedRelationships((prev) => [...prev, createdRelationship!])
+    }
     setSelectedNode(newNode)
     setSelectedElementId(elementId)
+    setSelectedRelationshipRef(null)
+    clearLinkCreation()
+  }
+
+  function placeDiagramReferenceOnDiagram(referencedDiagramId: string, atPoint: Point) {
+    if (!model || !selectedDiagramId) {
+      return
+    }
+    if (referencedDiagramId === selectedDiagramId) {
+      return
+    }
+    const referencedDiagram = model.diagrams.find((item) => item.id === referencedDiagramId)
+    if (!referencedDiagram) {
+      return
+    }
+
+    const targetDiagram = model.diagrams.find((item) => item.id === selectedDiagramId)
+    if (!targetDiagram) {
+      return
+    }
+
+    const nonce = Math.random().toString(36).slice(2, 8)
+    const nodeId = `id-new-ref-${Date.now()}-${nonce}`
+
+    const flat = flattenNodes(targetDiagram.nodes)
+    const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
+    const maxX = flat.length ? Math.max(...flat.map((n) => n.x)) : 40
+    const targetX = snapToGrid(
+      atPoint && Number.isFinite(atPoint.x)
+        ? Math.max(0, atPoint.x - 78)
+        : Math.max(40, Math.min(260, maxX + 30)),
+    )
+    const targetY = snapToGrid(
+      atPoint && Number.isFinite(atPoint.y) ? Math.max(0, atPoint.y - 12) : maxY + 30,
+    )
+    const newNode: DiagramNode = {
+      id: nodeId,
+      elementRef: '',
+      type: 'archimate:DiagramModelReference',
+      label: referencedDiagram.name,
+      referencedDiagramId,
+      x: targetX,
+      y: targetY,
+      width: 157,
+      height: 25,
+      children: [],
+    }
+
+    const diagramOverridesForDiagram = diagramOverrides.get(selectedDiagramId)
+    const layoutNodes = diagramOverridesForDiagram?.size
+      ? applyOverridesToNodes(targetDiagram.nodes, diagramOverridesForDiagram)
+      : targetDiagram.nodes
+    const containerNode = findInnermostContainingNode(layoutNodes, newNode)
+
+    const nextDiagrams = model.diagrams.map((diagram) => {
+      if (diagram.id !== selectedDiagramId) {
+        return diagram
+      }
+      return {
+        ...diagram,
+        nodes: containerNode
+          ? insertNodeUnderParent(diagram.nodes, containerNode.id, newNode)
+          : [...diagram.nodes, newNode],
+      }
+    })
+
+    setModel({
+      ...model,
+      diagrams: nextDiagrams,
+    })
+    markSplitDiagramDirty(selectedDiagramId)
+    setSelectedNode(newNode)
+    setSelectedElementId(null)
     setSelectedRelationshipRef(null)
     clearLinkCreation()
   }
@@ -1268,6 +1657,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     updateElementOverride,
     createNewObject,
     placeElementOnDiagram,
+    placeDiagramReferenceOnDiagram,
     createNewDiagram,
     createRelationshipBetweenNodes,
     handleDropNewRelationshipAtPoint,

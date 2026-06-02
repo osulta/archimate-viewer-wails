@@ -200,6 +200,7 @@ export function Sidebar({
         onSelectRelationship={onSelectRelationship}
         onSelectDiagram={onSelectDiagram}
         allowElementDrag={!isViewMode && Boolean(model)}
+        allowDiagramDrag={!isViewMode && Boolean(model)}
         onCreateDiagram={!isViewMode && model ? onCreateDiagram : undefined}
           />
         ) : null}
