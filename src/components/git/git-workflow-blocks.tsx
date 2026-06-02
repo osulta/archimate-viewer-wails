@@ -1,4 +1,4 @@
-import type { JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { Button, Checkbox, Collapse, Input, Select, Space, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { GitCommandLoader } from './git-command-loader'
@@ -123,6 +123,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
   const branchOptions = gitBranches.list
   const hasBranches = branchOptions.length > 0
   const commitDisabled = gitCommandLoading || !gitCommitMessage.trim()
+  const [areWorkflowBlocksOpen, setAreWorkflowBlocksOpen] = useState(false)
 
   return (
     <section className="sidebar-git-workflow" aria-label="Работа с Git">
@@ -130,7 +131,8 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
       <div className="sidebar-git-workflow-grid">
         <Collapse
           className="git-workflow-collapse"
-          defaultActiveKey={[]}
+          activeKey={areWorkflowBlocksOpen ? ['branch'] : []}
+          onChange={(keys) => setAreWorkflowBlocksOpen(Array.isArray(keys) ? keys.length > 0 : Boolean(keys))}
           items={[
             {
               key: 'branch',
@@ -203,7 +205,8 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
 
         <Collapse
           className="git-workflow-collapse"
-          defaultActiveKey={[]}
+          activeKey={areWorkflowBlocksOpen ? ['commit'] : []}
+          onChange={(keys) => setAreWorkflowBlocksOpen(Array.isArray(keys) ? keys.length > 0 : Boolean(keys))}
           items={[
             {
               key: 'commit',
