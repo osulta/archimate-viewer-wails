@@ -1,5 +1,5 @@
 import type { JSX } from 'react'
-import { Button, Checkbox, Input, Select, Space, Typography } from 'antd'
+import { Button, Checkbox, Collapse, Input, Select, Space, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
 import { GitCommandLoader } from './git-command-loader'
 
@@ -51,11 +51,12 @@ interface GitSidebarWorkflowProps {
 
 interface GitSidebarInfoBlockProps {
   gitOutput: string
+  className?: string
 }
 
-function GitSidebarInfoBlock({ gitOutput }: GitSidebarInfoBlockProps): JSX.Element {
+export function GitSidebarInfoBlock({ gitOutput, className = '' }: GitSidebarInfoBlockProps): JSX.Element {
   return (
-    <div className="git-block git-block-info sidebar-git-info" aria-live="polite">
+    <div className={`git-block git-block-info sidebar-git-info ${className}`.trim()} aria-live="polite">
       <Typography.Title level={5} className="git-block-title">
         Информация
       </Typography.Title>
@@ -84,7 +85,6 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
     gitPushUpstream,
     gitCommandLoading,
     gitCommandLabel,
-    gitOutput,
     gitWorkFolder,
     setGitCheckoutBranch,
     setGitCommitMessage,
@@ -127,89 +127,118 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
   return (
     <section className="sidebar-git-workflow" aria-label="Работа с Git">
       <GitCommandLoader active={gitCommandLoading} label={gitCommandLabel} />
-      <GitSidebarInfoBlock gitOutput={gitOutput} />
+      <div className="sidebar-git-workflow-grid">
+        <Collapse
+          className="git-workflow-collapse"
+          defaultActiveKey={[]}
+          items={[
+            {
+              key: 'branch',
+              label: gitRepoProbe.currentBranch
+                ? `Ветка: ${gitRepoProbe.currentBranch}`
+                : 'Ветка',
+              children: (
+                <div className="git-block git-block-branches">
+                  <p className="git-status">
+                    {gitRepoProbe.currentBranch
+                      ? `Текущая ветка: ${gitRepoProbe.currentBranch}`
+                      : `Репозиторий: ${gitRepoProbe.workFolder ?? workFolderLabel}`}
+                  </p>
+                  <Space.Compact className="git-branch-row" block>
+                    <Select
+                      className="git-branch-select"
+                      showSearch
+                      optionFilterProp="label"
+                      filterOption={(input, option) =>
+                        String(option?.label ?? '')
+                          .toLowerCase()
+                          .includes(input.trim().toLowerCase())
+                      }
+                      value={gitCheckoutBranch || undefined}
+                      onChange={(value) => setGitCheckoutBranch(value)}
+                      disabled={gitCommandLoading || gitBranches.loading || !hasBranches}
+                      aria-label="Выбор ветки"
+                      placeholder="— нет веток —"
+                      options={branchOptions.map((branch) => ({
+                        value: branch.name,
+                        label: `${branch.name}${branch.local === false ? ' (remote)' : ''}`,
+                      }))}
+                      style={{ flex: 1, minWidth: 0 }}
+                    />
+                  </Space.Compact>
+                  <Button
+                    block
+                    icon={<ReloadOutlined />}
+                    disabled={gitCommandLoading || gitBranches.loading}
+                    loading={gitBranches.loading}
+                    onClick={() => void loadGitBranches(undefined, { fetch: true })}
+                    title="Обновить список веток (git fetch)"
+                    style={{ marginTop: 8 }}
+                  >
+                    Обновить список веток
+                  </Button>
+                  {gitBranches.error ? <p className="git-branch-error">{gitBranches.error}</p> : null}
+                  <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
+                    <Button
+                      block
+                      disabled={gitCommandLoading || !gitCheckoutBranch.trim()}
+                      onClick={() => void handleGitCheckout()}
+                    >
+                      Переключить ветку
+                    </Button>
+                    <Button
+                      block
+                      disabled={gitCommandLoading}
+                      onClick={() => void handleGitPullAndRefresh()}
+                      title="git pull и перечитать модель"
+                    >
+                      git pull
+                    </Button>
+                  </Space>
+                </div>
+              ),
+            },
+          ]}
+        />
 
-      <div className="git-block git-block-branches">
-        <Typography.Title level={5} className="git-block-title">
-          Ветка
-        </Typography.Title>
-        <p className="git-status">
-          {gitRepoProbe.currentBranch
-            ? `Текущая ветка: ${gitRepoProbe.currentBranch}`
-            : `Репозиторий: ${gitRepoProbe.workFolder ?? workFolderLabel}`}
-        </p>
-        <Space.Compact className="git-branch-row" block>
-          <Select
-            className="git-branch-select"
-            value={gitCheckoutBranch || undefined}
-            onChange={(value) => setGitCheckoutBranch(value)}
-            disabled={gitCommandLoading || gitBranches.loading || !hasBranches}
-            aria-label="Выбор ветки"
-            placeholder="— нет веток —"
-            options={branchOptions.map((branch) => ({
-              value: branch.name,
-              label: `${branch.name}${branch.local === false ? ' (remote)' : ''}`,
-            }))}
-            style={{ flex: 1, minWidth: 0 }}
-          />
-          <Button
-            icon={<ReloadOutlined />}
-            disabled={gitCommandLoading || gitBranches.loading}
-            loading={gitBranches.loading}
-            onClick={() => void loadGitBranches(undefined, { fetch: true })}
-            title="Обновить список веток (git fetch)"
-          >
-            Обновить
-          </Button>
-        </Space.Compact>
-        {gitBranches.error ? <p className="git-branch-error">{gitBranches.error}</p> : null}
-        <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
-          <Button
-            block
-            disabled={gitCommandLoading || !gitCheckoutBranch.trim()}
-            onClick={() => void handleGitCheckout()}
-          >
-            Переключить ветку
-          </Button>
-          <Button
-            block
-            disabled={gitCommandLoading}
-            onClick={() => void handleGitPullAndRefresh()}
-            title="git pull и перечитать модель"
-          >
-            git pull
-          </Button>
-        </Space>
-      </div>
-
-      <div className="git-block git-block-commit">
-        <Typography.Title level={5} className="git-block-title">
-          Коммит и отправка
-        </Typography.Title>
-        <label className="git-label">
-          <span>Сообщение коммита</span>
-          <Input.TextArea
-            value={gitCommitMessage}
-            onChange={(e) => setGitCommitMessage(e.target.value)}
-            placeholder="Описание изменений"
-            rows={3}
-            spellCheck={false}
-          />
-        </label>
-        <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
-          <Button type="primary" block disabled={commitDisabled} onClick={() => void handleGitCommit()}>
-            git commit
-          </Button>
-          <Checkbox
-            checked={gitPushUpstream}
-            onChange={(e) => setGitPushUpstream(e.target.checked)}
-          >
-            Установить upstream (--set-upstream)
-          </Checkbox>
-          <Button block disabled={gitCommandLoading} onClick={() => void handleGitPush()}>
-            git push
-          </Button>
-        </Space>
+        <Collapse
+          className="git-workflow-collapse"
+          defaultActiveKey={[]}
+          items={[
+            {
+              key: 'commit',
+              label: 'Коммит и отправка',
+              children: (
+                <div className="git-block git-block-commit">
+                  <label className="git-label">
+                    <span>Сообщение коммита</span>
+                    <Input.TextArea
+                      value={gitCommitMessage}
+                      onChange={(e) => setGitCommitMessage(e.target.value)}
+                      placeholder="Описание изменений"
+                      rows={3}
+                      spellCheck={false}
+                    />
+                  </label>
+                  <Space direction="vertical" size={8} style={{ width: '100%', marginTop: 8 }}>
+                    <Button type="primary" block disabled={commitDisabled} onClick={() => void handleGitCommit()}>
+                      git commit
+                    </Button>
+                    <Checkbox
+                      checked={gitPushUpstream}
+                      onChange={(e) => setGitPushUpstream(e.target.checked)}
+                    >
+                      Установить upstream (--set-upstream)
+                    </Checkbox>
+                    <Button block disabled={gitCommandLoading} onClick={() => void handleGitPush()}>
+                      git push
+                    </Button>
+                  </Space>
+                </div>
+              ),
+            },
+          ]}
+        />
       </div>
     </section>
   )

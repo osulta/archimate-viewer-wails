@@ -1175,6 +1175,7 @@ export function useGitIntegration({
           msg += `\n(work tree: ${data.workTree})`
         }
         setGitOutput(msg)
+        setGitCommitMessage('')
       } else {
         setGitOutput(
           joinGitCommandOutput([

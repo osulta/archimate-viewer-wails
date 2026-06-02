@@ -1,5 +1,35 @@
 import type { Bendpoint, DiagramNode, ElementProperty } from '../../types/model'
 
+const XML_ENTITY_MAP: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+}
+
+/**
+ * Decodes XML/HTML entities that may leak into parsed names (e.g. "&quot;").
+ * Also supports numeric entities (decimal and hex).
+ */
+export function decodeXmlEntities(value: string | null | undefined): string {
+  const input = String(value ?? '')
+  if (!input.includes('&')) {
+    return input
+  }
+  return input.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (full, code: string) => {
+    if (code.startsWith('#x') || code.startsWith('#X')) {
+      const parsed = Number.parseInt(code.slice(2), 16)
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : full
+    }
+    if (code.startsWith('#')) {
+      const parsed = Number.parseInt(code.slice(1), 10)
+      return Number.isFinite(parsed) ? String.fromCodePoint(parsed) : full
+    }
+    return XML_ENTITY_MAP[code] ?? full
+  })
+}
+
 export function getName(element: Element | null): string {
   if (!element) {
     return ''
@@ -7,14 +37,14 @@ export function getName(element: Element | null): string {
 
   const attrName = element.getAttribute('name')
   if (attrName?.trim()) {
-    return attrName.trim()
+    return decodeXmlEntities(attrName.trim())
   }
 
   const nameNode = Array.from(element.children).find(
     (child) => child.localName === 'name',
   )
   if (nameNode?.textContent?.trim()) {
-    return nameNode.textContent.trim()
+    return decodeXmlEntities(nameNode.textContent.trim())
   }
 
   return element.getAttribute('identifier') ?? ''
@@ -52,15 +82,15 @@ export function getDiagramObjectLabel(node: Element | null): string {
 
   const contentChild = getDirectChildByTag(node, 'content')
   if (contentChild?.textContent?.trim()) {
-    return contentChild.textContent.trim()
+    return decodeXmlEntities(contentChild.textContent.trim())
   }
 
   for (const labelNode of getDirectChildrenByTag(node, 'label')) {
     const nestedContent = getDirectChildByTag(labelNode, 'content')
     const text =
-      nestedContent?.textContent?.trim() ||
-      labelNode.textContent?.trim() ||
-      labelNode.getAttribute('name')?.trim() ||
+      decodeXmlEntities(nestedContent?.textContent?.trim()) ||
+      decodeXmlEntities(labelNode.textContent?.trim()) ||
+      decodeXmlEntities(labelNode.getAttribute('name')?.trim()) ||
       ''
     if (text) {
       return text
@@ -69,7 +99,7 @@ export function getDiagramObjectLabel(node: Element | null): string {
 
   const attrName = node.getAttribute('name')?.trim()
   if (attrName) {
-    return attrName
+    return decodeXmlEntities(attrName)
   }
 
   return ''
@@ -80,7 +110,7 @@ export function getDocumentation(element: Element | null): string {
     return ''
   }
   const docNode = getDirectChildByTag(element, 'documentation')
-  return docNode?.textContent?.trim() ?? ''
+  return decodeXmlEntities(docNode?.textContent?.trim() ?? '')
 }
 
 /** Записывает или удаляет дочерний <documentation> у элемента модели. */

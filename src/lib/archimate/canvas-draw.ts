@@ -1100,15 +1100,44 @@ export function drawWrappedText(
     return
   }
 
+  const splitWordToFit = (word: string): string[] => {
+    if (ctx.measureText(word).width <= maxWidth) {
+      return [word]
+    }
+    const chunks: string[] = []
+    let rest = word
+    while (rest.length > 0) {
+      let part = ''
+      for (const ch of Array.from(rest)) {
+        const candidate = `${part}${ch}`
+        if (part && ctx.measureText(candidate).width > maxWidth) {
+          break
+        }
+        part = candidate
+      }
+      if (!part) {
+        part = rest.slice(0, 1)
+      }
+      chunks.push(part)
+      rest = rest.slice(part.length)
+    }
+    return chunks
+  }
+
+  const tokens: string[] = []
+  words.forEach((word) => {
+    tokens.push(...splitWordToFit(word))
+  })
+
   const lines: string[] = []
-  let current = words[0]
-  for (let i = 1; i < words.length; i += 1) {
-    const candidate = `${current} ${words[i]}`
-    if (ctx.measureText(candidate).width <= maxWidth) {
-      current = candidate
+  let current = tokens[0]
+  for (let i = 1; i < tokens.length; i += 1) {
+    const candidateWithSpace = `${current} ${tokens[i]}`
+    if (ctx.measureText(candidateWithSpace).width <= maxWidth) {
+      current = candidateWithSpace
     } else {
       lines.push(current)
-      current = words[i]
+      current = tokens[i]
       if (lines.length >= maxLines) {
         break
       }

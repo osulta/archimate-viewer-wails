@@ -1,8 +1,9 @@
-import { Button, Empty, Spin, Typography } from 'antd'
-import { SwapOutlined } from '@ant-design/icons'
+import { Button, Empty, Space, Spin, Typography } from 'antd'
+import { ReloadOutlined, SaveOutlined, SwapOutlined } from '@ant-design/icons'
 import { Sidebar } from '../sidebar/sidebar'
 import { DiagramCanvas } from '../diagram-canvas'
 import { ObjectPropertiesPanel } from '../object-properties-panel'
+import { GitSidebarInfoBlock, GitSidebarWorkflow } from '../git/git-workflow-blocks'
 import type { useGitIntegration } from '../../hooks/use-git-integration'
 import type { useSplitModelRuntime } from '../../hooks/use-split-model-runtime'
 import type { ModelEditState } from '../../hooks/model-editor/use-model-edit-state'
@@ -60,6 +61,10 @@ export function ModelingWorkspace({
     handleSelectRelationshipFromProperties,
     handleSelectElementFromProperties,
   } = selection
+  const saveTargetPath =
+    git.modelLayout === 'split-files'
+      ? (git.gitRepoPath ?? undefined)
+      : (git.buildRepoModelWriteRelativePath() ?? undefined)
 
   return (
     <div className="layout">
@@ -137,17 +142,51 @@ export function ModelingWorkspace({
               {selectedDiagram?.type ?? 'Canvas preview'}
             </Typography.Text>
           </div>
-          {selectedDiagramId && model ? (
+          <Space className="content-head-actions" size={8}>
+            <Button
+              icon={<ReloadOutlined />}
+              title={
+                saveTargetPath
+                  ? `Заново загрузить модель из GIT_REPO_ROOT/${saveTargetPath}`
+                  : 'Заново загрузить model.archimate из репозитория Git'
+              }
+              disabled={git.gitCommandLoading || git.modelLoading || splitRuntime.isDiagramLoading}
+              onClick={() => void save.handleReloadModel?.()}
+            >
+              Обновить модель
+            </Button>
             <Button
               type="primary"
-              ghost
-              icon={<SwapOutlined />}
-              className="content-compare-link"
-              onClick={onOpenCompareChanges}
+              icon={<SaveOutlined />}
+              title={
+                saveTargetPath
+                  ? `Перезаписать GIT_REPO_ROOT/${saveTargetPath}`
+                  : 'Записать изменения в файл модели в репозитории Git'
+              }
+              loading={modelSaving}
+              disabled={
+                git.gitCommandLoading ||
+                git.modelLoading ||
+                splitRuntime.isDiagramLoading ||
+                modelSaving ||
+                !model
+              }
+              onClick={() => void save.handleSaveEditedModel?.()}
             >
-              Сравнение изменений
+              {modelSaving ? 'Сохранение…' : 'Сохранить модель'}
             </Button>
-          ) : null}
+            {selectedDiagramId && model ? (
+              <Button
+                type="primary"
+                ghost
+                icon={<SwapOutlined />}
+                className="content-compare-link"
+                onClick={onOpenCompareChanges}
+              >
+                Сравнение изменений
+              </Button>
+            ) : null}
+          </Space>
         </div>
         {splitRuntime.diagramLoadingId &&
         splitRuntime.diagramLoadingId === selectedDiagramId ? (
@@ -156,6 +195,11 @@ export function ModelingWorkspace({
             Загрузка диаграммы…
           </p>
         ) : null}
+        <GitSidebarInfoBlock
+          className="content-git-info"
+          gitOutput={git.gitOutput}
+        />
+        <GitSidebarWorkflow git={git} />
         <DiagramCanvas
           diagram={selectedDiagram?.loaded === false ? null : selectedDiagram}
           diagramExportName={selectedDiagram?.name}

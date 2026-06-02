@@ -1,12 +1,10 @@
 import React, { useMemo, useState } from 'react'
-import { Alert, Button, Space, Spin, Typography } from 'antd'
-import { ReloadOutlined, SaveOutlined } from '@ant-design/icons'
+import { Alert, Spin, Typography } from 'antd'
 import { applyRelationshipMetaToList } from '../../lib/archimate/relationship-meta'
 import { useDebouncedValue } from '../../hooks/use-debounced-value'
 import { ModelTree } from './model-tree'
 import { ElementPalettePanel } from './element-palette-panel'
 import { RelationshipPalettePanel } from './relationship-palette-panel'
-import { GitSidebarWorkflow } from '../git/git-workflow-blocks'
 import type {
   ParsedModel,
   ParsedElement,
@@ -148,36 +146,6 @@ export function Sidebar({
       </Typography.Title>
       {!isViewMode && model ? (
         <>
-          <Space className="sidebar-model-actions" direction="vertical" size={8}>
-          <Button
-            icon={<ReloadOutlined />}
-            block
-            title={
-              saveTargetPath
-                ? `Заново загрузить модель из GIT_REPO_ROOT/${saveTargetPath}`
-                : 'Заново загрузить model.archimate из репозитория Git'
-            }
-            disabled={modelActionLoading || modelLoading}
-            onClick={() => void onReloadModel?.()}
-          >
-            Обновить модель
-          </Button>
-          <Button
-            type="primary"
-            icon={<SaveOutlined />}
-            block
-            title={
-              saveTargetPath
-                ? `Перезаписать GIT_REPO_ROOT/${saveTargetPath}`
-                : 'Записать изменения в файл модели в репозитории Git'
-            }
-            loading={modelSaving}
-            disabled={modelActionLoading || modelLoading || modelSaving || !canSaveModel}
-            onClick={() => void onSaveEditedModel?.()}
-          >
-            {modelSaving ? 'Сохранение…' : 'Сохранить модель'}
-          </Button>
-          </Space>
           {modelLayoutHint ? (
             <p className="save-path-hint" title="Формат загрузки модели">
               {modelLayoutHint}
@@ -196,7 +164,6 @@ export function Sidebar({
               message={saveStatusMessage}
             />
           ) : null}
-          {git ? <GitSidebarWorkflow git={git} /> : null}
         </>
       ) : null}
       {error ? (

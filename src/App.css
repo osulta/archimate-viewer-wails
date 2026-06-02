@@ -652,6 +652,22 @@
   margin: 12px 0;
 }
 
+.sidebar-git-workflow-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.git-workflow-collapse.ant-collapse {
+  border: 1px solid #cad6ef;
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.git-workflow-collapse .ant-collapse-content-box {
+  padding: 0;
+}
+
 .sidebar-git-workflow .git-block {
   padding: 10px 12px;
   margin: 0;
@@ -700,6 +716,16 @@
   font-size: 12px;
   color: #6479a3;
   line-height: 1.45;
+}
+
+.content-git-info {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1100px) {
+  .sidebar-git-workflow-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .refresh-model-btn {
@@ -953,6 +979,12 @@
   justify-content: space-between;
   gap: 12px 16px;
   margin-bottom: 12px;
+}
+
+.content-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .content-head-text {
@@ -1387,7 +1419,7 @@
 .canvas-scroll {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
