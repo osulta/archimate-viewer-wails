@@ -826,7 +826,7 @@ export function removeDeletedFromXml(
       continue
     }
 
-    if (nodeSet.has(id) && (ln === 'child' || ln === 'node')) {
+    if (nodeSet.has(id) && (ln === 'child' || ln === 'children' || ln === 'node')) {
       toRemove.push(el)
       continue
     }

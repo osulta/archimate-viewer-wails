@@ -374,7 +374,9 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     let createdRelationship: CreatedRelationship | undefined
     let nestingChanged = false
 
-    if (movedNode?.elementRef && !isDiagramReferenceNode(movedNode)) {
+    const canReparentOnMove =
+      movedNode && (Boolean(movedNode.elementRef) || isDiagramReferenceNode(movedNode))
+    if (canReparentOnMove) {
       const excludeIds = new Set(collectSubtreeIds(movedNode))
       const containerNode = findInnermostContainingNodeExcluding(layoutNodes, movedNode, excludeIds)
       if (
@@ -387,25 +389,27 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
           nextDiagramNodes = reparentNodeInTree(diagram.nodes, nodeId, containerNode.id)
           nestingChanged = true
         }
-        const aggregationResult = applyNestAggregationToDiagrams(
-          model,
-          diagramId,
-          model.diagrams.map((item) =>
-            item.id === diagramId ? { ...item, nodes: nextDiagramNodes } : item,
-          ),
-          containerNode.id,
-          nodeId,
-        )
-        if (aggregationResult) {
-          nextDiagramNodes =
-            aggregationResult.diagrams.find((item) => item.id === diagramId)?.nodes ?? nextDiagramNodes
-          nextConnections =
-            aggregationResult.diagrams.find((item) => item.id === diagramId)?.connections ??
-            nextConnections
-          nextRelationships = aggregationResult.relationships
-          nextRelationshipById = aggregationResult.relationshipById
-          createdRelationship = aggregationResult.createdRelationship
-          nestingChanged = true
+        if (!isDiagramReferenceNode(movedNode)) {
+          const aggregationResult = applyNestAggregationToDiagrams(
+            model,
+            diagramId,
+            model.diagrams.map((item) =>
+              item.id === diagramId ? { ...item, nodes: nextDiagramNodes } : item,
+            ),
+            containerNode.id,
+            nodeId,
+          )
+          if (aggregationResult) {
+            nextDiagramNodes =
+              aggregationResult.diagrams.find((item) => item.id === diagramId)?.nodes ?? nextDiagramNodes
+            nextConnections =
+              aggregationResult.diagrams.find((item) => item.id === diagramId)?.connections ??
+              nextConnections
+            nextRelationships = aggregationResult.relationships
+            nextRelationshipById = aggregationResult.relationshipById
+            createdRelationship = aggregationResult.createdRelationship
+            nestingChanged = true
+          }
         }
       }
     }

@@ -11,8 +11,7 @@ import type {
   ElementOverride,
   RelationshipMetaOverride,
 } from '../../types/model'
-import { applyOverridesToNodes, formatDiagramCoord } from './diagram-model'
-import { serializeXml } from './diagram-model'
+import { applyOverridesToNodes, flattenNodes, formatDiagramCoord, serializeXml } from './diagram-model'
 import { fetchSplitModelFile } from './split-model-client'
 import { parseDiagramFile } from './parsing/split-files/diagram-file-parser'
 import {
@@ -69,6 +68,23 @@ function connectionMatchesRelationship(connectionEl: Element, relationshipRef: s
   }
   const href = getDirectChildByTag(connectionEl, 'archimateRelationship')?.getAttribute('href') ?? ''
   return idFromArchimateHref(href) === relationshipRef
+}
+
+function removeOrphanedDiagramObjectsFromXml(diagramRoot: Element, activeNodeIds: Set<string>): void {
+  const allObjects: Element[] = []
+  function collect(parent: Element): void {
+    for (const child of getDiagramObjectXmlChildren(parent)) {
+      allObjects.push(child)
+      collect(child)
+    }
+  }
+  collect(diagramRoot)
+  for (const el of allObjects) {
+    const id = getId(el)
+    if (id && !activeNodeIds.has(id)) {
+      el.parentNode?.removeChild(el)
+    }
+  }
 }
 
 function syncSplitDiagramConnectionsToXml(diagramRoot: Element, connections: DiagramConnection[]): void {
@@ -148,6 +164,8 @@ export function buildSplitDiagramSaveXml(
     }
   }
   const layoutNodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
+  const activeNodeIds = new Set(flattenNodes(layoutNodes).map((node) => node.id))
+  removeOrphanedDiagramObjectsFromXml(diagramRoot, activeNodeIds)
   syncSplitDiagramChildrenToXml(diagramRoot, diagramRoot, layoutNodes, 0, 0)
 
   if (saveContext?.elementById) {
