@@ -15,9 +15,10 @@ import {
 import {
   applyPanDelta,
   applyPointerDelta,
+  BENDPOINT_DRAG_SLOP,
   clampZoom,
   exportDiagramPng,
-  findBendpointHitIndex,
+  findBendpointHitAtPoint,
   getCanvasPointer,
   isPointInResizeHandle,
   paintDiagramCanvas,
@@ -26,11 +27,13 @@ import {
   CONNECTION_FLOW_CYCLE_MS,
 } from '../../lib/diagram-canvas'
 import type {
+  BendpointInteraction,
   DiagramCanvasProps,
   DragPreview,
   Interaction,
   RenderedConnection,
 } from '../../lib/diagram-canvas'
+import type { Point } from '../../types/model'
 import { useCompareCanvasSync } from '../changes/compare-canvas-sync'
 
 export function useDiagramCanvas(props: DiagramCanvasProps) {
@@ -75,6 +78,17 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   const viewBoxRef = useRef({ translateX: 0, translateY: 0 })
   const interactionRef = useRef<Interaction | null>(null)
   const suppressClickRef = useRef(false)
+  const pendingBendpointRef = useRef<{
+    pointerId: number
+    relationshipRef: string
+    bendpointIndex: number
+    sourceCenter: Point
+    targetCenter: Point
+    startClientX: number
+    startClientY: number
+    startLogicalX: number
+    startLogicalY: number
+  } | null>(null)
   const renderedConnectionsRef = useRef<RenderedConnection[]>([])
   const dragPreviewRef = useRef<DragPreview | null>(null)
   const paintRafRef = useRef<number | null>(null)
@@ -277,11 +291,36 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
   }
 
+  function clearPendingBendpoint(pointerId: number): void {
+    if (pendingBendpointRef.current?.pointerId === pointerId) {
+      pendingBendpointRef.current = null
+    }
+  }
+
+  function startPendingBendpointDrag(
+    canvas: HTMLCanvasElement,
+    pending: NonNullable<typeof pendingBendpointRef.current>,
+    ptr: { logicalX: number; logicalY: number },
+  ): void {
+    beginInteraction(canvas, {
+      type: 'bendpoint',
+      pointerId: pending.pointerId,
+      relationshipRef: pending.relationshipRef,
+      bendpointIndex: pending.bendpointIndex,
+      sourceCenter: pending.sourceCenter,
+      targetCenter: pending.targetCenter,
+      lastLogicalX: ptr.logicalX,
+      lastLogicalY: ptr.logicalY,
+    } satisfies BendpointInteraction)
+    pendingBendpointRef.current = null
+  }
+
   function releaseInteraction(pointerId: number) {
     const canvas = canvasRef.current
     const scrollEl = scrollContainerRef.current
     const inter = interactionRef.current
     if (!inter || inter.pointerId !== pointerId) {
+      clearPendingBendpoint(pointerId)
       return
     }
     interactionRef.current = null
@@ -536,17 +575,17 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
             const hy = selectedConnection.sourceCenter.y + (bp.startY ?? 0)
             if (Math.hypot(x - hx, y - hy) <= 8) {
               onBendpointSelect?.(i)
-              beginInteraction(canvas, {
-                type: 'bendpoint',
+              pendingBendpointRef.current = {
                 pointerId: event.pointerId,
                 relationshipRef: selectedRelationshipRef,
                 bendpointIndex: i,
                 sourceCenter: selectedConnection.sourceCenter,
                 targetCenter: selectedConnection.targetCenter,
-                lastLogicalX: logicalX,
-                lastLogicalY: logicalY,
-              })
-              event.preventDefault()
+                startClientX: event.clientX,
+                startClientY: event.clientY,
+                startLogicalX: logicalX,
+                startLogicalY: logicalY,
+              }
               return
             }
           }
@@ -593,6 +632,27 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handlePointerMove(event: React.PointerEvent) {
+    const pending = pendingBendpointRef.current
+    if (!interactionRef.current && pending?.pointerId === event.pointerId) {
+      const moved = Math.hypot(
+        event.clientX - pending.startClientX,
+        event.clientY - pending.startClientY,
+      )
+      if (moved >= BENDPOINT_DRAG_SLOP) {
+        const canvas = canvasRef.current
+        if (!canvas) {
+          return
+        }
+        const ptr = getCanvasPointer(canvas, viewBoxRef.current, event)
+        if (!ptr) {
+          return
+        }
+        startPendingBendpointDrag(canvas, pending, ptr)
+      } else {
+        return
+      }
+    }
+
     const inter = interactionRef.current
     if (!inter || inter.pointerId !== event.pointerId) {
       return
@@ -671,27 +731,36 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
 
-    if (readOnly || !selectedRelationshipRef) {
-      return
-    }
-    const connection = renderedConnectionsRef.current.find(
-      (c) => c.relationshipRef === selectedRelationshipRef,
-    )
-    if (!connection) {
-      return
-    }
     const { x, y } = ptr
     const clickPoint = { x, y }
 
-    const bendpointHit = findBendpointHitIndex(
-      selectedRelationshipRef,
-      x,
-      y,
-      diagram,
-      renderedConnectionsRef.current,
+    if (!readOnly) {
+      const bendpointHit = findBendpointHitAtPoint(
+        x,
+        y,
+        diagram,
+        renderedConnectionsRef.current,
+      )
+      if (bendpointHit) {
+        pendingBendpointRef.current = null
+        onRelationshipSelect?.(bendpointHit.relationshipRef)
+        onRelationshipBendpointRemove?.(bendpointHit.relationshipRef, bendpointHit.index)
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+    }
+
+    const relationshipRef =
+      selectedRelationshipRef ??
+      (!readOnly ? pickRelationshipAtScreenPoint(x, y, renderedConnectionsRef.current) : null)
+    if (readOnly || !relationshipRef) {
+      return
+    }
+    const connection = renderedConnectionsRef.current.find(
+      (c) => c.relationshipRef === relationshipRef,
     )
-    if (bendpointHit !== null) {
-      onRelationshipBendpointRemove?.(selectedRelationshipRef, bendpointHit)
+    if (!connection) {
       return
     }
 
@@ -707,7 +776,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     if (!best || best.distance > 10) {
       return
     }
-    onRelationshipBendpointAdd?.(selectedRelationshipRef, best.index, {
+    onRelationshipSelect?.(relationshipRef)
+    onRelationshipBendpointAdd?.(relationshipRef, best.index, {
       startX: x - connection.sourceCenter.x,
       startY: y - connection.sourceCenter.y,
       endX: x - connection.targetCenter.x,

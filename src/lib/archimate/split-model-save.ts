@@ -25,6 +25,7 @@ import {
   buildSplitDiagramRelativePath,
   buildSplitElementFileContent,
   buildSplitRelationshipFileContent,
+  findDiagramXmlObjectById,
 } from './split-model-create'
 import {
   buildSplitElementRelativePath,
@@ -90,12 +91,20 @@ function collectAllConnections(diagramRoot: Element): Element[] {
   return out
 }
 
-function syncSplitDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], parentAbsX: number, parentAbsY: number): void {
-  const xmlChildren = getDiagramObjectXmlChildren(parentEl)
+function syncSplitDiagramChildrenToXml(
+  diagramRoot: Element,
+  parentEl: Element,
+  nodes: DiagramNode[],
+  parentAbsX: number,
+  parentAbsY: number,
+): void {
   for (const node of nodes) {
-    const xmlChild = xmlChildren.find((candidate) => getId(candidate) === node.id)
+    const xmlChild = findDiagramXmlObjectById(diagramRoot, node.id)
     if (!xmlChild) {
       continue
+    }
+    if (xmlChild.parentElement !== parentEl) {
+      parentEl.appendChild(xmlChild)
     }
     const bounds = getDirectChildByTag(xmlChild, 'bounds')
     if (bounds) {
@@ -110,7 +119,7 @@ function syncSplitDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], 
       }
     }
     applyDiagramObjectVisualToXml(xmlChild, node)
-    syncSplitDiagramChildrenToXml(xmlChild, node.children, node.x, node.y)
+    syncSplitDiagramChildrenToXml(diagramRoot, xmlChild, node.children, node.x, node.y)
   }
 }
 
@@ -138,13 +147,10 @@ export function buildSplitDiagramSaveXml(
       diagramRoot.setAttribute('name', diagram.name)
     }
   }
-  if (nodeOverrides.size > 0) {
-    const nodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
-    syncSplitDiagramChildrenToXml(diagramRoot, nodes, 0, 0)
-  }
+  const layoutNodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
+  syncSplitDiagramChildrenToXml(diagramRoot, diagramRoot, layoutNodes, 0, 0)
 
   if (saveContext?.elementById) {
-    const layoutNodes = applyOverridesToNodes(diagram.nodes, nodeOverrides)
     appendMissingDiagramNodesToXml(
       diagramRoot,
       layoutNodes,

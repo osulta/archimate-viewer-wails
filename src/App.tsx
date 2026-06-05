@@ -16,7 +16,8 @@ function App() {
   const app = useArchimateApp()
   const {
     appTab,
-    setAppTab,
+    handleAppTabChange,
+    handleViewModeSelectDiagram,
     compareDiagramId,
     setCompareDiagramId,
     editState,
@@ -35,7 +36,7 @@ function App() {
     <Layout className="app-shell">
       <AppHeader
         activeTab={appTab}
-        onTabChange={(tab) => setAppTab(tab as AppTab)}
+        onTabChange={(tab) => handleAppTabChange(tab as AppTab)}
         canUndo={mutations.canvasHistory.canUndo}
         canRedo={mutations.canvasHistory.canRedo}
         undoLabel={mutations.canvasHistory.undoLabel}
@@ -114,7 +115,7 @@ function App() {
               }
             }}
             onNavigateToDiagram={({ diagramId, node, elementId }) => {
-              selection.setSelectedDiagramId(diagramId)
+              handleViewModeSelectDiagram(diagramId)
               selection.setSelectedNode(node ?? null)
               selection.setSelectedElementId(elementId)
               selection.setSelectedRelationshipRef(null)
@@ -123,7 +124,7 @@ function App() {
               selection.setSelectedRelationshipRef(null)
               if (found?.pending) {
                 pendingElementFocusRef.current = elementId
-                selection.setSelectedDiagramId(found.diagramId)
+                handleViewModeSelectDiagram(found.diagramId)
                 selection.setSelectedElementId(elementId)
                 selection.setSelectedNode(null)
                 return
@@ -131,7 +132,7 @@ function App() {
               selection.setSelectedElementId(elementId)
               selection.setSelectedNode(null)
               if (found?.node) {
-                selection.setSelectedDiagramId(found.diagramId)
+                handleViewModeSelectDiagram(found.diagramId)
                 selection.setSelectedNode(found.node)
               }
             }}
@@ -141,10 +142,10 @@ function App() {
               selection.setSelectedRelationshipRef(relationshipId)
               selection.setSelectedBendpointIndex(null)
               if (diagramId) {
-                selection.setSelectedDiagramId(diagramId)
+                handleViewModeSelectDiagram(diagramId)
               }
             }}
-            onSelectDiagram={selection.handleSelectDiagram}
+            onSelectDiagram={handleViewModeSelectDiagram}
           />
         ) : null}
         {appTab === 'admin' ? <AdminPanel git={git} /> : null}

@@ -114,7 +114,7 @@ function getConnectionXmlChildren(parent: Element): Element[] {
   return out
 }
 
-function findDiagramXmlObjectById(root: Element, nodeId: string): Element | null {
+export function findDiagramXmlObjectById(root: Element, nodeId: string): Element | null {
   function walk(parent: Element): Element | null {
     for (const child of getDiagramObjectXmlChildren(parent)) {
       if (getId(child) === nodeId) {
@@ -236,6 +236,8 @@ function appendNodeUnderXmlParent(
       }
     }
 
+    parentXmlEl.appendChild(xmlChild)
+  } else if (xmlChild.parentElement !== parentXmlEl) {
     parentXmlEl.appendChild(xmlChild)
   }
 

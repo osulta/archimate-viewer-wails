@@ -437,12 +437,36 @@ export function ensureCreatedDiagramsInXml(
   }
 }
 
-function syncArchiDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], parentAbsX: number, parentAbsY: number): void {
-  const xmlChildren = getDirectChildrenByTag(parentEl, 'child')
+function findDiagramObjectByIdInXml(root: Element, nodeId: string, childLocalName: string): Element | null {
+  function walk(parent: Element): Element | null {
+    for (const child of getDirectChildrenByTag(parent, childLocalName)) {
+      if (getId(child) === nodeId) {
+        return child
+      }
+      const nested = walk(child)
+      if (nested) {
+        return nested
+      }
+    }
+    return null
+  }
+  return walk(root)
+}
+
+function syncArchiDiagramChildrenToXml(
+  diagramEl: Element,
+  parentEl: Element,
+  nodes: DiagramNode[],
+  parentAbsX: number,
+  parentAbsY: number,
+): void {
   for (const node of nodes) {
-    const xmlChild = xmlChildren.find((c) => getId(c) === node.id)
+    const xmlChild = findDiagramObjectByIdInXml(diagramEl, node.id, 'child')
     if (!xmlChild) {
       continue
+    }
+    if (xmlChild.parentElement !== parentEl) {
+      parentEl.appendChild(xmlChild)
     }
     const bounds = getDirectChildByTag(xmlChild, 'bounds')
     if (bounds) {
@@ -452,16 +476,24 @@ function syncArchiDiagramChildrenToXml(parentEl: Element, nodes: DiagramNode[], 
       bounds.setAttribute('height', formatDiagramCoord(node.height))
     }
     applyDiagramObjectVisualToXml(xmlChild, node)
-    syncArchiDiagramChildrenToXml(xmlChild, node.children, node.x, node.y)
+    syncArchiDiagramChildrenToXml(diagramEl, xmlChild, node.children, node.x, node.y)
   }
 }
 
-function syncViewDiagramNodesToXml(parentEl: Element, nodes: DiagramNode[], parentAbsX: number, parentAbsY: number): void {
-  const xmlNodes = getDirectChildrenByTag(parentEl, 'node')
+function syncViewDiagramNodesToXml(
+  viewEl: Element,
+  parentEl: Element,
+  nodes: DiagramNode[],
+  parentAbsX: number,
+  parentAbsY: number,
+): void {
   for (const node of nodes) {
-    const xmlNode = xmlNodes.find((c) => getId(c) === node.id)
+    const xmlNode = findDiagramObjectByIdInXml(viewEl, node.id, 'node')
     if (!xmlNode) {
       continue
+    }
+    if (xmlNode.parentElement !== parentEl) {
+      parentEl.appendChild(xmlNode)
     }
     const bounds = getDirectChildByTag(xmlNode, 'bounds')
     if (bounds) {
@@ -476,7 +508,7 @@ function syncViewDiagramNodesToXml(parentEl: Element, nodes: DiagramNode[], pare
       }
     }
     applyDiagramObjectVisualToXml(xmlNode, node)
-    syncViewDiagramNodesToXml(xmlNode, node.children, node.x, node.y)
+    syncViewDiagramNodesToXml(viewEl, xmlNode, node.children, node.x, node.y)
   }
 }
 
@@ -503,13 +535,13 @@ export function applyDiagramLayoutToXml(
     const nodes = applyOverridesToNodes(diagram.nodes, overrides)
     const diagramEl = findArchiDiagramElement(allElements, diagramId)
     if (diagramEl) {
-      syncArchiDiagramChildrenToXml(diagramEl, nodes, 0, 0)
+      syncArchiDiagramChildrenToXml(diagramEl, diagramEl, nodes, 0, 0)
       return
     }
 
     const viewEl = findViewDiagramElement(allElements, diagramId)
     if (viewEl) {
-      syncViewDiagramNodesToXml(viewEl, nodes, 0, 0)
+      syncViewDiagramNodesToXml(viewEl, viewEl, nodes, 0, 0)
     }
   })
 }

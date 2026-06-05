@@ -1,6 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AppTab } from '../../app/types'
 import { deriveModelLoadState } from '../../lib/model-editor/apply-model-load'
+import {
+  getViewModeDiagramIdFromLocation,
+  resolveDiagramIdInModel,
+  setViewModeDiagramInUrl,
+} from '../../lib/view-mode-url'
 import { useGitIntegration } from '../use-git-integration'
 import { useSplitModelRuntime } from '../use-split-model-runtime'
 import type { ModelLoadPayload } from '../../types/model'
@@ -9,8 +14,17 @@ import { useModelSelection } from './use-model-selection'
 import { useModelMutations } from './use-model-mutations'
 import { useModelSave } from './use-model-save'
 
+function readInitialViewModeDiagramId(): string | null {
+  if (typeof window === 'undefined') {
+    return null
+  }
+  return getViewModeDiagramIdFromLocation(window.location)
+}
+
 export function useArchimateApp() {
-  const [appTab, setAppTab] = useState<AppTab>('modeling')
+  const initialViewDiagramId = readInitialViewModeDiagramId()
+  const pendingViewDiagramRef = useRef<string | null>(initialViewDiagramId)
+  const [appTab, setAppTab] = useState<AppTab>(initialViewDiagramId ? 'viewMode' : 'modeling')
   const [compareDiagramId, setCompareDiagramId] = useState('')
 
   const editState = useModelEditState()
@@ -18,13 +32,38 @@ export function useArchimateApp() {
   const mutations = useModelMutations({ editState, selection })
   const { clearCanvasHistory, undoCanvasCommand, redoCanvasCommand, canvasHistory } = mutations
 
+  const applyViewModeDiagramFromUrl = useCallback(
+    (parsedModel: NonNullable<typeof editState.model>, fallbackDiagramId: string): string => {
+      const pending =
+        pendingViewDiagramRef.current ?? getViewModeDiagramIdFromLocation(window.location)
+      if (!pending) {
+        return fallbackDiagramId
+      }
+      const resolved = resolveDiagramIdInModel(parsedModel, pending)
+      pendingViewDiagramRef.current = null
+      if (!resolved) {
+        editState.setError(`Диаграмма «${pending}» не найдена в модели.`)
+        setViewModeDiagramInUrl(null)
+        return fallbackDiagramId
+      }
+      setAppTab('viewMode')
+      setViewModeDiagramInUrl(resolved)
+      return resolved
+    },
+    [editState],
+  )
+
   const applyParsedModelFromPayload = useCallback(
     (payload: ModelLoadPayload) => {
       const derived = deriveModelLoadState(payload)
       editState.setModel(derived.parsedModel)
       editState.setError('')
       editState.setSaveStatusMessage('')
-      selection.setSelectedDiagramId(derived.selectedDiagramId)
+      const selectedDiagramId = applyViewModeDiagramFromUrl(
+        derived.parsedModel,
+        derived.selectedDiagramId,
+      )
+      selection.setSelectedDiagramId(selectedDiagramId)
       selection.setSelectedNode(null)
       selection.setSelectedElementId(null)
       selection.setSelectedRelationshipRef(null)
@@ -46,7 +85,7 @@ export function useArchimateApp() {
       editState.setLoadedFilename(derived.loadedFilename)
       clearCanvasHistory()
     },
-    [editState, selection, clearCanvasHistory],
+    [editState, selection, clearCanvasHistory, applyViewModeDiagramFromUrl],
   )
 
   const git = useGitIntegration({
@@ -103,7 +142,86 @@ export function useArchimateApp() {
     }
     setCompareDiagramId(selection.selectedDiagramId)
     setAppTab('changes')
+    setViewModeDiagramInUrl(null)
   }, [selection.selectedDiagramId])
+
+  const handleAppTabChange = useCallback(
+    (tab: AppTab) => {
+      setAppTab(tab)
+      if (tab === 'viewMode') {
+        if (selection.selectedDiagramId) {
+          setViewModeDiagramInUrl(selection.selectedDiagramId)
+        }
+        return
+      }
+      setViewModeDiagramInUrl(null)
+    },
+    [selection.selectedDiagramId],
+  )
+
+  const handleViewModeSelectDiagram = useCallback(
+    (diagramId: string) => {
+      selection.handleSelectDiagram(diagramId)
+      if (appTab === 'viewMode') {
+        setViewModeDiagramInUrl(diagramId)
+      }
+    },
+    [appTab, selection],
+  )
+
+  useEffect(() => {
+    if (appTab !== 'viewMode' || !selection.selectedDiagramId) {
+      return
+    }
+    const fromUrl = getViewModeDiagramIdFromLocation(window.location)
+    if (fromUrl === selection.selectedDiagramId) {
+      return
+    }
+    setViewModeDiagramInUrl(selection.selectedDiagramId)
+  }, [appTab, selection.selectedDiagramId])
+
+  useEffect(() => {
+    if (!editState.model) {
+      return
+    }
+    const pending = pendingViewDiagramRef.current
+    if (!pending) {
+      return
+    }
+    const resolved = resolveDiagramIdInModel(editState.model, pending)
+    pendingViewDiagramRef.current = null
+    if (!resolved) {
+      editState.setError(`Диаграмма «${pending}» не найдена в модели.`)
+      setViewModeDiagramInUrl(null)
+      return
+    }
+    setAppTab('viewMode')
+    selection.setSelectedDiagramId(resolved)
+    setViewModeDiagramInUrl(resolved)
+  }, [editState.model, editState, selection])
+
+  useEffect(() => {
+    function onPopState() {
+      const diagramId = getViewModeDiagramIdFromLocation(window.location)
+      if (!diagramId) {
+        setAppTab('modeling')
+        return
+      }
+      setAppTab('viewMode')
+      if (editState.model) {
+        const resolved = resolveDiagramIdInModel(editState.model, diagramId)
+        if (resolved) {
+          selection.handleSelectDiagram(resolved)
+          return
+        }
+        editState.setError(`Диаграмма «${diagramId}» не найдена в модели.`)
+      } else {
+        pendingViewDiagramRef.current = diagramId
+      }
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [editState, selection])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -190,6 +308,8 @@ export function useArchimateApp() {
   return {
     appTab,
     setAppTab,
+    handleAppTabChange,
+    handleViewModeSelectDiagram,
     compareDiagramId,
     setCompareDiagramId,
     editState,

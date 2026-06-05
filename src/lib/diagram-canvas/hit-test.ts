@@ -1,6 +1,12 @@
 import { distancePointToSegment } from '../archimate/connection-geometry'
 import type { ParsedDiagram } from '../../types/model'
 import type { RenderedConnection } from './types'
+import { BENDPOINT_HIT_RADIUS } from './constants'
+
+export interface BendpointHit {
+  relationshipRef: string
+  index: number
+}
 
 export function pickRelationshipAtScreenPoint(
   x: number,
@@ -20,6 +26,30 @@ export function pickRelationshipAtScreenPoint(
   return null
 }
 
+function findBendpointHitInConnection(
+  relationshipRef: string,
+  x: number,
+  y: number,
+  diagram: ParsedDiagram,
+  renderedConnections: RenderedConnection[],
+  hitRadius: number = BENDPOINT_HIT_RADIUS,
+): number | null {
+  const rendered = renderedConnections.find((item) => item.relationshipRef === relationshipRef)
+  const conn = diagram.connections.find((item) => item.relationshipRef === relationshipRef)
+  if (!rendered || !conn?.bendpoints?.length) {
+    return null
+  }
+  for (let i = 0; i < conn.bendpoints.length; i += 1) {
+    const bp = conn.bendpoints[i]
+    const hx = rendered.sourceCenter.x + (bp.startX ?? 0)
+    const hy = rendered.sourceCenter.y + (bp.startY ?? 0)
+    if (Math.hypot(x - hx, y - hy) <= hitRadius) {
+      return i
+    }
+  }
+  return null
+}
+
 export function findBendpointHitIndex(
   relationshipRef: string,
   x: number,
@@ -30,20 +60,31 @@ export function findBendpointHitIndex(
   if (!relationshipRef || !diagram) {
     return null
   }
-  const selectedConnection = renderedConnections.find((c) => c.relationshipRef === relationshipRef)
-  if (!selectedConnection) {
+  return findBendpointHitInConnection(relationshipRef, x, y, diagram, renderedConnections)
+}
+
+export function findBendpointHitAtPoint(
+  x: number,
+  y: number,
+  diagram: ParsedDiagram | null,
+  renderedConnections: RenderedConnection[],
+): BendpointHit | null {
+  if (!diagram) {
     return null
   }
-  const conn = diagram.connections.find((c) => c.relationshipRef === relationshipRef)
-  if (!conn?.bendpoints?.length) {
-    return null
-  }
-  for (let i = 0; i < conn.bendpoints.length; i += 1) {
-    const bp = conn.bendpoints[i]
-    const hx = selectedConnection.sourceCenter.x + (bp.startX ?? 0)
-    const hy = selectedConnection.sourceCenter.y + (bp.startY ?? 0)
-    if (Math.hypot(x - hx, y - hy) <= 8) {
-      return i
+  for (const conn of diagram.connections) {
+    if (!conn.bendpoints?.length) {
+      continue
+    }
+    const index = findBendpointHitInConnection(
+      conn.relationshipRef,
+      x,
+      y,
+      diagram,
+      renderedConnections,
+    )
+    if (index !== null) {
+      return { relationshipRef: conn.relationshipRef, index }
     }
   }
   return null
