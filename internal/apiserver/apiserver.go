@@ -203,6 +203,7 @@ func (s *Server) waitHealthy(ctx context.Context, timeout time.Duration) error {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/health", s.handleHealth)
+	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPI)
 	mux.HandleFunc("/api/git/repo-root", s.handleRepoRoot)
 	mux.HandleFunc("/api/git/repo-state", s.handleRepoState)
 	mux.HandleFunc("/api/git/settings", s.handleSettings)

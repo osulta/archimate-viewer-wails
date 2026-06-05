@@ -1,0 +1,1339 @@
+openapi: 3.0.3
+info:
+  title: ArchiMate Viewer Git & Model API
+  description: |
+    Local HTTP API for Git operations and ArchiMate model read/write inside a
+    configured repository root (`GIT_REPO_ROOT`).
+
+    The server binds to loopback (`127.0.0.1`) and is started either:
+
+    - **In-process** inside the Wails desktop app, or
+    - **Standalone** via `go run ./cmd/git-api` (development; Vite proxies `/api`).
+
+    All paths are relative to `GIT_REPO_ROOT`. Model paths must stay within that
+    root. Git commands require `git` on `PATH`.
+
+    **Authentication:** none (local-only API).
+
+    **CORS:** `Access-Control-Allow-Origin: *`; methods `GET`, `POST`, `OPTIONS`.
+  version: 1.0.0
+  contact:
+    name: ArchiMate Viewer
+
+servers:
+  - url: http://127.0.0.1:5151
+    description: Default port (overridable via `GIT_API_PORT`)
+  - url: /
+    description: Same origin (Vite dev proxy or Wails-injected base URL)
+
+tags:
+  - name: Health
+    description: Server health and configuration
+  - name: Git
+    description: Repository operations (clone, commit, push, branches, etc.)
+  - name: Model
+    description: ArchiMate model file read/write (single-file and split layouts)
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Health check
+      description: Returns server health and the current `GIT_REPO_ROOT`.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                ok: true
+                repoRoot: /Users/dev/archimate-models
+
+  /api/git/repo-root:
+    get:
+      tags: [Health]
+      summary: Get repository root
+      description: Returns the active and platform-default repository roots.
+      operationId: getRepoRoot
+      responses:
+        '200':
+          description: Current configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoRootResponse'
+    post:
+      tags: [Health]
+      summary: Set repository root
+      description: |
+        Switches `GIT_REPO_ROOT` for all subsequent git/model operations.
+        Send `{ "reset": true }` to restore the platform default.
+      operationId: setRepoRoot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetRepoRootRequest'
+            examples:
+              setPath:
+                summary: Set absolute path
+                value:
+                  repoRoot: /Users/dev/archimate-models
+              reset:
+                summary: Reset to default
+                value:
+                  reset: true
+      responses:
+        '200':
+          description: Root updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoRootResponse'
+        '400':
+          description: Invalid path or persistence error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '405':
+          description: Method not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/git/repo-state:
+    post:
+      tags: [Git]
+      summary: Inspect work folder state
+      description: |
+        Reports whether a `.git` directory exists under the work folder, the
+        configured remote URL, current branch, and detected model path/layout.
+      operationId: getRepoState
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFolderRequest'
+      responses:
+        '200':
+          description: Repository state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RepoStateResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/settings:
+    post:
+      tags: [Git]
+      summary: Configure remote and verify PAT
+      description: |
+        Sets or updates a git remote URL (credentials stripped from stored URL).
+        Optionally verifies a Personal Access Token via `git ls-remote` for HTTPS
+        remotes; PAT is applied temporarily and removed after verification.
+      operationId: updateGitSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitSettingsRequest'
+      responses:
+        '200':
+          description: Settings applied
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitSettingsResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/status:
+    post:
+      tags: [Git]
+      summary: Git status
+      description: |
+        Runs `git status --porcelain=v1 -u`. When `path` is set, scopes status
+        to the model file (or split-model directory) resolved from that path.
+      operationId: gitStatus
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitStatusRequest'
+      responses:
+        '200':
+          description: Status output
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitStatusResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/show-file:
+    post:
+      tags: [Git]
+      summary: Show file at ref
+      description: |
+        Returns file content from a git ref (`git show ref:path`). Used for
+        comparing a single-file model version from another branch.
+      operationId: gitShowFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitShowFileRequest'
+      responses:
+        '200':
+          description: File content at ref
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitShowFileResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/add:
+    post:
+      tags: [Git]
+      summary: Stage model files
+      description: |
+        Stages the model file or entire split-model directory (`git add`) for the
+        path resolved from `path`.
+      operationId: gitAdd
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPathRequest'
+      responses:
+        '200':
+          description: Staging result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitCommandResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/clone:
+    post:
+      tags: [Git]
+      summary: Clone repository
+      description: |
+        Clones a remote repository into a subdirectory of `GIT_REPO_ROOT`.
+        Target directory must be empty. Supports shallow clone (`depth: true`) and
+        HTTPS PAT (sanitized from `origin` URL after clone).
+      operationId: gitClone
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitCloneRequest'
+      responses:
+        '200':
+          description: Clone finished (check `ok` and `code`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitCloneResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/commit:
+    post:
+      tags: [Git]
+      summary: Commit model changes
+      description: |
+        Stages model paths then runs `git commit -m`. For split models the
+        entire model directory is staged.
+      operationId: gitCommit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitCommitRequest'
+      responses:
+        '200':
+          description: Commit succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitCommitSuccessResponse'
+        '400':
+          description: Add or commit failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitCommitErrorResponse'
+
+  /api/git/push:
+    post:
+      tags: [Git]
+      summary: Push to remote
+      description: |
+        Pushes to a remote branch. Supports temporary HTTPS PAT injection
+        (`originSanitized` in response when PAT was used).
+      operationId: gitPush
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitPushPullRequest'
+      responses:
+        '200':
+          description: Push finished (check `ok`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitPushResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/pull:
+    post:
+      tags: [Git]
+      summary: Pull from remote
+      description: Runs `git pull <remote> <branch>` (default branch `main`).
+      operationId: gitPull
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitPushPullRequest'
+      responses:
+        '200':
+          description: Pull finished (check `ok`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitPullResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/branches:
+    post:
+      tags: [Git]
+      summary: List branches
+      description: |
+        Lists local and remote branches. Optionally runs `git fetch --prune`
+        first (`fetch: true`), with optional HTTPS PAT.
+      operationId: gitBranches
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitBranchesRequest'
+      responses:
+        '200':
+          description: Branch list
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitBranchesResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/checkout:
+    post:
+      tags: [Git]
+      summary: Checkout branch
+      description: |
+        Checks out a local branch, creates one (`createBranch: true`), or attaches
+        a local branch tracking a remote ref.
+      operationId: gitCheckout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitCheckoutRequest'
+      responses:
+        '200':
+          description: Checkout result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GitCheckoutResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/delete-repository:
+    post:
+      tags: [Git]
+      summary: Delete cloned repository
+      description: |
+        Removes the work-folder directory (must contain `.git`). Cannot delete
+        the `GIT_REPO_ROOT` itself.
+      operationId: deleteRepository
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WorkFolderRequest'
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteRepositoryResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/read-split-index:
+    post:
+      tags: [Git]
+      summary: Split-model index at ref
+      description: |
+        Builds a lightweight parsed-model index from a split model (`folder.xml`
+        manifest) as it exists at a git ref. Used for branch comparison.
+      operationId: gitReadSplitIndex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitSplitRefRequest'
+      responses:
+        '200':
+          description: Parsed split-model index at ref
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SplitIndexResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/git/read-split-compare-bundle:
+    post:
+      tags: [Git]
+      summary: Split-model compare bundle at ref
+      description: |
+        Loads one diagram and its referenced elements/relationships from a split
+        model at a git ref. Used for visual diff against the working tree.
+      operationId: gitReadSplitCompareBundle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GitSplitCompareBundleRequest'
+      responses:
+        '200':
+          description: Diagram compare bundle
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SplitCompareBundleResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/model/read:
+    post:
+      tags: [Model]
+      summary: Read single-file model
+      description: Reads a single `.archimate` or exchange XML file from disk.
+      operationId: modelRead
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPathRequest'
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/model/write:
+    post:
+      tags: [Model]
+      summary: Write single-file model
+      description: Writes XML content to a model file (creates parent directories).
+      operationId: modelWrite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelWriteRequest'
+      responses:
+        '200':
+          description: File written
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelWriteResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/model/read-split-index:
+    post:
+      tags: [Model]
+      summary: Read split-model index
+      description: |
+        Builds a lightweight parsed-model index from a split model on disk
+        (manifest at `path`, typically `.../model/folder.xml`).
+      operationId: modelReadSplitIndex
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPathRequest'
+      responses:
+        '200':
+          description: Parsed split-model index
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SplitIndexResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Manifest or model directory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/model/read-split-file:
+    post:
+      tags: [Model]
+      summary: Read one split-model XML file
+      description: Reads a single XML fragment inside a split model by relative path.
+      operationId: modelReadSplitFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SplitFileReadRequest'
+      responses:
+        '200':
+          description: File content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SplitFileReadResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/model/read-split:
+    post:
+      tags: [Model]
+      summary: Read and fully parse split model
+      description: |
+        Fully parses all XML files in a split model on disk (heavier than
+        `read-split-index`; includes diagram nodes and connections).
+      operationId: modelReadSplit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelPathRequest'
+      responses:
+        '200':
+          description: Fully parsed split model
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SplitFullParseResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Manifest or model directory not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  responses:
+    BadRequest:
+      description: Invalid request or operation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        error:
+          type: string
+          description: Human-readable error message (often Russian)
+      additionalProperties: true
+
+    HealthResponse:
+      type: object
+      required: [ok, repoRoot]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        repoRoot:
+          type: string
+          description: Absolute path to GIT_REPO_ROOT
+
+    RepoRootResponse:
+      type: object
+      required: [ok, repoRoot, defaultRepoRoot]
+      properties:
+        ok:
+          type: boolean
+        repoRoot:
+          type: string
+        defaultRepoRoot:
+          type: string
+
+    SetRepoRootRequest:
+      type: object
+      properties:
+        repoRoot:
+          type: string
+          description: Absolute path to use as GIT_REPO_ROOT
+        reset:
+          type: boolean
+          description: When true, restore defaultRepoRoot
+
+    WorkFolderRequest:
+      type: object
+      properties:
+        workFolder:
+          type: string
+          default: git
+          description: Subdirectory of GIT_REPO_ROOT (POSIX-style relative path)
+
+    ModelPathRequest:
+      type: object
+      required: [path]
+      properties:
+        path:
+          type: string
+          description: Model file path relative to GIT_REPO_ROOT (forward slashes)
+
+    GitResult:
+      type: object
+      required: [code, stdout, stderr]
+      properties:
+        code:
+          type: integer
+          description: Git process exit code (0 = success)
+        stdout:
+          type: string
+        stderr:
+          type: string
+
+    RepoStateResponse:
+      type: object
+      required: [ok, workFolder, hasDotGit]
+      properties:
+        ok:
+          type: boolean
+        workFolder:
+          type: string
+        hasDotGit:
+          type: boolean
+        remoteUrl:
+          type: string
+        currentBranch:
+          type: string
+        modelPath:
+          type: string
+          description: Detected model path relative to GIT_REPO_ROOT
+        modelLayout:
+          type: string
+          enum: [single-file, split-files]
+
+    GitSettingsRequest:
+      type: object
+      properties:
+        workFolder:
+          type: string
+          default: git
+        remote:
+          type: string
+          default: origin
+        remoteUrl:
+          type: string
+          description: HTTPS, git@, or ssh:// URL (credentials stripped when stored)
+        pat:
+          type: string
+          description: Personal Access Token for HTTPS verification
+        patUsername:
+          type: string
+          description: Optional username for PAT (default depends on host)
+
+    GitSettingsResponse:
+      type: object
+      required: [ok, workFolder, hasDotGit]
+      properties:
+        ok:
+          type: boolean
+        workFolder:
+          type: string
+        hasDotGit:
+          type: boolean
+        patVerified:
+          type: boolean
+
+    GitStatusRequest:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Model path to scope status (optional)
+        workFolder:
+          type: string
+          description: Work tree when path is omitted
+
+    GitStatusResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        workTree:
+          type: string
+        code:
+          type: integer
+        stdout:
+          type: string
+          description: Porcelain status lines
+        stderr:
+          type: string
+
+    GitShowFileRequest:
+      type: object
+      required: [path, ref]
+      properties:
+        path:
+          type: string
+          description: Model file path relative to GIT_REPO_ROOT
+        ref:
+          type: string
+          description: Branch name, tag, or commit (git ref)
+
+    GitShowFileResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        content:
+          type: string
+        workTree:
+          type: string
+        ref:
+          type: string
+        path:
+          type: string
+        error:
+          type: string
+
+    GitCommandResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        workTree:
+          type: string
+        code:
+          type: integer
+        stdout:
+          type: string
+        stderr:
+          type: string
+
+    GitCloneRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+        directory:
+          type: string
+          description: Target folder name under GIT_REPO_ROOT
+        workFolder:
+          type: string
+          description: Alias for directory when directory is omitted
+        depth:
+          type: boolean
+          description: Shallow clone with --depth 1
+        pat:
+          type: string
+        patUsername:
+          type: string
+
+    GitCloneResponse:
+      type: object
+      required: [ok, path, code]
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+          description: Relative path of cloned repo
+        stdout:
+          type: string
+        stderr:
+          type: string
+        code:
+          type: integer
+        originSanitized:
+          type: boolean
+          description: PAT removed from origin URL after clone
+        modelPath:
+          type: string
+          nullable: true
+        modelLayout:
+          type: string
+          enum: [single-file, split-files]
+          nullable: true
+
+    GitCommitRequest:
+      type: object
+      required: [message, path]
+      properties:
+        message:
+          type: string
+        path:
+          type: string
+          description: Model path used to resolve work tree and stage paths
+
+    GitCommitSuccessResponse:
+      type: object
+      required: [ok, workTree, stagePaths, add, commit]
+      properties:
+        ok:
+          type: boolean
+          enum: [true]
+        workTree:
+          type: string
+        stagePaths:
+          type: array
+          items:
+            type: string
+        add:
+          $ref: '#/components/schemas/GitResult'
+        commit:
+          $ref: '#/components/schemas/GitResult'
+
+    GitCommitErrorResponse:
+      type: object
+      required: [ok, step]
+      properties:
+        ok:
+          type: boolean
+          enum: [false]
+        step:
+          type: string
+          enum: [add, commit]
+        workTree:
+          type: string
+        stagePaths:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+        add:
+          $ref: '#/components/schemas/GitResult'
+        commit:
+          $ref: '#/components/schemas/GitResult'
+
+    GitPushPullRequest:
+      type: object
+      properties:
+        path:
+          type: string
+          description: Model path to resolve work tree
+        workFolder:
+          type: string
+        remote:
+          type: string
+          default: origin
+        branch:
+          type: string
+        setUpstream:
+          type: boolean
+          description: Push only — pass -u to git push
+        pat:
+          type: string
+        patUsername:
+          type: string
+
+    GitPushResponse:
+      type: object
+      required: [ok, workTree]
+      properties:
+        ok:
+          type: boolean
+        workTree:
+          type: string
+        push:
+          $ref: '#/components/schemas/GitResult'
+        originSanitized:
+          type: boolean
+        restoreRemote:
+          $ref: '#/components/schemas/GitResult'
+
+    GitPullResponse:
+      type: object
+      required: [ok, workTree]
+      properties:
+        ok:
+          type: boolean
+        workTree:
+          type: string
+        pull:
+          $ref: '#/components/schemas/GitResult'
+        originSanitized:
+          type: boolean
+        restoreRemote:
+          $ref: '#/components/schemas/GitResult'
+
+    GitBranchesRequest:
+      type: object
+      properties:
+        path:
+          type: string
+        workFolder:
+          type: string
+        fetch:
+          type: boolean
+          description: Run git fetch --prune before listing
+        remote:
+          type: string
+          default: origin
+        pat:
+          type: string
+        patUsername:
+          type: string
+
+    GitBranch:
+      type: object
+      required: [name, current, local]
+      properties:
+        name:
+          type: string
+        current:
+          type: boolean
+        local:
+          type: boolean
+
+    GitBranchesResponse:
+      type: object
+      required: [ok, branches, workTree]
+      properties:
+        ok:
+          type: boolean
+        branches:
+          type: array
+          items:
+            $ref: '#/components/schemas/GitBranch'
+        workTree:
+          type: string
+        fetch:
+          $ref: '#/components/schemas/GitResult'
+
+    GitCheckoutRequest:
+      type: object
+      required: [branch]
+      properties:
+        path:
+          type: string
+        workFolder:
+          type: string
+        branch:
+          type: string
+        createBranch:
+          type: boolean
+        startPoint:
+          type: string
+          description: Start point when createBranch is true
+
+    GitCheckoutResponse:
+      type: object
+      required: [ok, workTree, checkout, checkoutMode]
+      properties:
+        ok:
+          type: boolean
+        workTree:
+          type: string
+        checkout:
+          $ref: '#/components/schemas/GitResult'
+        checkoutMode:
+          type: string
+          enum:
+            - checkout
+            - checkout-attached-from-remote
+        currentBranch:
+          type: string
+
+    DeleteRepositoryResponse:
+      type: object
+      required: [ok, deleted, rel]
+      properties:
+        ok:
+          type: boolean
+        deleted:
+          type: boolean
+        rel:
+          type: string
+        message:
+          type: string
+
+    GitSplitRefRequest:
+      type: object
+      required: [path, ref]
+      properties:
+        path:
+          type: string
+          description: Path to split-model manifest (folder.xml)
+        ref:
+          type: string
+
+    GitSplitCompareBundleRequest:
+      type: object
+      required: [path, ref, diagramSourceFile]
+      properties:
+        path:
+          type: string
+        ref:
+          type: string
+        diagramSourceFile:
+          type: string
+          description: Diagram XML path relative to model root
+
+    ModelReadResponse:
+      type: object
+      required: [ok, path, content, layout]
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+        content:
+          type: string
+          description: Raw XML
+        layout:
+          type: string
+          enum: [single-file]
+
+    ModelWriteRequest:
+      type: object
+      required: [path, content]
+      properties:
+        path:
+          type: string
+        content:
+          type: string
+          description: Full XML document
+
+    ModelWriteResponse:
+      type: object
+      required: [ok, path]
+      properties:
+        ok:
+          type: boolean
+        path:
+          type: string
+
+    SplitFileReadRequest:
+      type: object
+      required: [modelRoot, relativePath]
+      properties:
+        modelRoot:
+          type: string
+          description: Split model root relative to GIT_REPO_ROOT
+        relativePath:
+          type: string
+          description: XML file path relative to modelRoot
+
+    SplitFileReadResponse:
+      type: object
+      required: [ok, modelRoot, relativePath, content]
+      properties:
+        ok:
+          type: boolean
+        modelRoot:
+          type: string
+        relativePath:
+          type: string
+        content:
+          type: string
+
+    ParsedModelIndexes:
+      type: object
+      properties:
+        elementRefToDiagramIds:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+        relationshipRefToDiagramIds:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string
+
+    ParsedElement:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        documentation:
+          type: string
+        folderPath:
+          type: string
+        sourceFile:
+          type: string
+        lite:
+          type: boolean
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/ElementProperty'
+
+    ElementProperty:
+      type: object
+      properties:
+        key:
+          type: string
+        value:
+          type: string
+
+    ParsedRelationship:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        source:
+          type: string
+        target:
+          type: string
+        documentation:
+          type: string
+        folderPath:
+          type: string
+        sourceFile:
+          type: string
+        properties:
+          type: array
+          items:
+            $ref: '#/components/schemas/ElementProperty'
+
+    DiagramNode:
+      type: object
+      properties:
+        id:
+          type: string
+        elementRef:
+          type: string
+        type:
+          type: string
+        label:
+          type: string
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagramNode'
+
+    DiagramConnection:
+      type: object
+      properties:
+        id:
+          type: string
+        relationshipRef:
+          type: string
+        source:
+          type: string
+        target:
+          type: string
+        bendpoints:
+          type: array
+          items:
+            type: object
+
+    ParsedDiagram:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+        folderPath:
+          type: string
+        sourceFile:
+          type: string
+        loaded:
+          type: boolean
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagramNode'
+        connections:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagramConnection'
+
+    ParsedModelData:
+      type: object
+      description: Serialized parsed model (index or full parse)
+      properties:
+        modelName:
+          type: string
+        format:
+          type: string
+          enum: [archi-tool, exchange, split-files]
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedElement'
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedRelationship'
+        diagrams:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedDiagram'
+        modelRoot:
+          type: string
+        manifestPath:
+          type: string
+        indexes:
+          $ref: '#/components/schemas/ParsedModelIndexes'
+
+    SplitIndexResponse:
+      type: object
+      required: [ok, layout, path, manifestPath, modelRoot, parsedModel]
+      properties:
+        ok:
+          type: boolean
+        layout:
+          type: string
+          enum: [split-files]
+        path:
+          type: string
+        manifestPath:
+          type: string
+        modelRoot:
+          type: string
+        elementCount:
+          type: integer
+        diagramCount:
+          type: integer
+        ref:
+          type: string
+          description: Present for git/read-split-index
+        parsedModel:
+          $ref: '#/components/schemas/ParsedModelData'
+
+    SplitFullParseResponse:
+      type: object
+      required: [ok, layout, path, manifestPath, modelRoot, fileCount, parsedModel]
+      properties:
+        ok:
+          type: boolean
+        layout:
+          type: string
+          enum: [split-files]
+        path:
+          type: string
+        manifestPath:
+          type: string
+        modelRoot:
+          type: string
+        fileCount:
+          type: integer
+        parsedModel:
+          $ref: '#/components/schemas/ParsedModelData'
+
+    SplitCompareBundleResponse:
+      type: object
+      required: [ok, layout, ref, path, manifestPath, modelRoot]
+      properties:
+        ok:
+          type: boolean
+        layout:
+          type: string
+          enum: [split-files]
+        ref:
+          type: string
+        path:
+          type: string
+        manifestPath:
+          type: string
+        modelRoot:
+          type: string
+        diagram:
+          $ref: '#/components/schemas/ParsedDiagram'
+        elements:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedElement'
+        relationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/ParsedRelationship'
