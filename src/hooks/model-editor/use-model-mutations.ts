@@ -21,6 +21,10 @@ import {
   isDiagramReferenceNode,
 } from '../../lib/archimate/diagram-model'
 import { isSplitFilesModel } from '../../lib/model-editor/is-split-files-model'
+import {
+  resolveSplitElementFilePath,
+  resolveSplitRelationshipFilePath,
+} from '../../lib/archimate/split-model-save'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type {
   ParsedDiagram,
@@ -237,7 +241,27 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     pendingLinkType, linkCreateSourceId, setLinkCreateSourceId, setPendingLinkType,
     commitDiagramOverrides, commitRelationshipOverrides, commitElementOverrides,
     commitRelationshipMetaOverrides, markSplitDiagramDirty, clearLinkCreation,
+    deletedSplitModelFilesRef,
   } = editState
+
+  function trackDeletedSplitModelFile(relativePath: string): void {
+    const normalized = relativePath.replace(/^\/+/, '')
+    if (!normalized) {
+      return
+    }
+    deletedSplitModelFilesRef.current = new Set(deletedSplitModelFilesRef.current).add(normalized)
+  }
+
+  function markDiagramsUsingRelationship(relationshipRef: string): void {
+    if (!model) {
+      return
+    }
+    model.diagrams.forEach((diagram) => {
+      if (diagram.connections.some((connection) => connection.relationshipRef === relationshipRef)) {
+        markSplitDiagramDirty(diagram.id)
+      }
+    })
+  }
 
   const {
     selectedDiagramId, setSelectedDiagramId,
@@ -1259,6 +1283,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
     const ref = selectedRelationshipRef
+    const relationship = model.relationshipById.get(ref)
     const toRemove = diagram.connections.filter((c) => c.relationshipRef === ref)
     if (!toRemove.length) {
       window.alert('На текущей диаграмме нет визуализации этой связи.')
@@ -1313,6 +1338,13 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         next.add(ref)
         return next
       })
+      if (relationship && isSplitFilesModel(model)) {
+        trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
+      }
+    }
+
+    if (isSplitFilesModel(model)) {
+      markSplitDiagramDirty(selectedDiagramId)
     }
 
     setCreatedRelationships((prev) =>
@@ -1342,6 +1374,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     relationshipOverrides,
     originalConnectionIds,
     originalRelationshipIds,
+    markSplitDiagramDirty,
   ])
 
   const deleteRelationshipFromModel = useCallback(() => {
@@ -1349,6 +1382,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
     const ref = selectedRelationshipRef
+    const relationship = model.relationshipById.get(ref)
     if (!window.confirm('Удалить связь из модели? Она исчезнет на всех диаграммах.')) {
       return
     }
@@ -1392,6 +1426,17 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         next.add(ref)
         return next
       })
+      if (relationship && isSplitFilesModel(model)) {
+        trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
+      }
+    }
+
+    if (isSplitFilesModel(model)) {
+      model.diagrams.forEach((diagram) => {
+        if (diagram.connections.some((connection) => connection.relationshipRef === ref)) {
+          markSplitDiagramDirty(diagram.id)
+        }
+      })
     }
 
     setCreatedRelationships((prev) => prev.filter((cr) => cr.relationship.id !== ref))
@@ -1415,6 +1460,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     relationshipOverrides,
     originalConnectionIds,
     originalRelationshipIds,
+    markSplitDiagramDirty,
   ])
 
   const deleteElementFromModel = useCallback(() => {
@@ -1496,6 +1542,30 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextRelMetaOverrides = new Map(relationshipMetaOverrides)
     removedRelIds.forEach((id) => nextRelMetaOverrides.delete(id))
 
+    const element = model.elementById.get(elementId)
+    if (isSplitFilesModel(model)) {
+      if (element && originalElementIds.has(elementId)) {
+        trackDeletedSplitModelFile(resolveSplitElementFilePath(element))
+      }
+      relsToRemove.forEach((relationship) => {
+        if (originalRelationshipIds.has(relationship.id)) {
+          trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
+        }
+      })
+      model.diagrams.forEach((diagram) => {
+        const hadConnectionRemoval = diagram.connections.some(
+          (connection) =>
+            removedRelIds.has(connection.relationshipRef) ||
+            removedNodeIds.has(connection.source) ||
+            removedNodeIds.has(connection.target),
+        )
+        const hadNodeRemoval = collectNodeIdsRemovedForElement(diagram.nodes, elementId).length > 0
+        if (hadConnectionRemoval || hadNodeRemoval) {
+          markSplitDiagramDirty(diagram.id)
+        }
+      })
+    }
+
     setDeletedDiagramNodeIds((prev) => {
       const next = new Set(prev)
       removedNodeIds.forEach((id) => {
@@ -1573,6 +1643,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     originalElementIds,
     originalRelationshipIds,
     originalConnectionIds,
+    markSplitDiagramDirty,
   ])
 
   function updateRelationshipBendpoint(relationshipRef: string, bendpointIndex: number, bendpoint: Bendpoint) {

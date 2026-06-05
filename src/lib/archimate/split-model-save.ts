@@ -70,6 +70,16 @@ function connectionMatchesRelationship(connectionEl: Element, relationshipRef: s
   return idFromArchimateHref(href) === relationshipRef
 }
 
+function syncSplitDiagramConnectionsToXml(diagramRoot: Element, connections: DiagramConnection[]): void {
+  const activeIds = new Set(connections.map((connection) => connection.id))
+  for (const connEl of collectAllConnections(diagramRoot)) {
+    const id = getId(connEl)
+    if (id && !activeIds.has(id)) {
+      connEl.parentNode?.removeChild(connEl)
+    }
+  }
+}
+
 function collectAllConnections(diagramRoot: Element): Element[] {
   const out: Element[] = []
   function walk(parent: Element): void {
@@ -154,6 +164,8 @@ export function buildSplitDiagramSaveXml(
       saveContext.pendingRelationshipPaths ?? new Map(),
     )
   }
+
+  syncSplitDiagramConnectionsToXml(diagramRoot, diagram.connections)
 
   if (relationshipOverrideMap?.size) {
     const connections = collectAllConnections(diagramRoot)
@@ -276,8 +288,12 @@ function relationshipMetaIsDirty(relationship: ParsedRelationship, meta: Relatio
   return meta.name !== current
 }
 
+function splitModelRepoPath(modelRoot: string, relativePath: string): string {
+  return `${modelRoot.replace(/\/+$/u, '')}/${relativePath.replace(/^\/+/, '')}`
+}
+
 async function writeSplitModelFile(modelRoot: string, relativePath: string, content: string): Promise<string> {
-  const path = `${modelRoot.replace(/\/+$/u, '')}/${relativePath.replace(/^\/+/, '')}`
+  const path = splitModelRepoPath(modelRoot, relativePath)
   const response = await fetch(apiUrl('/api/model/write'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -290,6 +306,28 @@ async function writeSplitModelFile(modelRoot: string, relativePath: string, cont
   return data.path ?? path
 }
 
+async function deleteSplitModelFile(modelRoot: string, relativePath: string): Promise<string> {
+  const path = splitModelRepoPath(modelRoot, relativePath)
+  const response = await fetch(apiUrl('/api/model/delete'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path }),
+  })
+  const data = await response.json()
+  if (!data.ok) {
+    throw new Error(data.error || `Ошибка удаления ${relativePath}`)
+  }
+  return data.path ?? path
+}
+
+export function resolveSplitRelationshipFilePath(relationship: ParsedRelationship): string {
+  return relationship.sourceFile ?? buildSplitRelationshipRelativePath(relationship)
+}
+
+export function resolveSplitElementFilePath(element: ParsedElement): string {
+  return element.sourceFile ?? buildSplitElementRelativePath(element)
+}
+
 interface SaveSplitModelPayload {
   model: ParsedModel
   diagramOverrides: Map<string, Map<string, NodeOverride>>
@@ -300,6 +338,7 @@ interface SaveSplitModelPayload {
   createdObjects?: Array<{ diagramId: string; element: ParsedElement; node: DiagramNode; existingElement?: boolean }>
   createdRelationships?: Array<{ diagramId: string; relationship: ParsedRelationship; connection: DiagramConnection }>
   createdDiagramIds?: Set<string> | Iterable<string>
+  deletedSplitModelFiles?: Iterable<string>
 }
 
 interface SaveSplitModelResult {
@@ -320,6 +359,7 @@ export async function saveSplitModelChanges({
   createdObjects = [],
   createdRelationships = [],
   createdDiagramIds,
+  deletedSplitModelFiles = [],
 }: SaveSplitModelPayload): Promise<SaveSplitModelResult> {
   if (!model?.modelRoot) {
     throw new Error('Не указан каталог split-модели (modelRoot).')
@@ -334,6 +374,16 @@ export async function saveSplitModelChanges({
     }
     seenPaths.add(relativePath)
     const path = await writeSplitModelFile(model.modelRoot!, relativePath, content)
+    written.push(path)
+  }
+
+  async function deleteOnce(relativePath: string): Promise<void> {
+    const normalized = relativePath.replace(/^\/+/, '')
+    if (!normalized || seenPaths.has(`delete:${normalized}`)) {
+      return
+    }
+    seenPaths.add(`delete:${normalized}`)
+    const path = await deleteSplitModelFile(model.modelRoot!, normalized)
     written.push(path)
   }
 
@@ -419,6 +469,10 @@ export async function saveSplitModelChanges({
   relationshipOverrides.forEach((_ov, diagramId) => diagramIdsToSave.add(diagramId))
 
   const createdDiagramIdSet = new Set(createdDiagramIds ?? [])
+
+  for (const relativePath of deletedSplitModelFiles) {
+    await deleteOnce(relativePath)
+  }
 
   for (const diagramId of diagramIdsToSave) {
     const nodeOverrides = diagramOverrides.get(diagramId) ?? new Map()

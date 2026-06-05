@@ -221,6 +221,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/git/read-split-compare-bundle", s.handleGitReadSplitCompareBundle)
 	mux.HandleFunc("/api/model/read", s.handleModelRead)
 	mux.HandleFunc("/api/model/write", s.handleModelWrite)
+	mux.HandleFunc("/api/model/delete", s.handleModelDelete)
 	mux.HandleFunc("/api/model/read-split-index", s.handleModelReadSplitIndex)
 	mux.HandleFunc("/api/model/read-split-file", s.handleModelReadSplitFile)
 	mux.HandleFunc("/api/model/read-split", s.handleModelReadSplit)

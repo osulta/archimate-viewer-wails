@@ -759,6 +759,24 @@ func (s *Server) handleModelRead(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "content": string(content), "layout": "single-file"})
 }
 
+func (s *Server) handleModelDelete(w http.ResponseWriter, r *http.Request) {
+	body := readBody(r)
+	abs, rel, err := s.resolveAllowedModelPath(bodyStr(body, "path"))
+	if err != nil {
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := os.Remove(abs); err != nil {
+		if os.IsNotExist(err) {
+			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "deleted": false})
+			return
+		}
+		errJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "deleted": true})
+}
+
 func (s *Server) handleModelWrite(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	abs, rel, err := s.resolveAllowedModelPath(bodyStr(body, "path"))

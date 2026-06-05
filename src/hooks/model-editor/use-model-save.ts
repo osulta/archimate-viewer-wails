@@ -41,12 +41,14 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     elementOverridesRef,
     relationshipMetaOverridesRef,
     dirtySplitDiagramIdsRef,
+    deletedSplitModelFilesRef,
     getEditedModelXmlRef,
     setCreatedObjects,
     setCreatedRelationships,
     setCreatedDiagramIds,
     setSaveStatusMessage,
     setModelSaving,
+    clearCreatedAndDeletedTracking,
   } = editState
 
   getEditedModelXmlRef.current = () => {
@@ -97,15 +99,18 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
           createdObjects,
           createdRelationships,
           createdDiagramIds,
+          deletedSplitModelFiles: deletedSplitModelFilesRef.current,
         })
         if (result.written.length === 0) {
           setError('Нет изменений для сохранения в файлы модели.')
           return
         }
         dirtySplitDiagramIdsRef.current = new Set()
+        deletedSplitModelFilesRef.current = new Set()
         setCreatedObjects([])
         setCreatedRelationships([])
         setCreatedDiagramIds(new Set())
+        clearCreatedAndDeletedTracking()
         setModel((prev) => {
           if (!prev || prev.format !== 'split-files') {
             return prev
@@ -174,6 +179,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     elementOverridesRef,
     relationshipMetaOverridesRef,
     dirtySplitDiagramIdsRef,
+    deletedSplitModelFilesRef,
+    clearCreatedAndDeletedTracking,
     git,
     setError,
     setSaveStatusMessage,
