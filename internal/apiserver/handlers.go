@@ -115,10 +115,7 @@ func (s *Server) handleRepoRoot(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
-	if workFolderIn == "" {
-		workFolderIn = "git"
-	}
-	abs, rel, err := s.resolveCloneTargetDir(workFolderIn)
+	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
@@ -149,10 +146,7 @@ func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
-	if workFolderIn == "" {
-		workFolderIn = "git"
-	}
-	abs, rel, err := s.resolveCloneTargetDir(workFolderIn)
+	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
@@ -330,14 +324,9 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 	}
 	dirName := strings.TrimSpace(bodyStr(body, "directory"))
 	if dirName == "" {
-		wf := strings.TrimSpace(bodyStr(body, "workFolder"))
-		if wf != "" {
-			dirName = wf
-		} else {
-			dirName = "git"
-		}
+		dirName = strings.TrimSpace(bodyStr(body, "workFolder"))
 	}
-	abs, rel, err := s.resolveCloneTargetDir(dirName)
+	abs, rel, err := s.resolveWorkTreeDir(dirName)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
@@ -707,17 +696,14 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
 	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
-	if workFolderIn == "" {
-		workFolderIn = "git"
-	}
-	abs, rel, err := s.resolveCloneTargetDir(workFolderIn)
+	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	relFromRoot, e := filepath.Rel(s.RepoRoot(), abs)
-	if e != nil || relFromRoot == "" || relFromRoot == "." || strings.HasPrefix(relFromRoot, "..") {
-		errJSON(w, http.StatusBadRequest, "Нельзя удалить корень GIT_REPO_ROOT")
+	if e != nil || strings.HasPrefix(relFromRoot, "..") {
+		errJSON(w, http.StatusBadRequest, "Некорректный путь к репозиторию")
 		return
 	}
 	if !pathExists(abs) {
@@ -731,6 +717,21 @@ func (s *Server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) 
 	}
 	if !pathExists(filepath.Join(abs, ".git")) {
 		errJSON(w, http.StatusBadRequest, "В каталоге «"+rel+"» нет .git — удаление отменено.")
+		return
+	}
+	if relFromRoot == "." {
+		entries, readErr := os.ReadDir(abs)
+		if readErr != nil {
+			errJSON(w, http.StatusBadRequest, readErr.Error())
+			return
+		}
+		for _, entry := range entries {
+			if err := os.RemoveAll(filepath.Join(abs, entry.Name())); err != nil {
+				errJSON(w, http.StatusBadRequest, err.Error())
+				return
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": true, "rel": rel})
 		return
 	}
 	if err := os.RemoveAll(abs); err != nil {

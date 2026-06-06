@@ -14,18 +14,19 @@ interface GitRepoProbe {
 interface GitInfoBlockProps {
   gitApiReady: boolean
   gitRepoProbe: GitRepoProbe
-  gitWorkFolder: string
+  gitRepoRoot: string
   gitOutput: string
 }
 
-function GitInfoBlock({ gitApiReady, gitRepoProbe, gitWorkFolder, gitOutput }: GitInfoBlockProps) {
+function GitInfoBlock({ gitApiReady, gitRepoProbe, gitRepoRoot, gitOutput }: GitInfoBlockProps) {
+  const repoRootLabel = gitRepoRoot.trim() || 'GIT_REPO_ROOT'
   const repoMessage =
     gitApiReady && (gitRepoProbe.loaded || gitRepoProbe.loading)
       ? gitRepoProbe.loading
-        ? `Проверка папки «${gitWorkFolder.trim() || 'git'}»…`
+        ? `Проверка каталога «${repoRootLabel}»…`
         : gitRepoProbe.hasDotGit
-          ? `Репозиторий: ${gitRepoProbe.workFolder}${gitRepoProbe.currentBranch ? ` — ветка ${gitRepoProbe.currentBranch}` : ''}`
-          : `В папке «${gitWorkFolder.trim() || 'git'}» нет .git — клонируйте репозиторий или смените папку.`
+          ? `Репозиторий: ${gitRepoProbe.workFolder === '.' ? repoRootLabel : gitRepoProbe.workFolder}${gitRepoProbe.currentBranch ? ` — ветка ${gitRepoProbe.currentBranch}` : ''}`
+          : `В каталоге «${repoRootLabel}» нет .git — клонируйте репозиторий или укажите другой путь.`
       : ''
 
   return (
@@ -54,7 +55,6 @@ function GitInfoBlock({ gitApiReady, gitRepoProbe, gitWorkFolder, gitOutput }: G
 
 interface GitState {
   gitApiReady: boolean
-  gitWorkFolder: string
   gitCloneUrl: string
   gitConfigPat: string
   gitCloneShallow: boolean
@@ -66,7 +66,6 @@ interface GitState {
   gitOutput: string
   gitCommandLoading: boolean
   gitCommandLabel: string
-  setGitWorkFolder: (value: string) => void
   setGitCloneUrl: (value: string) => void
   setGitConfigPat: (value: string) => void
   setGitCloneShallow: (value: boolean) => void
@@ -113,8 +112,7 @@ function GitRepoRootBlock({
     <Card size="small" title="Каталог данных (GIT_REPO_ROOT)" aria-label="Каталог GIT_REPO_ROOT">
       <Space className="git-settings-fields" direction="vertical" size={10}>
         <Typography.Paragraph className="git-hint" style={{ marginBottom: 0 }}>
-          Корневой каталог, внутри которого хранятся клонированные репозитории. Папка репозитория
-          ниже указывается относительно него.
+          Каталог, в котором хранится git-репозиторий (внутри него появится <code>.git</code> после clone).
         </Typography.Paragraph>
         {gitRepoRoot ? (
           <Alert
@@ -182,7 +180,6 @@ interface GitPanelProps {
 export function GitPanel({ git, variant = 'admin' }: GitPanelProps) {
   const {
     gitApiReady,
-    gitWorkFolder,
     gitCloneUrl,
     gitConfigPat,
     gitCloneShallow,
@@ -194,7 +191,6 @@ export function GitPanel({ git, variant = 'admin' }: GitPanelProps) {
     gitOutput,
     gitCommandLoading,
     gitCommandLabel,
-    setGitWorkFolder,
     setGitCloneUrl,
     setGitConfigPat,
     setGitCloneShallow,
@@ -209,14 +205,13 @@ export function GitPanel({ git, variant = 'admin' }: GitPanelProps) {
 
   const settingsProps = {
     gitApiReady,
-    gitWorkFolder,
+    gitRepoRoot,
     gitCloneUrl,
     gitConfigPat,
     gitCloneShallow,
     gitCommandLoading,
     gitCommandLabel,
     gitRepoProbe,
-    onWorkFolderChange: setGitWorkFolder,
     onCloneUrlChange: setGitCloneUrl,
     onConfigPatChange: setGitConfigPat,
     onCloneShallowChange: setGitCloneShallow,
@@ -228,7 +223,7 @@ export function GitPanel({ git, variant = 'admin' }: GitPanelProps) {
   const infoProps: GitInfoBlockProps = {
     gitApiReady,
     gitRepoProbe,
-    gitWorkFolder,
+    gitRepoRoot,
     gitOutput,
   }
 

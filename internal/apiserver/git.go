@@ -149,12 +149,14 @@ func safeCheckoutTarget(ref string) (string, error) {
 	return s, nil
 }
 
-// resolveCloneTargetDir mirrors resolveCloneTargetDir.
-func (s *Server) resolveCloneTargetDir(dirInput string) (abs, rel string, err error) {
-	if strings.TrimSpace(dirInput) == "" {
-		return "", "", errors.New("Укажите имя каталога для клона")
-	}
+// resolveWorkTreeDir resolves a work tree directory under GIT_REPO_ROOT.
+// An empty or "." input refers to GIT_REPO_ROOT itself.
+func (s *Server) resolveWorkTreeDir(dirInput string) (abs, rel string, err error) {
 	trimmed := strings.TrimSpace(dirInput)
+	if trimmed == "" || trimmed == "." {
+		repoRoot := s.RepoRoot()
+		return repoRoot, ".", nil
+	}
 	trimmed = strings.TrimLeft(trimmed, "\\/")
 	trimmed = strings.ReplaceAll(trimmed, "\\", "/")
 	if trimmed == "" || strings.Contains(trimmed, "..") {
@@ -278,12 +280,10 @@ func (s *Server) resolveConfiguredWorkTree(modelPath, workFolderInput string) st
 	if mp != "" {
 		return s.resolveGitWorkTreeFromOptionalModelPath(mp)
 	}
-	rel := "git"
+	rel := "."
 	if strings.TrimSpace(workFolderInput) != "" {
-		if _, r, err := s.resolveCloneTargetDir(strings.TrimSpace(workFolderInput)); err == nil {
+		if _, r, err := s.resolveWorkTreeDir(strings.TrimSpace(workFolderInput)); err == nil {
 			rel = r
-		} else {
-			rel = "git"
 		}
 	}
 	repoRoot := s.RepoRoot()

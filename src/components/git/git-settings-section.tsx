@@ -11,14 +11,13 @@ interface GitRepoProbe {
 interface GitSettingsSectionProps {
   variant?: 'collapsible' | 'panel'
   gitApiReady: boolean
-  gitWorkFolder: string
+  gitRepoRoot: string
   gitCloneUrl: string
   gitConfigPat: string
   gitCloneShallow: boolean
   gitCommandLoading: boolean
   gitCommandLabel: string
   gitRepoProbe: GitRepoProbe
-  onWorkFolderChange: (value: string) => void
   onCloneUrlChange: (value: string) => void
   onConfigPatChange: (value: string) => void
   onCloneShallowChange: (value: boolean) => void
@@ -29,14 +28,13 @@ interface GitSettingsSectionProps {
 
 export function GitSettingsSection({
   gitApiReady,
-  gitWorkFolder,
+  gitRepoRoot,
   gitCloneUrl,
   gitConfigPat,
   gitCloneShallow,
   gitCommandLoading,
   gitCommandLabel,
   gitRepoProbe,
-  onWorkFolderChange,
   onCloneUrlChange,
   onConfigPatChange,
   onCloneShallowChange,
@@ -44,21 +42,13 @@ export function GitSettingsSection({
   onSaveSettings,
   onDeleteRepository,
 }: GitSettingsSectionProps) {
+  const repoRootLabel = gitRepoRoot.trim() || 'GIT_REPO_ROOT'
+
   return (
     <Space className="git-settings-fields" direction="vertical" size={10}>
-      <label className="git-label">
-        <span>Папка с репозиторием (относительно GIT_REPO_ROOT)</span>
-        <Input
-          value={gitWorkFolder}
-          onChange={(e) => onWorkFolderChange(e.target.value)}
-          placeholder="git"
-          spellCheck={false}
-          autoComplete="off"
-        />
-      </label>
       <Typography.Paragraph className="git-hint">
-        Файл модели (.archimate / .xml) в репозитории выбирается автоматически — первый найденный в этой папке
-        (как после clone).
+        Файл модели (.archimate / .xml) в репозитории выбирается автоматически — первый найденный в
+        каталоге (как после clone).
       </Typography.Paragraph>
       <label className="git-label">
         <span>URL репозитория (remote origin)</span>
@@ -79,8 +69,8 @@ export function GitSettingsSection({
         />
       </label>
       <Typography.Paragraph className="git-hint">
-        Корень файловой системы: <code>GIT_REPO_ROOT</code> при <code>npm run dev:api</code>.{' '}
-        <code>git clone</code> создаёт репозиторий в папке из настроек выше (URL и PAT отсюда же).
+        <code>git clone</code> создаёт репозиторий в каталоге из поля «Путь к каталогу (абсолютный)»
+        выше (URL и PAT отсюда же).
       </Typography.Paragraph>
       <Checkbox
         checked={gitCloneShallow}
@@ -108,7 +98,7 @@ export function GitSettingsSection({
           gitRepoProbe.loading ||
           !gitRepoProbe.hasDotGit
         }
-        title={`Удалить каталог «${gitWorkFolder.trim() || 'git'}» под GIT_REPO_ROOT (только если в нём есть .git)`}
+        title={`Удалить репозиторий из «${repoRootLabel}» (только если в каталоге есть .git)`}
         onClick={() => void onDeleteRepository()}
       >
         {gitCommandLoading && gitCommandLabel === 'Удаление репозитория…'
@@ -116,8 +106,8 @@ export function GitSettingsSection({
           : 'Удалить репозиторий с диска'}
       </Button>
       <Typography.Paragraph className="git-hint">
-        Удаляется вся папка из поля «Папка с репозиторием»; модель в памяти сбрасывается. Для снова работы
-        выполните <code>git clone</code>.
+        Удаляется содержимое каталога «Путь к каталогу (абсолютный)»; модель в памяти сбрасывается. Для снова
+        работы выполните <code>git clone</code>.
       </Typography.Paragraph>
     </Space>
   )

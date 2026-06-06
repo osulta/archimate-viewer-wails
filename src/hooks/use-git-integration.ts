@@ -162,11 +162,6 @@ export function useGitIntegration({
   const [gitCheckoutBranch, setGitCheckoutBranch] = useState(() =>
     typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('archimate-git-checkout-branch') ?? '' : '',
   )
-  const [gitWorkFolder, setGitWorkFolder] = useState(() =>
-    typeof sessionStorage !== 'undefined'
-      ? sessionStorage.getItem('archimate-git-work-folder') ?? 'git'
-      : 'git',
-  )
   const [gitConfigPat, setGitConfigPat] = useState('')
   const [gitRepoRoot, setGitRepoRoot] = useState('')
   const [gitRepoRootDefault, setGitRepoRootDefault] = useState('')
@@ -176,7 +171,7 @@ export function useGitIntegration({
     loaded: false,
     loading: false,
     hasDotGit: false,
-    workFolder: 'git',
+    workFolder: '.',
     remoteUrl: '',
     currentBranch: '',
     modelLayout: '',
@@ -195,11 +190,9 @@ export function useGitIntegration({
 
   const gitRepoPathRef = useRef('')
   const modelLayoutRef = useRef('single-file')
-  const gitWorkFolderRef = useRef('git')
   const gitConfigPatRef = useRef('')
   const branchesRequestSeqRef = useRef(0)
   gitRepoPathRef.current = gitRepoPath.trim()
-  gitWorkFolderRef.current = gitWorkFolder.trim() || 'git'
   gitConfigPatRef.current = gitConfigPat
   modelLayoutRef.current = modelLayout
 
@@ -228,10 +221,6 @@ export function useGitIntegration({
   useEffect(() => {
     sessionStorage.setItem('archimate-git-checkout-branch', gitCheckoutBranch)
   }, [gitCheckoutBranch])
-
-  useEffect(() => {
-    sessionStorage.setItem('archimate-git-work-folder', gitWorkFolder)
-  }, [gitWorkFolder])
 
   useEffect(() => {
     const trimmed = gitRepoPath.trim()
@@ -337,13 +326,12 @@ export function useGitIntegration({
   }, [])
 
   const refreshGitRepoState = useCallback(async (): Promise<RefreshRepoResult> => {
-    const wf = gitWorkFolder.trim() || 'git'
     setGitRepoProbe((p) => ({ ...p, loading: true }))
     try {
       const r = await fetch(apiUrl('/api/git/repo-state'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: wf }),
+        body: JSON.stringify({ workFolder: '' }),
       })
       const data = await r.json()
       if (data.ok) {
@@ -351,7 +339,7 @@ export function useGitIntegration({
           loaded: true,
           loading: false,
           hasDotGit: Boolean(data.hasDotGit),
-          workFolder: data.workFolder ?? wf,
+          workFolder: data.workFolder ?? '.',
           remoteUrl: typeof data.remoteUrl === 'string' ? data.remoteUrl : '',
           currentBranch: typeof data.currentBranch === 'string' ? data.currentBranch : '',
           modelLayout:
@@ -386,7 +374,7 @@ export function useGitIntegration({
       setGitRepoProbe((p) => ({ ...p, loaded: true, loading: false }))
       return { ok: false, modelPath: '', hasDotGit: false }
     }
-  }, [gitWorkFolder])
+  }, [])
 
   const loadGitBranches = useCallback(
     async (modelPathOverride?: string, options: { fetch?: boolean } = {}): Promise<void> => {
@@ -394,7 +382,6 @@ export function useGitIntegration({
       const run = async (): Promise<void> => {
         const requestId = ++branchesRequestSeqRef.current
         const rel = String(modelPathOverride ?? gitRepoPathRef.current).trim()
-        const wf = gitWorkFolderRef.current
         const pat = gitConfigPatRef.current.trim()
         setGitBranches((s) => ({ ...s, loading: true, error: null }))
         try {
@@ -402,7 +389,7 @@ export function useGitIntegration({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              workFolder: wf,
+              workFolder: '',
               ...(rel ? { path: rel } : {}),
               ...(fetchRemote ? { fetch: true, ...(pat ? { pat } : {}) } : {}),
             }),
@@ -498,7 +485,7 @@ export function useGitIntegration({
       return
     }
     void loadGitBranches(undefined, { fetch: false })
-  }, [gitApiReady, gitRepoProbe.hasDotGit, gitWorkFolder, gitRepoPath, loadGitBranches])
+  }, [gitApiReady, gitRepoProbe.hasDotGit, gitRepoPath, loadGitBranches])
 
   useEffect(() => {
     let cancelled = false
@@ -545,7 +532,7 @@ export function useGitIntegration({
       return
     }
     void refreshGitRepoState()
-  }, [gitApiReady, gitWorkFolder, refreshGitRepoState])
+  }, [gitApiReady, refreshGitRepoState])
 
   useEffect(() => {
     if (!gitApiReady) {
@@ -625,19 +612,8 @@ export function useGitIntegration({
     }
 
     if (modelLayoutRef.current === 'split-files') {
-      const wfRaw = (gitWorkFolder.trim() || 'git').replace(/^[\\/]+/, '').replace(/\\/g, '/')
-      if (!wfRaw || wfRaw.includes('..')) {
-        return null
-      }
-      const wfPrefix = wfRaw.replace(/\/+$/u, '') || 'git'
-      return `${wfPrefix}/model/folder.xml`
+      return 'model/folder.xml'
     }
-
-    const wfRaw = (gitWorkFolder.trim() || 'git').replace(/^[\\/]+/, '').replace(/\\/g, '/')
-    if (!wfRaw || wfRaw.includes('..')) {
-      return null
-    }
-    const wfPrefix = wfRaw.replace(/\/+$/u, '') || 'git'
 
     let base =
       String(loadedFilename || 'model.archimate')
@@ -648,8 +624,8 @@ export function useGitIntegration({
     if (!/\.archimate$/iu.test(base)) {
       base = 'model.archimate'
     }
-    return `${wfPrefix}/${base}`
-  }, [gitWorkFolder, gitRepoPath, loadedFilename])
+    return base
+  }, [gitRepoPath, loadedFilename])
 
   const handleReloadModelFromFile = useCallback(async (): Promise<GitCommandResult> => {
     const rel = buildRepoModelWriteRelativePath()
@@ -739,7 +715,6 @@ export function useGitIntegration({
 
   async function handleSaveGitSettings(): Promise<void> {
     await withGitCommand('Сохранение настроек…', async () => {
-    const wf = gitWorkFolder.trim() || 'git'
     const remoteUrl = gitCloneUrl.trim()
     const pat = gitConfigPat.trim()
     try {
@@ -747,7 +722,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workFolder: wf,
+          workFolder: '',
           ...(remoteUrl ? { remoteUrl } : {}),
           ...(pat ? { pat } : {}),
         }),
@@ -854,11 +829,10 @@ export function useGitIntegration({
       setGitOutput(apiUnavailableMessage)
       return
     }
-    const wf = gitWorkFolder.trim() || 'git'
-    const relPath = wf.replace(/^[\\/]+/, '').replace(/\\/g, '/')
+    const repoRootLabel = gitRepoRoot.trim() || 'GIT_REPO_ROOT'
     const confirmed = await confirmDialog({
       title: 'Удалить репозиторий с диска',
-      content: `Удалить каталог GIT_REPO_ROOT/${relPath} со всем содержимым (включая .git)? Действие необратимо.`,
+      content: `Удалить содержимое каталога «${repoRootLabel}» (включая .git)? Действие необратимо.`,
       okText: 'Удалить',
       cancelText: 'Отмена',
       danger: true,
@@ -871,7 +845,7 @@ export function useGitIntegration({
       const response = await fetch(apiUrl('/api/git/delete-repository'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: wf }),
+        body: JSON.stringify({ workFolder: '' }),
       })
       const data = await response.json()
       if (data.ok) {
@@ -880,8 +854,8 @@ export function useGitIntegration({
         setGitBranches({ loading: false, list: [], error: null })
         setGitOutput(
           data.deleted === false
-            ? (data.message ?? `Каталог «${data.rel ?? relPath}» уже отсутствует.`)
-            : `Репозиторий удалён с диска: ${data.rel ?? relPath}`,
+            ? (data.message ?? `Каталог «${data.rel ?? repoRootLabel}» уже отсутствует.`)
+            : `Репозиторий удалён с диска: ${data.rel === '.' ? repoRootLabel : (data.rel ?? repoRootLabel)}`,
         )
         onRepositoryDeleted()
         await refreshGitRepoState()
@@ -902,14 +876,13 @@ export function useGitIntegration({
     }
     await withGitCommand('Клонирование репозитория…', async () => {
     const pat = gitConfigPat.trim()
-    const wf = gitWorkFolder.trim() || 'git'
     try {
       const response = await fetch(apiUrl('/api/git/clone'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url,
-          workFolder: wf,
+          workFolder: '',
           ...(gitCloneShallow ? { depth: 1 } : {}),
           ...(pat ? { pat } : {}),
         }),
@@ -969,7 +942,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: gitWorkFolder.trim() || 'git' }),
+          ...(rel ? { path: rel } : { workFolder: '' }),
           branch,
         }),
       })
@@ -1035,7 +1008,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: gitWorkFolder.trim() || 'git' }),
+          ...(rel ? { path: rel } : { workFolder: '' }),
           remote,
           branch,
           ...(gitPushUpstream ? { setUpstream: true } : {}),
@@ -1089,7 +1062,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: gitWorkFolder.trim() || 'git' }),
+          ...(rel ? { path: rel } : { workFolder: '' }),
           remote: 'origin',
           branch: 'main',
           ...(pat ? { pat } : {}),
@@ -1206,8 +1179,6 @@ export function useGitIntegration({
     setGitPushUpstream,
     gitCheckoutBranch,
     setGitCheckoutBranch,
-    gitWorkFolder,
-    setGitWorkFolder,
     gitConfigPat,
     setGitConfigPat,
     gitRepoRoot,

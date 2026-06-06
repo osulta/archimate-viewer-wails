@@ -32,7 +32,7 @@ interface GitState {
   gitCommandLoading: boolean
   gitCommandLabel: string
   gitOutput: string
-  gitWorkFolder: string
+  gitRepoRoot: string
   setGitCheckoutBranch: (value: string) => void
   setGitCommitMessage: (value: string) => void
   setGitPushUpstream: (value: boolean) => void
@@ -85,7 +85,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
     gitPushUpstream,
     gitCommandLoading,
     gitCommandLabel,
-    gitWorkFolder,
+    gitRepoRoot,
     setGitCheckoutBranch,
     setGitCommitMessage,
     setGitPushUpstream,
@@ -96,7 +96,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
     handleGitCommit,
   } = git as unknown as GitState
 
-  const workFolderLabel = gitWorkFolder.trim() || 'git'
+  const repoRootLabel = gitRepoRoot.trim() || 'GIT_REPO_ROOT'
 
   if (!gitApiReady) {
     return (
@@ -113,8 +113,8 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
       <section className="sidebar-git-workflow" aria-label="Git">
         <p className="sidebar-git-command-status">
           {gitRepoProbe.loading
-            ? `Проверка папки «${workFolderLabel}»…`
-            : `В папке «${workFolderLabel}» нет .git — клонируйте репозиторий в «Администрирование» → Git.`}
+            ? `Проверка каталога «${repoRootLabel}»…`
+            : `В каталоге «${repoRootLabel}» нет .git — клонируйте репозиторий в «Администрирование» → Git.`}
         </p>
       </section>
     )
@@ -144,7 +144,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps) {
                   <p className="git-status">
                     {gitRepoProbe.currentBranch
                       ? `Текущая ветка: ${gitRepoProbe.currentBranch}`
-                      : `Репозиторий: ${gitRepoProbe.workFolder ?? workFolderLabel}`}
+                      : `Репозиторий: ${gitRepoProbe.workFolder === '.' ? repoRootLabel : (gitRepoProbe.workFolder ?? repoRootLabel)}`}
                   </p>
                   <Space.Compact className="git-branch-row" block>
                     <Select
