@@ -255,6 +255,14 @@ export function buildSplitRelationshipSaveXml(content: string, relationshipId: s
     }
   }
 
+  if (override.documentation !== undefined) {
+    applyDocumentationToElementXml(root, documentNode, override.documentation)
+  }
+
+  if (override.properties) {
+    applyPropertiesToElementXml(root, documentNode, override.properties)
+  }
+
   return serializeXml(documentNode)
 }
 
@@ -305,11 +313,23 @@ function elementOverrideIsDirty(element: ParsedElement, override: ElementOverrid
 }
 
 function relationshipMetaIsDirty(relationship: ParsedRelationship, meta: RelationshipMetaOverride | null | undefined): boolean {
-  if (!meta || meta.name == null) {
+  if (!meta) {
     return false
   }
-  const current = getRelationshipExplicitName(relationship)
-  return meta.name !== current
+  if (meta.name != null && meta.name !== getRelationshipExplicitName(relationship)) {
+    return true
+  }
+  if (meta.documentation !== undefined && meta.documentation !== (relationship.documentation ?? '')) {
+    return true
+  }
+  if (meta.properties) {
+    const baseProps = JSON.stringify(relationship.properties ?? [])
+    const nextProps = JSON.stringify(meta.properties)
+    if (baseProps !== nextProps) {
+      return true
+    }
+  }
+  return false
 }
 
 function splitModelRepoPath(modelRoot: string, relativePath: string): string {

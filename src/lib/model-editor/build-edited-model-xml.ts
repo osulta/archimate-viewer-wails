@@ -84,18 +84,25 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
         return id === relationshipId && isRelationshipModelElement(el)
       })
       targets.forEach((el) => {
-        if (override.name == null) {
-          return
-        }
-        if (el.hasAttribute('name')) {
-          el.setAttribute('name', override.name)
-        } else {
-          let nameNode = getDirectChildByTag(el, 'name')
-          if (!nameNode) {
-            nameNode = documentNode.createElement(el.prefix ? `${el.prefix}:name` : 'name')
-            el.insertBefore(nameNode, el.firstChild)
+        if (override.name != null) {
+          if (el.hasAttribute('name')) {
+            el.setAttribute('name', override.name)
+          } else {
+            let nameNode = getDirectChildByTag(el, 'name')
+            if (!nameNode) {
+              nameNode = documentNode.createElement(el.prefix ? `${el.prefix}:name` : 'name')
+              el.insertBefore(nameNode, el.firstChild)
+            }
+            nameNode.textContent = override.name
           }
-          nameNode.textContent = override.name
+        }
+
+        if (override.properties) {
+          applyPropertiesToElementXml(el, documentNode, override.properties)
+        }
+
+        if (Object.prototype.hasOwnProperty.call(override, 'documentation')) {
+          applyDocumentationToElementXml(el, documentNode, override.documentation)
         }
       })
     })
@@ -258,8 +265,19 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
     params.createdRelationships.forEach((cr) => {
       const { diagramId, relationship, connection, format } = cr
       const meta = params.relationshipMetaOverrides.get(relationship.id)
-      const relationshipToWrite =
-        meta?.name != null ? { ...relationship, name: meta.name } : relationship
+      let relationshipToWrite = relationship
+      if (meta) {
+        relationshipToWrite = { ...relationship }
+        if (meta.name != null) {
+          relationshipToWrite.name = meta.name
+        }
+        if (meta.documentation !== undefined) {
+          relationshipToWrite.documentation = meta.documentation
+        }
+        if (meta.properties) {
+          relationshipToWrite.properties = meta.properties
+        }
+      }
       const all = Array.from(documentNode.getElementsByTagName('*'))
 
       if (format === 'archi-tool') {

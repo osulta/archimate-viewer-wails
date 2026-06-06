@@ -628,6 +628,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     }
     const prev = relationshipMetaOverrides.get(relationshipId) ?? {
       name: base.name,
+      documentation: base.documentation ?? '',
+      properties: [...(base.properties ?? [])],
     }
     const all = new Map(relationshipMetaOverrides)
     all.set(relationshipId, { ...prev, ...patch })

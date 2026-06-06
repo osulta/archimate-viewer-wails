@@ -79,6 +79,21 @@ export function formatRelationshipEndpointLabel(
   return elementRef
 }
 
+function applyRelationshipMetaOverride(
+  relationship: ParsedRelationship,
+  meta: RelationshipMetaOverride | undefined,
+): ParsedRelationship {
+  if (!meta) {
+    return relationship
+  }
+  return {
+    ...relationship,
+    ...(meta.name != null ? { name: meta.name } : {}),
+    ...(meta.documentation !== undefined ? { documentation: meta.documentation } : {}),
+    ...(meta.properties ? { properties: meta.properties } : {}),
+  }
+}
+
 export function applyRelationshipMetaToById(
   relationshipById: Map<string, ParsedRelationship>,
   metaOverrides: Map<string, RelationshipMetaOverride> | null | undefined,
@@ -89,10 +104,10 @@ export function applyRelationshipMetaToById(
   const next = new Map(relationshipById)
   metaOverrides.forEach((meta, id) => {
     const base = next.get(id)
-    if (!base || meta.name == null) {
+    if (!base) {
       return
     }
-    next.set(id, { ...base, name: meta.name })
+    next.set(id, applyRelationshipMetaOverride(base, meta))
   })
   return next
 }
@@ -106,10 +121,7 @@ export function applyRelationshipMetaToList(
   }
   return relationships.map((rel) => {
     const meta = metaOverrides.get(rel.id)
-    if (!meta || meta.name == null) {
-      return rel
-    }
-    return { ...rel, name: meta.name }
+    return meta ? applyRelationshipMetaOverride(rel, meta) : rel
   })
 }
 

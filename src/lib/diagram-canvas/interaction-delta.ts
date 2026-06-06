@@ -2,6 +2,7 @@ import {
   computeSnappedNodeOffset,
   computeSnappedNodeResize,
   findNodeById,
+  snapPointToGrid,
 } from '../archimate/diagram-model'
 import type {
   CanvasPointer,
@@ -114,18 +115,33 @@ export function applyPointerDelta(
 
   if (interaction.type === 'bendpoint') {
     const { sourceCenter, targetCenter, bendpointIndex, relationshipRef } = interaction
+    const snapped = snapPointToGrid(ptr.logicalX, ptr.logicalY)
+    const snappedCanvasX = snapped.x + ptr.translateX
+    const snappedCanvasY = snapped.y + ptr.translateY
+    const bendpoint = {
+      startX: snappedCanvasX - sourceCenter.x,
+      startY: snappedCanvasY - sourceCenter.y,
+      endX: snappedCanvasX - targetCenter.x,
+      endY: snappedCanvasY - targetCenter.y,
+    }
+    if (
+      currentDragPreview?.type === 'bendpoint' &&
+      currentDragPreview.relationshipRef === relationshipRef &&
+      currentDragPreview.bendpointIndex === bendpointIndex &&
+      currentDragPreview.bendpoint.startX === bendpoint.startX &&
+      currentDragPreview.bendpoint.startY === bendpoint.startY &&
+      currentDragPreview.bendpoint.endX === bendpoint.endX &&
+      currentDragPreview.bendpoint.endY === bendpoint.endY
+    ) {
+      return null
+    }
     return {
       suppressClick: true,
       dragPreview: {
         type: 'bendpoint',
         relationshipRef,
         bendpointIndex,
-        bendpoint: {
-          startX: ptr.x - sourceCenter.x,
-          startY: ptr.y - sourceCenter.y,
-          endX: ptr.x - targetCenter.x,
-          endY: ptr.y - targetCenter.y,
-        },
+        bendpoint,
       },
       interaction: null,
       shouldRepaint: true,

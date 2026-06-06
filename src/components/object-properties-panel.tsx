@@ -267,6 +267,8 @@ export function ObjectPropertiesPanel({
   const [documentationDraft, setDocumentationDraft] = useState('')
   const [propertiesDraft, setPropertiesDraft] = useState<ElementProperty[]>([])
   const [relationshipNameDraft, setRelationshipNameDraft] = useState('')
+  const [relationshipDocumentationDraft, setRelationshipDocumentationDraft] = useState('')
+  const [relationshipPropertiesDraft, setRelationshipPropertiesDraft] = useState<ElementProperty[]>([])
   const [diagramNameDraft, setDiagramNameDraft] = useState('')
 
   const elementId = selectedElement?.id ?? ''
@@ -301,8 +303,22 @@ export function ObjectPropertiesPanel({
   }, [elementId, selectedElement?.lite])
 
   useEffect(() => {
+    if (!selectedRelationshipRef) {
+      setRelationshipNameDraft('')
+      setRelationshipDocumentationDraft('')
+      setRelationshipPropertiesDraft([])
+      return
+    }
+    if (!selectedRelationship) {
+      return
+    }
     setRelationshipNameDraft(getRelationshipExplicitName(selectedRelationship))
-  }, [selectedRelationship, selectedRelationshipRef])
+    setRelationshipDocumentationDraft(selectedRelationship.documentation ?? '')
+    setRelationshipPropertiesDraft(
+      selectedRelationship.properties ? selectedRelationship.properties.map((p) => ({ ...p })) : [],
+    )
+    // Resync only when selection changes — not on every meta override update.
+  }, [selectedRelationshipRef])
 
   useEffect(() => {
     if (!selectedDiagramId || !selectedDiagram) {
@@ -368,10 +384,20 @@ export function ObjectPropertiesPanel({
       return undefined
     }
     const handle = window.setTimeout(() => {
-      onUpdateRelationshipMeta(selectedRelationshipRef, { name: relationshipNameDraft })
+      onUpdateRelationshipMeta(selectedRelationshipRef, {
+        name: relationshipNameDraft,
+        documentation: relationshipDocumentationDraft,
+        properties: relationshipPropertiesDraft,
+      })
     }, 300)
     return () => window.clearTimeout(handle)
-  }, [relationshipNameDraft, selectedRelationshipRef, onUpdateRelationshipMeta])
+  }, [
+    relationshipNameDraft,
+    relationshipDocumentationDraft,
+    relationshipPropertiesDraft,
+    selectedRelationshipRef,
+    onUpdateRelationshipMeta,
+  ])
 
   if (showDiagramProperties) {
     const diagramTypeLabel = formatArchimateTypeLabel(selectedDiagram!.type ?? '')
@@ -447,7 +473,11 @@ export function ObjectPropertiesPanel({
               onBlur={() =>
                 flushRelationshipMeta(
                   selectedRelationshipRef,
-                  { name: relationshipNameDraft },
+                  {
+                    name: relationshipNameDraft,
+                    documentation: relationshipDocumentationDraft,
+                    properties: relationshipPropertiesDraft,
+                  },
                   onUpdateRelationshipMeta,
                 )
               }
@@ -467,6 +497,48 @@ export function ObjectPropertiesPanel({
             <b>Target:</b>{' '}
             {formatRelationshipEndpointLabel(selectedRelationship?.target, elementById)}
           </div>
+          <div className="props-field-full">
+            <label className="props-label" htmlFor="relationship-documentation">
+              Documentation
+            </label>
+            <Input.TextArea
+              id="relationship-documentation"
+              className="prop-textarea"
+              rows={5}
+              value={relationshipDocumentationDraft}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                setRelationshipDocumentationDraft(e.target.value)
+              }
+              onBlur={() =>
+                flushRelationshipMeta(
+                  selectedRelationshipRef,
+                  {
+                    name: relationshipNameDraft,
+                    documentation: relationshipDocumentationDraft,
+                    properties: relationshipPropertiesDraft,
+                  },
+                  onUpdateRelationshipMeta,
+                )
+              }
+              spellCheck={true}
+            />
+          </div>
+          <ElementPropertiesEditor
+            elementId={selectedRelationshipRef}
+            properties={relationshipPropertiesDraft}
+            onChange={setRelationshipPropertiesDraft}
+            onCommit={(next) =>
+              flushRelationshipMeta(
+                selectedRelationshipRef,
+                {
+                  name: relationshipNameDraft,
+                  documentation: relationshipDocumentationDraft,
+                  properties: next,
+                },
+                onUpdateRelationshipMeta,
+              )
+            }
+          />
           <div className="props-actions props-actions-stack">
             {selectedDiagram?.connections?.some(
               (c: DiagramConnection) => c.relationshipRef === selectedRelationshipRef,

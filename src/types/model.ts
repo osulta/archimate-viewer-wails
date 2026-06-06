@@ -107,6 +107,8 @@ export interface ElementOverride {
 
 export interface RelationshipMetaOverride {
   name?: string
+  documentation?: string
+  properties?: ElementProperty[]
 }
 
 export interface Point {

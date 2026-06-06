@@ -96,6 +96,25 @@ export function ViewModeProperties(props: ViewModePropertiesProps) {
             <b>Target:</b>{' '}
             {formatRelationshipEndpointLabel(selectedRelationship.target, elementById)}
           </div>
+          {selectedRelationship.documentation ? (
+            <div className="props-field-full">
+              <b>Documentation</b>
+              <pre className="props-readonly-text">{selectedRelationship.documentation}</pre>
+            </div>
+          ) : null}
+          {(selectedRelationship.properties ?? []).length > 0 ? (
+            <div className="props-field-full">
+              <b>Properties</b>
+              <ul className="props-readonly-list">
+                {(selectedRelationship.properties ?? []).map((prop, idx) => (
+                  <li key={`${prop.key}-${idx}`}>
+                    <span className="props-readonly-key">{prop.key || '—'}</span>
+                    <span className="props-readonly-value">{prop.value ?? ''}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </section>
     )
