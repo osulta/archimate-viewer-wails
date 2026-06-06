@@ -26,6 +26,15 @@ import {
   resolveSplitRelationshipFilePath,
 } from '../../lib/archimate/split-model-save'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
+import {
+  captureCanvasEditSnapshot,
+  cloneCanvasEditSnapshot,
+  cloneCreatedObjects,
+  cloneCreatedRelationships,
+  cloneModelSnapshot,
+  restoreCanvasEditSnapshot,
+  type CanvasEditSnapshot,
+} from './edit-snapshot'
 import type {
   ParsedDiagram,
   ParsedElement,
@@ -235,13 +244,15 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
   const {
     model, setModel,
     diagramOverrides, relationshipOverrides, elementOverrides, relationshipMetaOverrides,
+    createdObjects, createdRelationships,
     setCreatedObjects, setCreatedRelationships, setCreatedDiagramIds,
+    deletedDiagramNodeIds, deletedElementIds, deletedRelationshipIds, deletedConnectionIds,
     originalDiagramNodeIds, originalElementIds, originalRelationshipIds, originalConnectionIds,
     setDeletedDiagramNodeIds, setDeletedElementIds, setDeletedRelationshipIds, setDeletedConnectionIds,
     pendingLinkType, linkCreateSourceId, setLinkCreateSourceId, setPendingLinkType,
     commitDiagramOverrides, commitRelationshipOverrides, commitElementOverrides,
     commitRelationshipMetaOverrides, markSplitDiagramDirty, clearLinkCreation,
-    deletedSplitModelFilesRef,
+    deletedSplitModelFilesRef, dirtySplitDiagramIdsRef,
   } = editState
 
   function trackDeletedSplitModelFile(relativePath: string): void {
@@ -268,7 +279,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     setSelectedNode, setSelectedElementId,
     selectedElementId,
     selectedRelationshipRef, setSelectedRelationshipRef,
-    setSelectedBendpointIndex,
+    setSelectedBendpointIndex, selectedBendpointIndex,
     selectedDiagram, selectedElement, selectedNodeLive,
   } = selection
 
@@ -281,6 +292,53 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         new Map(Array.from(relMap.entries(), ([ref, points]) => [ref, [...points]])),
       ]),
     )
+
+  function captureCurrentCanvasSnapshot(): CanvasEditSnapshot | null {
+    return captureCanvasEditSnapshot({
+      model,
+      selectedDiagramId,
+      diagramOverrides,
+      relationshipOverrides,
+      elementOverrides,
+      relationshipMetaOverrides,
+      createdObjects,
+      createdRelationships,
+      deletedDiagramNodeIds,
+      deletedElementIds,
+      deletedRelationshipIds,
+      deletedConnectionIds,
+      deletedSplitModelFiles: deletedSplitModelFilesRef.current,
+      dirtySplitDiagramIds: dirtySplitDiagramIdsRef.current,
+      linkCreateSourceId,
+      selectedNodeId: selectedNodeLive?.id ?? null,
+      selectedElementId,
+      selectedRelationshipRef,
+      selectedBendpointIndex,
+    })
+  }
+
+  function restoreCanvasSnapshot(snapshot: CanvasEditSnapshot) {
+    restoreCanvasEditSnapshot(snapshot, {
+      setModel,
+      commitDiagramOverrides,
+      commitRelationshipOverrides,
+      commitElementOverrides,
+      commitRelationshipMetaOverrides,
+      setCreatedObjects,
+      setCreatedRelationships,
+      setDeletedDiagramNodeIds,
+      setDeletedElementIds,
+      setDeletedRelationshipIds,
+      setDeletedConnectionIds,
+      deletedSplitModelFilesRef,
+      dirtySplitDiagramIdsRef,
+      setLinkCreateSourceId,
+      setSelectedNode,
+      setSelectedElementId,
+      setSelectedRelationshipRef,
+      setSelectedBendpointIndex,
+    })
+  }
 
   const pushSnapshotCommand = useCallback(
     (
@@ -1144,6 +1202,11 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
+    const beforeSnapshot = captureCurrentCanvasSnapshot()
+    if (!beforeSnapshot) {
+      return
+    }
+
     const root = selectedNodeLive
     const subtreeIds = new Set(collectSubtreeIds(root))
     const subtreeRefs = collectSubtreeElementRefs(root)
@@ -1210,74 +1273,87 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextRelMetaOverrides = new Map(relationshipMetaOverrides)
     removedRelIds.forEach((id) => nextRelMetaOverrides.delete(id))
 
-    setDeletedDiagramNodeIds((prev) => {
-      const next = new Set(prev)
-      subtreeIds.forEach((id) => {
-        if (originalDiagramNodeIds.has(id)) {
-          next.add(id)
-        }
-      })
-      return next
-    })
-    setDeletedElementIds((prev) => {
-      const next = new Set(prev)
-      elementsToRemove.forEach((id) => {
-        if (originalElementIds.has(id)) {
-          next.add(id)
-        }
-      })
-      return next
-    })
-    setDeletedRelationshipIds((prev) => {
-      const next = new Set(prev)
-      relationshipsToRemove.forEach((r) => {
-        if (originalRelationshipIds.has(r.id)) {
-          next.add(r.id)
-        }
-      })
-      return next
+    const nextDeletedDiagramNodeIds = new Set(deletedDiagramNodeIds)
+    subtreeIds.forEach((id) => {
+      if (originalDiagramNodeIds.has(id)) {
+        nextDeletedDiagramNodeIds.add(id)
+      }
     })
 
-    setCreatedObjects((prev) => prev.filter((c) => !subtreeIds.has(c.node.id)))
+    const nextDeletedElementIds = new Set(deletedElementIds)
+    elementsToRemove.forEach((id) => {
+      if (originalElementIds.has(id)) {
+        nextDeletedElementIds.add(id)
+      }
+    })
 
-    setCreatedRelationships((prev) =>
-      prev.filter(
-        (cr) =>
-          !removedRelIds.has(cr.relationship.id) &&
-          (cr.diagramId !== selectedDiagramId ||
-            (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target))),
-      ),
+    const nextDeletedRelationshipIds = new Set(deletedRelationshipIds)
+    relationshipsToRemove.forEach((relationship) => {
+      if (originalRelationshipIds.has(relationship.id)) {
+        nextDeletedRelationshipIds.add(relationship.id)
+      }
+    })
+
+    const nextCreatedObjects = createdObjects.filter((item) => !subtreeIds.has(item.node.id))
+    const nextCreatedRelationships = createdRelationships.filter(
+      (cr) =>
+        !removedRelIds.has(cr.relationship.id) &&
+        (cr.diagramId !== selectedDiagramId ||
+          (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target))),
     )
 
-    commitDiagramOverrides(nextDiagramOverrides)
-    commitRelationshipOverrides(nextRelOverrides)
-    commitElementOverrides(nextElemOverrides)
-    commitRelationshipMetaOverrides(nextRelMetaOverrides)
-    markSplitDiagramDirty(selectedDiagramId)
+    const nextDirtySplitDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
+    nextDirtySplitDiagramIds.add(selectedDiagramId)
 
-    setModel({
-      ...model,
-      diagrams: nextDiagrams,
-      elements: nextElements,
-      elementById: nextElementById,
-      relationships: nextRelationships,
-      relationshipById: nextRelationshipById,
-    })
-    setSelectedNode(null)
-    setSelectedElementId(null)
-    setSelectedRelationshipRef(null)
+    const afterSnapshot: CanvasEditSnapshot = {
+      ...cloneCanvasEditSnapshot(beforeSnapshot),
+      model: cloneModelSnapshot({
+        ...model,
+        diagrams: nextDiagrams,
+        elements: nextElements,
+        elementById: nextElementById,
+        relationships: nextRelationships,
+        relationshipById: nextRelationshipById,
+      }),
+      diagramOverrides: cloneNodeOverrideMap(nextDiagramOverrides),
+      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
+      elementOverrides: new Map(nextElemOverrides),
+      relationshipMetaOverrides: new Map(nextRelMetaOverrides),
+      createdObjects: cloneCreatedObjects(nextCreatedObjects),
+      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
+      deletedDiagramNodeIds: nextDeletedDiagramNodeIds,
+      deletedElementIds: nextDeletedElementIds,
+      deletedRelationshipIds: nextDeletedRelationshipIds,
+      dirtySplitDiagramIds: nextDirtySplitDiagramIds,
+      selectedNodeId: null,
+      selectedElementId: null,
+      selectedRelationshipRef: null,
+      selectedBendpointIndex: null,
+    }
+
+    restoreCanvasSnapshot(afterSnapshot)
+    pushSnapshotCommand(
+      'Удаление объекта с диаграммы',
+      () => restoreCanvasSnapshot(beforeSnapshot),
+      () => restoreCanvasSnapshot(afterSnapshot),
+    )
   }, [
     model,
     selectedDiagramId,
     selectedNodeLive,
-    markSplitDiagramDirty,
     diagramOverrides,
     relationshipOverrides,
     relationshipMetaOverrides,
     elementOverrides,
+    createdObjects,
+    createdRelationships,
+    deletedDiagramNodeIds,
+    deletedElementIds,
+    deletedRelationshipIds,
     originalDiagramNodeIds,
     originalElementIds,
     originalRelationshipIds,
+    pushSnapshotCommand,
   ])
 
   const deleteSelectedConnectionFromDiagram = useCallback(() => {
@@ -1289,13 +1365,17 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
     const ref = selectedRelationshipRef
-    const relationship = model.relationshipById.get(ref)
     const toRemove = diagram.connections.filter((c) => c.relationshipRef === ref)
     if (!toRemove.length) {
       window.alert('На текущей диаграмме нет визуализации этой связи.')
       return
     }
     if (!window.confirm('Удалить связь с этой диаграммы?')) {
+      return
+    }
+
+    const beforeSnapshot = captureCurrentCanvasSnapshot()
+    if (!beforeSnapshot) {
       return
     }
 
@@ -1311,76 +1391,55 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     })
 
-    const stillUsed = nextDiagrams.some((d) =>
-      d.connections.some((c) => c.relationshipRef === ref),
-    )
-
-    let nextRelationships = model.relationships
-    let nextRelationshipById = model.relationshipById
-    if (!stillUsed) {
-      nextRelationships = model.relationships.filter((r) => r.id !== ref)
-      nextRelationshipById = new Map(model.relationshipById)
-      nextRelationshipById.delete(ref)
-    }
-
     const relMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
     relMap.delete(ref)
     const nextRelOverrides = new Map(relationshipOverrides)
     nextRelOverrides.set(selectedDiagramId, relMap)
 
-    setDeletedConnectionIds((prev) => {
-      const next = new Set(prev)
-      removedConnIds.forEach((id) => {
-        if (originalConnectionIds.has(id)) {
-          next.add(id)
-        }
-      })
-      return next
+    const nextDeletedConnectionIds = new Set(deletedConnectionIds)
+    removedConnIds.forEach((id) => {
+      if (originalConnectionIds.has(id)) {
+        nextDeletedConnectionIds.add(id)
+      }
     })
 
-    if (!stillUsed && originalRelationshipIds.has(ref)) {
-      setDeletedRelationshipIds((prev) => {
-        const next = new Set(prev)
-        next.add(ref)
-        return next
-      })
-      if (relationship && isSplitFilesModel(model)) {
-        trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
-      }
-    }
-
-    if (isSplitFilesModel(model)) {
-      markSplitDiagramDirty(selectedDiagramId)
-    }
-
-    setCreatedRelationships((prev) =>
-      prev.filter((cr) => {
-        if (removedConnIds.includes(cr.connection.id)) {
-          return false
-        }
-        if (!stillUsed && cr.relationship.id === ref) {
-          return false
-        }
-        return true
-      }),
+    const nextCreatedRelationships = createdRelationships.filter(
+      (cr) => !removedConnIds.includes(cr.connection.id),
     )
 
-    commitRelationshipOverrides(nextRelOverrides)
-    setModel({
-      ...model,
-      diagrams: nextDiagrams,
-      relationships: nextRelationships,
-      relationshipById: nextRelationshipById,
-    })
-    setSelectedRelationshipRef(null)
+    const nextDirtySplitDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
+    if (isSplitFilesModel(model)) {
+      nextDirtySplitDiagramIds.add(selectedDiagramId)
+    }
+
+    const afterSnapshot: CanvasEditSnapshot = {
+      ...cloneCanvasEditSnapshot(beforeSnapshot),
+      model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
+      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
+      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
+      deletedConnectionIds: nextDeletedConnectionIds,
+      dirtySplitDiagramIds: nextDirtySplitDiagramIds,
+      selectedNodeId: null,
+      selectedElementId: null,
+      selectedRelationshipRef: null,
+      selectedBendpointIndex: null,
+    }
+
+    restoreCanvasSnapshot(afterSnapshot)
+    pushSnapshotCommand(
+      'Удаление связи с диаграммы',
+      () => restoreCanvasSnapshot(beforeSnapshot),
+      () => restoreCanvasSnapshot(afterSnapshot),
+    )
   }, [
     model,
     selectedDiagramId,
     selectedRelationshipRef,
     relationshipOverrides,
+    createdRelationships,
+    deletedConnectionIds,
     originalConnectionIds,
-    originalRelationshipIds,
-    markSplitDiagramDirty,
+    pushSnapshotCommand,
   ])
 
   const deleteRelationshipFromModel = useCallback(() => {
