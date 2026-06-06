@@ -124,15 +124,17 @@ export function ViewModePanel(props: ViewModePanelProps) {
         focusRelationshipInDiagram={focusRelationshipInDiagram}
       />
 
-      <main className="content view-mode-content">
-        <div className="content-head">
-          <div className="content-head-text">
-            <Typography.Title level={3} style={{ margin: 0 }}>
-              {selectedDiagram?.name ?? 'Диаграмма не выбрана'}
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              {selectedDiagram?.type ?? 'Режим просмотра'}
-            </Typography.Text>
+      <main className="content workspace-content">
+        <div className="workspace-toolbar">
+          <div className="content-head">
+            <div className="content-head-text">
+              <Typography.Title level={3} style={{ margin: 0 }}>
+                {selectedDiagram?.name ?? 'Диаграмма не выбрана'}
+              </Typography.Title>
+              <Typography.Text type="secondary">
+                {selectedDiagram?.type ?? 'Режим просмотра'}
+              </Typography.Text>
+            </div>
           </div>
         </div>
 
@@ -144,7 +146,7 @@ export function ViewModePanel(props: ViewModePanelProps) {
         ) : !selectedDiagram ? (
           <Empty className="view-mode-empty" description="Выберите диаграмму в дереве слева." />
         ) : (
-          <>
+          <div className="workspace-body">
             <DiagramCanvas
               readOnly
               diagram={selectedDiagram}
@@ -176,7 +178,7 @@ export function ViewModePanel(props: ViewModePanelProps) {
               onSelectElement={onSelectElementFromProperties}
               onNavigateToDiagram={onNavigateToDiagram}
             />
-          </>
+          </div>
         )}
       </main>
     </div>
