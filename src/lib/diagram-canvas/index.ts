@@ -3,10 +3,13 @@ export type {
   DragPreviewMove,
   DragPreviewResize,
   DragPreviewBendpoint,
+  DragPreviewConnectionEndpoint,
   DragPreview,
   MoveInteraction,
   ResizeInteraction,
   BendpointInteraction,
+  ConnectionEndpointInteraction,
+  ConnectionEndpointKind,
   PanInteraction,
   Interaction,
   RenderedConnection,
@@ -25,6 +28,7 @@ export {
   CONNECTION_FLOW_COLOR,
   BENDPOINT_DRAG_SLOP,
   BENDPOINT_HIT_RADIUS,
+  CONNECTION_ENDPOINT_HIT_RADIUS,
 } from './constants'
 export { resolveNodeDrawColors } from './node-colors'
 export { getResizeHandleRect, isPointInResizeHandle } from './resize-handle'
@@ -34,8 +38,9 @@ export {
   pickRelationshipAtScreenPoint,
   findBendpointHitIndex,
   findBendpointHitAtPoint,
+  findConnectionEndpointHit,
 } from './hit-test'
-export type { BendpointHit } from './hit-test'
+export type { BendpointHit, ConnectionEndpointHit } from './hit-test'
 export { paintDiagramCanvas } from './paint-diagram'
 export { clampZoom } from './zoom'
 export { exportDiagramPng } from './export-png'

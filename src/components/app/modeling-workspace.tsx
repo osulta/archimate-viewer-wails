@@ -233,6 +233,7 @@ export function ModelingWorkspace({
           onRelationshipBendpointChange={mutations.updateRelationshipBendpoint}
           onRelationshipBendpointAdd={mutations.addRelationshipBendpoint}
           onRelationshipBendpointRemove={mutations.removeRelationshipBendpoint}
+          onRelationshipEndpointChange={mutations.reassignRelationshipEndpoint}
           onLinkNodePick={mutations.pickLinkNode}
           onDropElementAtPoint={(elementId, x, y) =>
             mutations.placeElementOnDiagram(elementId, { x, y } as Point)

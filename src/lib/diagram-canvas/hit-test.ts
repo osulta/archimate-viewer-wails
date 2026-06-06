@@ -1,7 +1,13 @@
 import { distancePointToSegment } from '../archimate/connection-geometry'
 import type { ParsedDiagram } from '../../types/model'
-import type { RenderedConnection } from './types'
-import { BENDPOINT_HIT_RADIUS } from './constants'
+import type { ConnectionEndpointKind, RenderedConnection } from './types'
+import { BENDPOINT_HIT_RADIUS, CONNECTION_ENDPOINT_HIT_RADIUS } from './constants'
+
+export interface ConnectionEndpointHit {
+  relationshipRef: string
+  endpoint: ConnectionEndpointKind
+  point: { x: number; y: number }
+}
 
 export interface BendpointHit {
   relationshipRef: string
@@ -86,6 +92,31 @@ export function findBendpointHitAtPoint(
     if (index !== null) {
       return { relationshipRef: conn.relationshipRef, index }
     }
+  }
+  return null
+}
+
+export function findConnectionEndpointHit(
+  relationshipRef: string | null | undefined,
+  x: number,
+  y: number,
+  renderedConnections: RenderedConnection[],
+  hitRadius: number = CONNECTION_ENDPOINT_HIT_RADIUS,
+): ConnectionEndpointHit | null {
+  if (!relationshipRef) {
+    return null
+  }
+  const rendered = renderedConnections.find((item) => item.relationshipRef === relationshipRef)
+  if (!rendered || rendered.points.length < 2) {
+    return null
+  }
+  const start = rendered.points[0]
+  const end = rendered.points[rendered.points.length - 1]
+  if (Math.hypot(x - start.x, y - start.y) <= hitRadius) {
+    return { relationshipRef, endpoint: 'source', point: start }
+  }
+  if (Math.hypot(x - end.x, y - end.y) <= hitRadius) {
+    return { relationshipRef, endpoint: 'target', point: end }
   }
   return null
 }

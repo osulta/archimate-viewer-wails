@@ -14,3 +14,6 @@ export const BENDPOINT_DRAG_SLOP = 4
 
 /** Screen px: hit radius for bendpoint handles and double-click removal. */
 export const BENDPOINT_HIT_RADIUS = 8
+
+/** Screen px: hit radius for connection source/target endpoint handles. */
+export const CONNECTION_ENDPOINT_HIT_RADIUS = 9

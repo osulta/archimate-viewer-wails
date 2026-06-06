@@ -29,6 +29,9 @@ import {
 import {
   buildSplitElementRelativePath,
   buildSplitRelationshipRelativePath,
+  buildSplitFileHref,
+  resolveElementSourceFile,
+  typeLocalName,
 } from './split-model-paths'
 import { idFromArchimateHref } from './parsing/xml/href-utils'
 import { parseXmlDocument, getDocumentRootElement } from './parsing/xml/parse-xml-document'
@@ -266,6 +269,71 @@ export function buildSplitRelationshipSaveXml(content: string, relationshipId: s
   return serializeXml(documentNode)
 }
 
+function upsertSplitRelationshipEndpointChild(
+  root: Element,
+  documentNode: Document,
+  endpoint: 'source' | 'target',
+  element: ParsedElement,
+  href: string,
+): void {
+  let child = getDirectChildByTag(root, endpoint)
+  const tagName = root.prefix ? `${root.prefix}:${endpoint}` : endpoint
+  if (!child) {
+    child = documentNode.createElement(tagName)
+    root.appendChild(child)
+  }
+  child.setAttributeNS(
+    'http://www.w3.org/2001/XMLSchema-instance',
+    'xsi:type',
+    `archimate:${typeLocalName(element.type)}`,
+  )
+  child.setAttribute('href', href)
+}
+
+export function buildSplitRelationshipEndpointsSaveXml(
+  content: string,
+  relationship: ParsedRelationship,
+  elementById: Map<string, ParsedElement>,
+  pendingElementPaths: Map<string, string>,
+): string {
+  const documentNode = parseXmlDocument(content)
+  const root = getDocumentRootElement(documentNode)
+  if (getId(root) !== relationship.id) {
+    return content
+  }
+
+  const sourceEl = elementById.get(relationship.source)
+  const targetEl = elementById.get(relationship.target)
+  if (!sourceEl || !targetEl) {
+    return content
+  }
+
+  const sourceFile = resolveElementSourceFile(elementById, relationship.source, pendingElementPaths)
+  const targetFile = resolveElementSourceFile(elementById, relationship.target, pendingElementPaths)
+  if (!sourceFile || !targetFile) {
+    return content
+  }
+
+  root.removeAttribute('source')
+  root.removeAttribute('target')
+  upsertSplitRelationshipEndpointChild(
+    root,
+    documentNode,
+    'source',
+    sourceEl,
+    buildSplitFileHref(sourceFile, relationship.source),
+  )
+  upsertSplitRelationshipEndpointChild(
+    root,
+    documentNode,
+    'target',
+    targetEl,
+    buildSplitFileHref(targetFile, relationship.target),
+  )
+
+  return serializeXml(documentNode)
+}
+
 async function resolveDiagramForSave(model: ParsedModel, diagramId: string): Promise<ParsedDiagram | null> {
   const entry = model.diagrams.find((item) => item.id === diagramId)
   if (!entry?.sourceFile || !model.modelRoot) {
@@ -379,6 +447,7 @@ interface SaveSplitModelPayload {
   relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
   elementOverrides: Map<string, ElementOverride>
   dirtyDiagramIds?: Set<string>
+  dirtyRelationshipIds?: Set<string>
   createdObjects?: Array<{ diagramId: string; element: ParsedElement; node: DiagramNode; existingElement?: boolean }>
   createdRelationships?: Array<{ diagramId: string; relationship: ParsedRelationship; connection: DiagramConnection }>
   createdDiagramIds?: Set<string> | Iterable<string>
@@ -400,6 +469,7 @@ export async function saveSplitModelChanges({
   relationshipMetaOverrides,
   elementOverrides,
   dirtyDiagramIds,
+  dirtyRelationshipIds,
   createdObjects = [],
   createdRelationships = [],
   createdDiagramIds,
@@ -569,6 +639,23 @@ export async function saveSplitModelChanges({
     const original = await fetchSplitModelFile(model.modelRoot!, relationship.sourceFile)
     const updated = buildSplitRelationshipSaveXml(original, relationshipId, meta)
     await writeOnce(relationship.sourceFile, updated)
+  }
+
+  for (const relationshipId of dirtyRelationshipIds ?? []) {
+    const relationship = model.relationshipById.get(relationshipId)
+    if (!relationship?.sourceFile) {
+      continue
+    }
+    const original = await fetchSplitModelFile(model.modelRoot!, relationship.sourceFile)
+    const updated = buildSplitRelationshipEndpointsSaveXml(
+      original,
+      relationship,
+      model.elementById,
+      pendingElementPaths,
+    )
+    if (updated !== original) {
+      await writeOnce(relationship.sourceFile, updated)
+    }
   }
 
   for (const [elementId, override] of elementOverrides) {

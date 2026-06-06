@@ -62,6 +62,7 @@ export interface ModelEditState {
   elementOverridesRef: React.MutableRefObject<Map<string, ElementOverride>>
   relationshipMetaOverridesRef: React.MutableRefObject<Map<string, RelationshipMetaOverride>>
   dirtySplitDiagramIdsRef: React.MutableRefObject<Set<string>>
+  dirtySplitRelationshipIdsRef: React.MutableRefObject<Set<string>>
   deletedSplitModelFilesRef: React.MutableRefObject<Set<string>>
   commitDiagramOverrides: (
     updater:
@@ -84,6 +85,7 @@ export interface ModelEditState {
       | ((prev: Map<string, RelationshipMetaOverride>) => Map<string, RelationshipMetaOverride>),
   ) => void
   markSplitDiagramDirty: (diagramId: string) => void
+  markSplitRelationshipDirty: (relationshipId: string) => void
   resetSplitEditState: () => void
   resetModelAfterRepoDelete: () => void
   clearLinkCreation: () => void
@@ -132,6 +134,7 @@ export function useModelEditState(): ModelEditState {
   const elementOverridesRef = useRef<Map<string, ElementOverride>>(new Map())
   const relationshipMetaOverridesRef = useRef<Map<string, RelationshipMetaOverride>>(new Map())
   const dirtySplitDiagramIdsRef = useRef<Set<string>>(new Set())
+  const dirtySplitRelationshipIdsRef = useRef<Set<string>>(new Set())
   const deletedSplitModelFilesRef = useRef<Set<string>>(new Set())
   const [saveStatusMessage, setSaveStatusMessage] = useState('')
   const [modelSaving, setModelSaving] = useState(false)
@@ -205,6 +208,15 @@ export function useModelEditState(): ModelEditState {
     dirtySplitDiagramIdsRef.current = next
   }, [])
 
+  const markSplitRelationshipDirty = useCallback((relationshipId: string) => {
+    if (!relationshipId) {
+      return
+    }
+    const next = new Set(dirtySplitRelationshipIdsRef.current)
+    next.add(relationshipId)
+    dirtySplitRelationshipIdsRef.current = next
+  }, [])
+
   const resetSplitEditState = useCallback(() => {
     const emptyMap = new Map()
     const emptySet = new Set<string>()
@@ -213,6 +225,7 @@ export function useModelEditState(): ModelEditState {
     elementOverridesRef.current = emptyMap
     relationshipMetaOverridesRef.current = emptyMap
     dirtySplitDiagramIdsRef.current = emptySet
+    dirtySplitRelationshipIdsRef.current = emptySet
     deletedSplitModelFilesRef.current = new Set()
     setDiagramOverrides(emptyMap)
     setRelationshipOverrides(emptyMap)
@@ -335,12 +348,14 @@ export function useModelEditState(): ModelEditState {
     elementOverridesRef,
     relationshipMetaOverridesRef,
     dirtySplitDiagramIdsRef,
+    dirtySplitRelationshipIdsRef,
     deletedSplitModelFilesRef,
     commitDiagramOverrides,
     commitRelationshipOverrides,
     commitElementOverrides,
     commitRelationshipMetaOverrides,
     markSplitDiagramDirty,
+    markSplitRelationshipDirty,
     resetSplitEditState,
     resetModelAfterRepoDelete,
     clearLinkCreation,

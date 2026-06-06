@@ -2,11 +2,13 @@ import {
   computeSnappedNodeOffset,
   computeSnappedNodeResize,
   findNodeById,
+  getNodeAtPosition,
   snapPointToGrid,
 } from '../archimate/diagram-model'
 import type {
   CanvasPointer,
   DragPreview,
+  DragPreviewConnectionEndpoint,
   Interaction,
   MoveInteraction,
   PanInteraction,
@@ -109,6 +111,43 @@ export function applyPointerDelta(
         dh: newDh,
       },
       interaction: null,
+      shouldRepaint: true,
+    }
+  }
+
+  if (interaction.type === 'connectionEndpoint') {
+    const hitNode = getNodeAtPosition(diagramNodes, ptr.logicalX, ptr.logicalY)
+    let hoverNodeId: string | null = null
+    if (hitNode?.elementRef && hitNode.id !== interaction.fixedNodeId) {
+      hoverNodeId = hitNode.id
+    }
+    const preview: DragPreviewConnectionEndpoint = {
+      type: 'connectionEndpoint',
+      relationshipRef: interaction.relationshipRef,
+      endpoint: interaction.endpoint,
+      anchorPoint: interaction.anchorPoint,
+      hoverNodeId,
+      pointerCanvasX: ptr.x,
+      pointerCanvasY: ptr.y,
+    }
+    if (
+      currentDragPreview?.type === 'connectionEndpoint' &&
+      currentDragPreview.relationshipRef === preview.relationshipRef &&
+      currentDragPreview.endpoint === preview.endpoint &&
+      currentDragPreview.hoverNodeId === preview.hoverNodeId &&
+      currentDragPreview.pointerCanvasX === preview.pointerCanvasX &&
+      currentDragPreview.pointerCanvasY === preview.pointerCanvasY
+    ) {
+      return null
+    }
+    return {
+      suppressClick: true,
+      dragPreview: preview,
+      interaction: {
+        ...interaction,
+        lastLogicalX: ptr.logicalX,
+        lastLogicalY: ptr.logicalY,
+      },
       shouldRepaint: true,
     }
   }

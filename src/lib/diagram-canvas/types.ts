@@ -39,7 +39,23 @@ export interface DragPreviewBendpoint {
   bendpoint: Bendpoint
 }
 
-export type DragPreview = DragPreviewMove | DragPreviewResize | DragPreviewBendpoint
+export type ConnectionEndpointKind = 'source' | 'target'
+
+export interface DragPreviewConnectionEndpoint {
+  type: 'connectionEndpoint'
+  relationshipRef: string
+  endpoint: ConnectionEndpointKind
+  anchorPoint: Point
+  hoverNodeId: string | null
+  pointerCanvasX: number
+  pointerCanvasY: number
+}
+
+export type DragPreview =
+  | DragPreviewMove
+  | DragPreviewResize
+  | DragPreviewBendpoint
+  | DragPreviewConnectionEndpoint
 
 export interface MoveInteraction {
   type: 'move'
@@ -76,6 +92,17 @@ export interface BendpointInteraction {
   lastLogicalY: number
 }
 
+export interface ConnectionEndpointInteraction {
+  type: 'connectionEndpoint'
+  pointerId: number
+  relationshipRef: string
+  endpoint: ConnectionEndpointKind
+  fixedNodeId: string
+  anchorPoint: Point
+  lastLogicalX: number
+  lastLogicalY: number
+}
+
 export interface PanInteraction {
   type: 'pan'
   pointerId: number
@@ -85,7 +112,12 @@ export interface PanInteraction {
   startScrollTop: number
 }
 
-export type Interaction = MoveInteraction | ResizeInteraction | BendpointInteraction | PanInteraction
+export type Interaction =
+  | MoveInteraction
+  | ResizeInteraction
+  | BendpointInteraction
+  | ConnectionEndpointInteraction
+  | PanInteraction
 
 export interface RenderedConnection {
   id: string
@@ -147,6 +179,11 @@ export interface DiagramCanvasProps {
   onRelationshipBendpointChange?: (relationshipRef: string, bendpointIndex: number, bendpoint: Bendpoint) => void
   onRelationshipBendpointAdd?: (relationshipRef: string, segmentIndex: number, bendpoint: Bendpoint) => void
   onRelationshipBendpointRemove?: (relationshipRef: string, bendpointIndex: number) => void
+  onRelationshipEndpointChange?: (
+    relationshipRef: string,
+    endpoint: ConnectionEndpointKind,
+    nodeId: string,
+  ) => void
   onLinkNodePick?: (node: DiagramNode) => void
   onDropElementAtPoint?: (elementId: string, x: number, y: number) => void
   onDropNewElementAtPoint?: (elementType: string, x: number, y: number) => void

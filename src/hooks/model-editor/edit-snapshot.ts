@@ -26,6 +26,7 @@ export interface CanvasEditSnapshot {
   deletedConnectionIds: Set<string>
   deletedSplitModelFiles: Set<string>
   dirtySplitDiagramIds: Set<string>
+  dirtySplitRelationshipIds: Set<string>
   linkCreateSourceId: string | null
   selectedDiagramId: string
   selectedNodeId: string | null
@@ -119,6 +120,7 @@ export function cloneCanvasEditSnapshot(snapshot: CanvasEditSnapshot): CanvasEdi
     deletedConnectionIds: new Set(snapshot.deletedConnectionIds),
     deletedSplitModelFiles: new Set(snapshot.deletedSplitModelFiles),
     dirtySplitDiagramIds: new Set(snapshot.dirtySplitDiagramIds),
+    dirtySplitRelationshipIds: new Set(snapshot.dirtySplitRelationshipIds),
     linkCreateSourceId: snapshot.linkCreateSourceId,
     selectedDiagramId: snapshot.selectedDiagramId,
     selectedNodeId: snapshot.selectedNodeId,
@@ -143,6 +145,7 @@ export interface CaptureCanvasEditSnapshotParams {
   deletedConnectionIds: Set<string>
   deletedSplitModelFiles: Set<string>
   dirtySplitDiagramIds: Set<string>
+  dirtySplitRelationshipIds: Set<string>
   linkCreateSourceId: string | null
   selectedNodeId: string | null
   selectedElementId: string | null
@@ -209,6 +212,7 @@ export interface RestoreCanvasEditSnapshotHandlers {
   setDeletedConnectionIds: Dispatch<SetStateAction<Set<string>>>
   deletedSplitModelFilesRef: MutableRefObject<Set<string>>
   dirtySplitDiagramIdsRef: MutableRefObject<Set<string>>
+  dirtySplitRelationshipIdsRef: MutableRefObject<Set<string>>
   setLinkCreateSourceId: Dispatch<SetStateAction<string | null>>
   setSelectedNode: Dispatch<SetStateAction<DiagramNode | null>>
   setSelectedElementId: Dispatch<SetStateAction<string | null>>
@@ -234,6 +238,7 @@ export function restoreCanvasEditSnapshot(
   handlers.setDeletedConnectionIds(new Set(cloned.deletedConnectionIds))
   handlers.deletedSplitModelFilesRef.current = new Set(cloned.deletedSplitModelFiles)
   handlers.dirtySplitDiagramIdsRef.current = new Set(cloned.dirtySplitDiagramIds)
+  handlers.dirtySplitRelationshipIdsRef.current = new Set(cloned.dirtySplitRelationshipIds)
   handlers.setLinkCreateSourceId(cloned.linkCreateSourceId)
 
   const diagram = cloned.model.diagrams.find((item) => item.id === cloned.selectedDiagramId)

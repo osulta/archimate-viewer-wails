@@ -19,6 +19,7 @@ import {
   clampZoom,
   exportDiagramPng,
   findBendpointHitAtPoint,
+  findConnectionEndpointHit,
   getCanvasPointer,
   isPointInResizeHandle,
   paintDiagramCanvas,
@@ -28,6 +29,7 @@ import {
 } from '../../lib/diagram-canvas'
 import type {
   BendpointInteraction,
+  ConnectionEndpointInteraction,
   DiagramCanvasProps,
   DragPreview,
   Interaction,
@@ -60,6 +62,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     onRelationshipBendpointChange,
     onRelationshipBendpointAdd,
     onRelationshipBendpointRemove,
+    onRelationshipEndpointChange,
     onLinkNodePick,
     onDropElementAtPoint,
     onDropNewElementAtPoint,
@@ -326,7 +329,14 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     interactionRef.current = null
     setIsDragging(false)
     setIsPanning(false)
-    if (inter.type !== 'pan') {
+    if (inter.type === 'connectionEndpoint') {
+      const preview = dragPreviewRef.current
+      dragPreviewRef.current = null
+      scheduleRepaint()
+      if (preview?.type === 'connectionEndpoint' && preview.hoverNodeId) {
+        onRelationshipEndpointChange?.(inter.relationshipRef, inter.endpoint, preview.hoverNodeId)
+      }
+    } else if (inter.type !== 'pan') {
       commitDragPreview()
     }
     const captureTarget = scrollEl ?? canvas
@@ -341,7 +351,11 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
 
   function beginInteraction(canvas: HTMLCanvasElement, interaction: Interaction) {
     interactionRef.current = interaction
-    setIsDragging(interaction.type === 'move' || interaction.type === 'resize')
+    setIsDragging(
+      interaction.type === 'move' ||
+        interaction.type === 'resize' ||
+        interaction.type === 'connectionEndpoint',
+    )
     setIsPanning(interaction.type === 'pan')
     const captureTarget = scrollContainerRef.current ?? canvas
     try {
@@ -563,6 +577,31 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
 
     if (selectedRelationshipRef) {
+      const endpointHit = findConnectionEndpointHit(
+        selectedRelationshipRef,
+        x,
+        y,
+        renderedConnectionsRef.current,
+      )
+      if (endpointHit) {
+        const conn = diagram.connections.find((c) => c.relationshipRef === selectedRelationshipRef)
+        if (conn) {
+          onBendpointSelect?.(null)
+          beginInteraction(canvas, {
+            type: 'connectionEndpoint',
+            pointerId: event.pointerId,
+            relationshipRef: selectedRelationshipRef,
+            endpoint: endpointHit.endpoint,
+            fixedNodeId: endpointHit.endpoint === 'source' ? conn.target : conn.source,
+            anchorPoint: endpointHit.point,
+            lastLogicalX: logicalX,
+            lastLogicalY: logicalY,
+          } satisfies ConnectionEndpointInteraction)
+          event.preventDefault()
+          return
+        }
+      }
+
       const selectedConnection = renderedConnectionsRef.current.find(
         (c) => c.relationshipRef === selectedRelationshipRef,
       )

@@ -471,6 +471,28 @@ export function paintDiagramCanvas(
   },
   )
 
+  connectionsToDraw.forEach(({ connection, points, isSelectedRelationship }) => {
+    if (!isSelectedRelationship || isReadOnly) {
+      return
+    }
+    const start = points[0]
+    const end = points[points.length - 1]
+    ;[
+      { point: start, fill: '#1f47bf', label: 'source' as const },
+      { point: end, fill: '#ff7a00', label: 'target' as const },
+    ].forEach(({ point, fill }) => {
+      context.save()
+      context.fillStyle = fill
+      context.strokeStyle = '#ffffff'
+      context.lineWidth = 2
+      context.beginPath()
+      context.rect(point.x - 5, point.y - 5, 10, 10)
+      context.fill()
+      context.stroke()
+      context.restore()
+    })
+  })
+
   connectionsToDraw.forEach(({ connection, sourceCenter, isSelectedRelationship }) => {
     if (!isSelectedRelationship || !connection.bendpoints?.length) {
       return
@@ -490,6 +512,37 @@ export function paintDiagramCanvas(
       context.restore()
     })
   })
+
+  if (dragPreview?.type === 'connectionEndpoint') {
+    const hoverNode = dragPreview.hoverNodeId
+      ? allNodes.find((node) => node.id === dragPreview.hoverNodeId)
+      : null
+    if (hoverNode) {
+      const hx = hoverNode.x + translateX
+      const hy = hoverNode.y + translateY
+      context.save()
+      context.strokeStyle = '#ff7a00'
+      context.lineWidth = 2
+      context.setLineDash([4, 3])
+      context.strokeRect(hx - 2, hy - 2, hoverNode.width + 4, hoverNode.height + 4)
+      context.restore()
+    }
+    const endX = hoverNode
+      ? hoverNode.x + translateX + hoverNode.width / 2
+      : dragPreview.pointerCanvasX
+    const endY = hoverNode
+      ? hoverNode.y + translateY + hoverNode.height / 2
+      : dragPreview.pointerCanvasY
+    context.save()
+    context.strokeStyle = dragPreview.endpoint === 'source' ? '#1f47bf' : '#ff7a00'
+    context.lineWidth = 2
+    context.setLineDash([6, 4])
+    context.beginPath()
+    context.moveTo(dragPreview.anchorPoint.x, dragPreview.anchorPoint.y)
+    context.lineTo(endX, endY)
+    context.stroke()
+    context.restore()
+  }
 
   return { translateX, translateY, renderedConnections }
 }

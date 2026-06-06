@@ -41,6 +41,7 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     elementOverridesRef,
     relationshipMetaOverridesRef,
     dirtySplitDiagramIdsRef,
+    dirtySplitRelationshipIdsRef,
     deletedSplitModelFilesRef,
     getEditedModelXmlRef,
     setCreatedObjects,
@@ -95,8 +96,9 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
           relationshipOverrides: relationshipOverridesRef.current,
           relationshipMetaOverrides: relationshipMetaOverridesRef.current,
           elementOverrides: elementOverridesRef.current,
-          dirtyDiagramIds: dirtySplitDiagramIdsRef.current,
-          createdObjects,
+        dirtyDiagramIds: dirtySplitDiagramIdsRef.current,
+        dirtyRelationshipIds: dirtySplitRelationshipIdsRef.current,
+        createdObjects,
           createdRelationships,
           createdDiagramIds,
           deletedSplitModelFiles: deletedSplitModelFilesRef.current,
@@ -106,6 +108,7 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
           return
         }
         dirtySplitDiagramIdsRef.current = new Set()
+        dirtySplitRelationshipIdsRef.current = new Set()
         deletedSplitModelFilesRef.current = new Set()
         setCreatedObjects([])
         setCreatedRelationships([])

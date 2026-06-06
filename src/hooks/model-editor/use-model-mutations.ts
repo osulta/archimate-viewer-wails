@@ -10,6 +10,7 @@ import {
   reparentNodeInTree,
   insertNodeUnderParent,
   findNodeById,
+  findNodeByElementRefInDiagram,
   collectSubtreeIds,
   collectSubtreeElementRefs,
   removeNodeFromTree,
@@ -26,6 +27,7 @@ import {
   resolveSplitRelationshipFilePath,
 } from '../../lib/archimate/split-model-save'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
+import type { ConnectionEndpointKind } from '../../lib/diagram-canvas/types'
 import {
   captureCanvasEditSnapshot,
   cloneCanvasEditSnapshot,
@@ -73,6 +75,11 @@ export interface ModelMutations {
   removeRelationshipBendpoint: (relationshipRef: string, bendpointIndex: number) => void
   updateRelationshipBendpoint: (relationshipRef: string, bendpointIndex: number, bendpoint: Bendpoint) => void
   addRelationshipBendpoint: (relationshipRef: string, segmentIndex: number, bendpoint: Bendpoint) => void
+  reassignRelationshipEndpoint: (
+    relationshipRef: string,
+    endpoint: ConnectionEndpointKind,
+    nodeId: string,
+  ) => void
   undoCanvasCommand: () => void
   redoCanvasCommand: () => void
   clearCanvasHistory: () => void
@@ -251,8 +258,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     setDeletedDiagramNodeIds, setDeletedElementIds, setDeletedRelationshipIds, setDeletedConnectionIds,
     pendingLinkType, linkCreateSourceId, setLinkCreateSourceId, setPendingLinkType,
     commitDiagramOverrides, commitRelationshipOverrides, commitElementOverrides,
-    commitRelationshipMetaOverrides, markSplitDiagramDirty, clearLinkCreation,
-    deletedSplitModelFilesRef, dirtySplitDiagramIdsRef,
+    commitRelationshipMetaOverrides, markSplitDiagramDirty, markSplitRelationshipDirty, clearLinkCreation,
+    deletedSplitModelFilesRef, dirtySplitDiagramIdsRef, dirtySplitRelationshipIdsRef,
   } = editState
 
   function trackDeletedSplitModelFile(relativePath: string): void {
@@ -309,6 +316,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       deletedConnectionIds,
       deletedSplitModelFiles: deletedSplitModelFilesRef.current,
       dirtySplitDiagramIds: dirtySplitDiagramIdsRef.current,
+      dirtySplitRelationshipIds: dirtySplitRelationshipIdsRef.current,
       linkCreateSourceId,
       selectedNodeId: selectedNodeLive?.id ?? null,
       selectedElementId,
@@ -332,6 +340,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       setDeletedConnectionIds,
       deletedSplitModelFilesRef,
       dirtySplitDiagramIdsRef,
+      dirtySplitRelationshipIdsRef,
       setLinkCreateSourceId,
       setSelectedNode,
       setSelectedElementId,
@@ -1772,6 +1781,158 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     )
   }
 
+  function reassignRelationshipEndpoint(
+    relationshipRef: string,
+    endpoint: ConnectionEndpointKind,
+    newNodeId: string,
+  ) {
+    if (!model || !selectedDiagramId) {
+      return
+    }
+    const relationship = model.relationshipById.get(relationshipRef)
+    const diagram = model.diagrams.find((d) => d.id === selectedDiagramId)
+    const connection = diagram?.connections.find((c) => c.relationshipRef === relationshipRef)
+    if (!relationship || !diagram || !connection) {
+      return
+    }
+
+    const newNode = findNodeById(diagram.nodes, newNodeId)
+    if (!newNode?.elementRef || isDiagramReferenceNode(newNode)) {
+      return
+    }
+
+    const otherNodeId = endpoint === 'source' ? connection.target : connection.source
+    const otherNode = findNodeById(diagram.nodes, otherNodeId)
+    if (!otherNode?.elementRef) {
+      return
+    }
+    if (newNodeId === otherNodeId) {
+      return
+    }
+    if (newNode.elementRef === otherNode.elementRef) {
+      window.alert('Укажите два разных элемента модели.')
+      return
+    }
+
+    const nextSourceNodeId = endpoint === 'source' ? newNodeId : connection.source
+    const nextTargetNodeId = endpoint === 'target' ? newNodeId : connection.target
+    const duplicate = diagram.connections.some(
+      (c) =>
+        c.id !== connection.id &&
+        ((c.source === nextSourceNodeId && c.target === nextTargetNodeId) ||
+          (c.source === nextTargetNodeId && c.target === nextSourceNodeId)),
+    )
+    if (duplicate) {
+      window.alert('Между этими объектами на диаграмме уже есть связь.')
+      return
+    }
+
+    const beforeSnapshot = captureCurrentCanvasSnapshot()
+    if (!beforeSnapshot) {
+      return
+    }
+
+    const nextSourceElement = endpoint === 'source' ? newNode.elementRef : relationship.source
+    const nextTargetElement = endpoint === 'target' ? newNode.elementRef : relationship.target
+    const updatedRelationship: ParsedRelationship = {
+      ...relationship,
+      source: nextSourceElement,
+      target: nextTargetElement,
+    }
+
+    const nextRelationshipById = new Map(model.relationshipById)
+    nextRelationshipById.set(relationshipRef, updatedRelationship)
+    const nextRelationships = model.relationships.map((item) =>
+      item.id === relationshipRef ? updatedRelationship : item,
+    )
+
+    const nextDiagrams = model.diagrams.map((d) => ({
+      ...d,
+      connections: d.connections.map((c) => {
+        if (c.relationshipRef !== relationshipRef) {
+          return c
+        }
+        if (d.id === selectedDiagramId) {
+          return {
+            ...c,
+            source: nextSourceNodeId,
+            target: nextTargetNodeId,
+            bendpoints: [],
+          }
+        }
+        const srcNode = findNodeByElementRefInDiagram(d, nextSourceElement)
+        const tgtNode = findNodeByElementRefInDiagram(d, nextTargetElement)
+        if (srcNode && tgtNode) {
+          return {
+            ...c,
+            source: srcNode.id,
+            target: tgtNode.id,
+            bendpoints: [],
+          }
+        }
+        return c
+      }),
+    }))
+
+    const nextRelOverrides = new Map(relationshipOverrides)
+    nextRelOverrides.forEach((relMap, diagramId) => {
+      if (relMap.has(relationshipRef)) {
+        const nextMap = new Map(relMap)
+        nextMap.delete(relationshipRef)
+        nextRelOverrides.set(diagramId, nextMap)
+      }
+    })
+
+    const nextCreatedRelationships = createdRelationships.map((cr) => {
+      if (cr.relationship.id !== relationshipRef) {
+        return cr
+      }
+      const diagramConn = nextDiagrams
+        .find((d) => d.id === cr.diagramId)
+        ?.connections.find((c) => c.relationshipRef === relationshipRef)
+      return {
+        ...cr,
+        relationship: updatedRelationship,
+        connection: diagramConn ?? cr.connection,
+      }
+    })
+
+    const nextDirtyDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
+    const nextDirtyRelationshipIds = new Set(dirtySplitRelationshipIdsRef.current)
+    if (isSplitFilesModel(model)) {
+      model.diagrams.forEach((d) => {
+        if (d.connections.some((c) => c.relationshipRef === relationshipRef)) {
+          nextDirtyDiagramIds.add(d.id)
+        }
+      })
+      if (relationship.sourceFile || originalRelationshipIds.has(relationshipRef)) {
+        nextDirtyRelationshipIds.add(relationshipRef)
+      }
+    }
+
+    const afterSnapshot: CanvasEditSnapshot = {
+      ...cloneCanvasEditSnapshot(beforeSnapshot),
+      model: cloneModelSnapshot({
+        ...model,
+        diagrams: nextDiagrams,
+        relationships: nextRelationships,
+        relationshipById: nextRelationshipById,
+      }),
+      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
+      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
+      dirtySplitDiagramIds: nextDirtyDiagramIds,
+      dirtySplitRelationshipIds: nextDirtyRelationshipIds,
+      selectedBendpointIndex: null,
+    }
+
+    restoreCanvasSnapshot(afterSnapshot)
+    pushSnapshotCommand(
+      endpoint === 'source' ? 'Изменение source связи' : 'Изменение target связи',
+      () => restoreCanvasSnapshot(beforeSnapshot),
+      () => restoreCanvasSnapshot(afterSnapshot),
+    )
+  }
+
   const undoCanvasCommand = useCallback(() => {
     commandHistory.undo()
   }, [commandHistory])
@@ -1805,6 +1966,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     removeRelationshipBendpoint,
     updateRelationshipBendpoint,
     addRelationshipBendpoint,
+    reassignRelationshipEndpoint,
     undoCanvasCommand,
     redoCanvasCommand,
     clearCanvasHistory,
