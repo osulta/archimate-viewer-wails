@@ -1,22 +1,11 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { App as AntApp, ConfigProvider, theme as antdTheme } from 'antd'
-import ruRU from 'antd/locale/ru_RU'
 import './index.css'
+import './app-theme.css'
 import App from './App'
+import { ThemeProvider } from './components/theme-provider'
 import { setApiBase } from './lib/api-base'
 import { GetAPIBaseURL } from '../wailsjs/go/main/App'
-
-const appTheme = {
-  token: {
-    colorPrimary: '#1f47bf',
-    colorLink: '#1f47bf',
-    borderRadius: 8,
-    fontFamily: 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-    colorTextBase: '#20345d',
-  },
-  algorithm: antdTheme.defaultAlgorithm,
-} as const
 
 async function bootstrap() {
   try {
@@ -36,11 +25,9 @@ async function bootstrap() {
 
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <ConfigProvider locale={ruRU} theme={appTheme}>
-        <AntApp>
-          <App />
-        </AntApp>
-      </ConfigProvider>
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
     </StrictMode>,
   )
 }

@@ -153,6 +153,7 @@ export interface DiagramCanvasProps {
   onDropNewRelationshipAtPoint?: (relationshipType: string, x: number, y: number, targetNodeId: string | null) => void
   onDropDiagramReferenceAtPoint?: (diagramId: string, x: number, y: number) => void
   onOpenDiagramReference?: (diagramId: string) => void
+  onOptimizeConnections?: () => void
   diagrams?: ParsedDiagram[]
 }
 

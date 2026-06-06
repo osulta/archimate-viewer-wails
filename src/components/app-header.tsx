@@ -1,6 +1,14 @@
 import React from 'react'
-import { RedoOutlined, UndoOutlined } from '@ant-design/icons'
-import { Button, Layout, Menu, Space, Tooltip, Typography } from 'antd'
+import {
+  DesktopOutlined,
+  MoonOutlined,
+  RedoOutlined,
+  SunOutlined,
+  UndoOutlined,
+} from '@ant-design/icons'
+import { Button, Layout, Menu, Segmented, Space, Tooltip, Typography } from 'antd'
+import { useThemeModeContext } from './theme-provider'
+import type { ThemeMode } from '../lib/ui/theme-mode'
 
 interface Tab {
   id: string
@@ -39,6 +47,8 @@ export function AppHeader({
   onUndo,
   onRedo,
 }: AppHeaderProps): React.JSX.Element {
+  const { mode, setMode } = useThemeModeContext()
+
   return (
     <Layout.Header className="app-header">
       <Typography.Text className="app-header-brand">ArchiMate Viewer</Typography.Text>
@@ -50,7 +60,31 @@ export function AppHeader({
         items={TABS.map((tab) => ({ key: tab.id, label: tab.label }))}
         aria-label="Разделы приложения"
       />
-      <Space className="app-header-actions" size={4}>
+      <Space className="app-header-actions" size={8}>
+        <Segmented
+          className="app-theme-switch"
+          size="small"
+          value={mode}
+          onChange={(value) => setMode(value as ThemeMode)}
+          options={[
+            {
+              value: 'system',
+              icon: <DesktopOutlined />,
+              label: 'Система',
+            },
+            {
+              value: 'light',
+              icon: <SunOutlined />,
+              label: 'Светлая',
+            },
+            {
+              value: 'dark',
+              icon: <MoonOutlined />,
+              label: 'Тёмная',
+            },
+          ]}
+          aria-label="Тема оформления"
+        />
         <Tooltip title={undoLabel ? `Отменить: ${undoLabel} (Ctrl+Z)` : 'Отменить (Ctrl+Z)'}>
           <Button
             type="text"

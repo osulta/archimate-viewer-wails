@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>archimate-viewer</title>
+    <script>
+      ;(() => {
+        const key = 'archi-theme-mode'
+        const stored = localStorage.getItem(key)
+        const mode = stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+        const systemDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+        const resolved =
+          mode === 'dark' ? 'dark' : mode === 'light' ? 'light' : systemDark ? 'dark' : 'light'
+        document.documentElement.dataset.theme = resolved
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>
