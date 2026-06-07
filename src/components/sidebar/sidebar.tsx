@@ -3,8 +3,6 @@ import { Alert, Spin, Typography } from 'antd'
 import { applyRelationshipMetaToList } from '../../lib/archimate/relationship-meta'
 import { useDebouncedValue } from '../../hooks/use-debounced-value'
 import { ModelTree } from './model-tree'
-import { ElementPalettePanel } from './element-palette-panel'
-import { RelationshipPalettePanel } from './relationship-palette-panel'
 import type {
   ParsedModel,
   ParsedElement,
@@ -35,9 +33,6 @@ interface SidebarProps {
   selectedElementId: string | null
   selectedRelationshipRef: string | null
   selectedDiagramId: string | null
-  activeRelationshipType?: string | null
-  linkCreateSourceId?: string | null
-  onSelectRelationshipType?: (type: string) => void
   onReloadModel?: () => Promise<void> | void
   onSaveEditedModel?: () => Promise<void> | void
   canSaveModel?: boolean
@@ -68,9 +63,6 @@ export function Sidebar({
   selectedElementId,
   selectedRelationshipRef,
   selectedDiagramId,
-  activeRelationshipType,
-  linkCreateSourceId,
-  onSelectRelationshipType,
   onReloadModel,
   onSaveEditedModel,
   canSaveModel = true,
@@ -205,18 +197,6 @@ export function Sidebar({
           />
         ) : null}
       </div>
-
-      {!isViewMode && model ? (
-        <ElementPalettePanel />
-      ) : null}
-
-      {!isViewMode && model ? (
-        <RelationshipPalettePanel
-          activeRelationshipType={activeRelationshipType ?? null}
-          hasLinkSource={Boolean(linkCreateSourceId)}
-          onSelectRelationshipType={onSelectRelationshipType ?? (() => {})}
-        />
-      ) : null}
     </aside>
   )
 }

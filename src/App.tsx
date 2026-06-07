@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import { Layout } from 'antd'
 import './App.css'
 import type { AppTab } from './app/types'
@@ -10,10 +11,13 @@ import { AiArchitectPanel } from './components/ai-architect/ai-architect-panel'
 import { AdrPanel } from './components/adr/adr-panel'
 import { ViewModePanel } from './components/view-mode/view-mode-panel'
 import { AdminPanel } from './components/admin/admin-panel'
+import { ModelingHeaderActions } from './components/workspace/modeling-header-actions'
 import { useArchimateApp } from './hooks/model-editor/use-archimate-app'
+import { useWorkspaceLayout } from './hooks/use-workspace-layout'
 
 function App() {
   const app = useArchimateApp()
+  const workspaceLayout = useWorkspaceLayout()
   const {
     appTab,
     handleAppTabChange,
@@ -29,8 +33,48 @@ function App() {
     handleOpenCompareChanges,
   } = app
 
-  const { model, error, elementOverrides, relationshipMetaOverrides, pendingElementFocusRef } =
+  const { model, error, elementOverrides, relationshipMetaOverrides, pendingElementFocusRef, modelSaving } =
     editState
+
+  const saveTargetPath =
+    git.modelLayout === 'split-files'
+      ? (git.gitRepoPath ?? undefined)
+      : (git.buildRepoModelWriteRelativePath() ?? undefined)
+
+  const headerExtraActions = useMemo(() => {
+    if (appTab !== 'modeling') {
+      return null
+    }
+    return (
+      <ModelingHeaderActions
+        saveTargetPath={saveTargetPath}
+        modelSaving={modelSaving}
+        modelLoading={git.modelLoading || splitRuntime.isDiagramLoading}
+        gitCommandLoading={git.gitCommandLoading}
+        canSaveModel={Boolean(model)}
+        canCompare={Boolean(selection.selectedDiagramId && model)}
+        canvasFocusMode={workspaceLayout.canvasFocusMode}
+        onReloadModel={save.handleReloadModel}
+        onSaveEditedModel={save.handleSaveEditedModel}
+        onOpenCompareChanges={handleOpenCompareChanges}
+        onToggleCanvasFocus={workspaceLayout.toggleCanvasFocusMode}
+      />
+    )
+  }, [
+    appTab,
+    saveTargetPath,
+    modelSaving,
+    git.modelLoading,
+    git.gitCommandLoading,
+    splitRuntime.isDiagramLoading,
+    model,
+    selection.selectedDiagramId,
+    workspaceLayout.canvasFocusMode,
+    workspaceLayout.toggleCanvasFocusMode,
+    save.handleReloadModel,
+    save.handleSaveEditedModel,
+    handleOpenCompareChanges,
+  ])
 
   return (
     <Layout className="app-shell">
@@ -43,6 +87,7 @@ function App() {
         redoLabel={mutations.canvasHistory.redoLabel}
         onUndo={mutations.undoCanvasCommand}
         onRedo={mutations.redoCanvasCommand}
+        extraActions={headerExtraActions}
       />
       <Layout.Content className="app-body">
         {appTab === 'modeling' ? (
@@ -51,9 +96,8 @@ function App() {
             editState={editState}
             selection={selection}
             mutations={mutations}
-            save={save}
             splitRuntime={splitRuntime}
-            onOpenCompareChanges={handleOpenCompareChanges}
+            workspaceLayout={workspaceLayout}
           />
         ) : null}
         {appTab === 'changes' ? (
@@ -146,6 +190,7 @@ function App() {
               }
             }}
             onSelectDiagram={handleViewModeSelectDiagram}
+            workspaceLayout={workspaceLayout}
           />
         ) : null}
         {appTab === 'admin' ? <AdminPanel git={git} /> : null}

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type ReactNode } from 'react'
 import {
   DesktopOutlined,
   MoonOutlined,
@@ -35,6 +35,7 @@ interface AppHeaderProps {
   redoLabel?: string
   onUndo?: () => void
   onRedo?: () => void
+  extraActions?: ReactNode
 }
 
 export function AppHeader({
@@ -46,6 +47,7 @@ export function AppHeader({
   redoLabel = '',
   onUndo,
   onRedo,
+  extraActions,
 }: AppHeaderProps): React.JSX.Element {
   const { mode, setMode } = useThemeModeContext()
 
@@ -61,6 +63,7 @@ export function AppHeader({
         aria-label="Разделы приложения"
       />
       <Space className="app-header-actions" size={8}>
+        {extraActions}
         <Segmented
           className="app-theme-switch"
           size="small"

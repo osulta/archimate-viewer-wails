@@ -1,35 +1,27 @@
-import React, { useEffect, useRef } from 'react'
-import { drawElementPalettePreview } from '../../lib/archimate/element-palette-draw'
-
-const ICON_WIDTH = 44
-const ICON_HEIGHT = 30
+import { useMemo } from 'react'
+import { buildElementPaletteSvgDataUrl } from '../../lib/archimate/element-palette-svg'
 
 interface ElementPaletteIconProps {
   elementType: string
+  width?: number
+  height?: number
 }
 
-export function ElementPaletteIcon({ elementType }: ElementPaletteIconProps): React.JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) {
-      return
-    }
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      return
-    }
-    drawElementPalettePreview(ctx, elementType, ICON_WIDTH, ICON_HEIGHT)
-  }, [elementType])
+export function ElementPaletteIcon({
+  elementType,
+  width = 28,
+  height = 20,
+}: ElementPaletteIconProps) {
+  const src = useMemo(() => buildElementPaletteSvgDataUrl(elementType), [elementType])
 
   return (
-    <canvas
-      ref={canvasRef}
+    <img
+      src={src}
       className="element-palette-icon"
-      width={ICON_WIDTH}
-      height={ICON_HEIGHT}
-      aria-hidden="true"
+      width={width}
+      height={height}
+      alt=""
+      draggable={false}
     />
   )
 }

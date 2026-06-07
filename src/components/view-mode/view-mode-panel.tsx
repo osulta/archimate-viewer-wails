@@ -1,9 +1,12 @@
 import { useMemo } from 'react'
-import { Empty, Typography } from 'antd'
+import { Button, Empty, Tooltip } from 'antd'
+import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons'
 import { DiagramCanvas } from '../diagram-canvas'
 import { collectConnectionIdsForDiagramNode } from '../../lib/archimate/diagram-model'
 import { Sidebar } from '../sidebar/sidebar'
 import { ViewModeProperties } from './view-mode-properties'
+import { WorkspaceCanvasLayout } from '../workspace/workspace-canvas-layout'
+import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
 import type {
   ParsedModel,
   ParsedDiagram,
@@ -64,6 +67,7 @@ interface ViewModePanelProps {
   onCanvasNodeSelect: (node: DiagramNode | null) => void
   onCanvasRelationshipSelect: (ref: string | null) => void
   onNavigateToDiagram: (payload: NavigateToDiagramPayload) => void
+  workspaceLayout: WorkspaceLayoutState
 }
 
 export function ViewModePanel(props: ViewModePanelProps) {
@@ -94,9 +98,11 @@ export function ViewModePanel(props: ViewModePanelProps) {
     onCanvasNodeSelect,
     onCanvasRelationshipSelect,
     onNavigateToDiagram,
+    workspaceLayout,
   } = props
 
   const selectedNodeId = selectedNodeLive?.id ?? ''
+  const { canvasFocusMode, toggleCanvasFocusMode } = workspaceLayout
 
   const flowConnectionIds = useMemo(() => {
     if (!selectedDiagram || !selectedNodeId || selectedRelationshipRef) {
@@ -105,63 +111,101 @@ export function ViewModePanel(props: ViewModePanelProps) {
     return collectConnectionIdsForDiagramNode(selectedDiagram, selectedNodeId)
   }, [selectedDiagram, selectedNodeId, selectedRelationshipRef])
 
-  return (
-    <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
-      <Sidebar
-        variant="view"
-        model={model}
-        error={error}
-        elementOverrides={elementOverrides}
-        relationshipMetaOverrides={relationshipMetaOverrides}
-        selectedElementId={selectedElementId}
-        selectedRelationshipRef={selectedRelationshipRef}
-        selectedDiagramId={selectedDiagramId}
-        onSelectElement={onSelectElement}
-        onSelectRelationship={onSelectRelationship}
-        onSelectDiagram={onSelectDiagram}
-        modelLoading={modelLoading}
-        focusElementInDiagram={focusElementInDiagram}
-        focusRelationshipInDiagram={focusRelationshipInDiagram}
+  const sidebar = (
+    <Sidebar
+      variant="view"
+      model={model}
+      error={error}
+      elementOverrides={elementOverrides}
+      relationshipMetaOverrides={relationshipMetaOverrides}
+      selectedElementId={selectedElementId}
+      selectedRelationshipRef={selectedRelationshipRef}
+      selectedDiagramId={selectedDiagramId}
+      onSelectElement={onSelectElement}
+      onSelectRelationship={onSelectRelationship}
+      onSelectDiagram={onSelectDiagram}
+      modelLoading={modelLoading}
+      focusElementInDiagram={focusElementInDiagram}
+      focusRelationshipInDiagram={focusRelationshipInDiagram}
+    />
+  )
+
+  const focusToolbarAction = (
+    <Tooltip
+      title={
+        canvasFocusMode ? 'Выйти из полноэкранного canvas (Esc)' : 'Canvas на весь экран'
+      }
+    >
+      <Button
+        type={canvasFocusMode ? 'primary' : 'text'}
+        size="small"
+        icon={canvasFocusMode ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+        aria-label={canvasFocusMode ? 'Выйти из полноэкранного canvas' : 'Canvas на весь экран'}
+        aria-pressed={canvasFocusMode}
+        onClick={toggleCanvasFocusMode}
       />
+    </Tooltip>
+  )
 
-      <main className="content workspace-content">
-        <div className="workspace-toolbar">
-          <div className="content-head">
-            <div className="content-head-text">
-              <Typography.Title level={3} style={{ margin: 0 }}>
-                {selectedDiagram?.name ?? 'Диаграмма не выбрана'}
-              </Typography.Title>
-              <Typography.Text type="secondary">
-                {selectedDiagram?.type ?? 'Режим просмотра'}
-              </Typography.Text>
-            </div>
-          </div>
-        </div>
-
-        {!model ? (
+  if (!model) {
+    return (
+      <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
+        {sidebar}
+        <main className="content workspace-content">
           <Empty
             className="view-mode-empty"
             description="Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git."
           />
-        ) : !selectedDiagram ? (
+        </main>
+      </div>
+    )
+  }
+
+  if (!selectedDiagram) {
+    return (
+      <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
+        {sidebar}
+        <main className="content workspace-content">
           <Empty className="view-mode-empty" description="Выберите диаграмму в дереве слева." />
-        ) : (
-          <div className="workspace-body">
-            <DiagramCanvas
-              readOnly
-              diagram={selectedDiagram}
-              diagramExportName={selectedDiagram.name}
-              elementById={elementByIdForCanvas}
-              relationshipById={model.relationshipById}
-              diagrams={model.diagrams}
-              selectedNodeId={selectedNodeId}
-              selectedRelationshipRef={selectedRelationshipRef}
-              flowConnectionIds={flowConnectionIds}
-              animateConnectionFlow={flowConnectionIds.length > 0}
-              onNodeSelect={onCanvasNodeSelect}
-              onRelationshipSelect={onCanvasRelationshipSelect}
-              onOpenDiagramReference={onSelectDiagram}
-            />
+        </main>
+      </div>
+    )
+  }
+
+  const hasInspectorContent = Boolean(
+    selectedRelationshipRef ||
+      selectedNodeLive ||
+      selectedElementId ||
+      selectedElement,
+  )
+
+  return (
+    <div className="view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
+      <WorkspaceCanvasLayout
+        layout={workspaceLayout}
+        sidebar={sidebar}
+        diagramTitle={selectedDiagram.name}
+        diagramMeta={selectedDiagram.type ?? 'Режим просмотра'}
+        toolbarExtra={focusToolbarAction}
+        canvas={
+          <DiagramCanvas
+            readOnly
+            diagram={selectedDiagram}
+            diagramExportName={selectedDiagram.name}
+            elementById={elementByIdForCanvas}
+            relationshipById={model.relationshipById}
+            diagrams={model.diagrams}
+            selectedNodeId={selectedNodeId}
+            selectedRelationshipRef={selectedRelationshipRef}
+            flowConnectionIds={flowConnectionIds}
+            animateConnectionFlow={flowConnectionIds.length > 0}
+            onNodeSelect={onCanvasNodeSelect}
+            onRelationshipSelect={onCanvasRelationshipSelect}
+            onOpenDiagramReference={onSelectDiagram}
+          />
+        }
+        inspector={
+          hasInspectorContent ? (
             <ViewModeProperties
               selectedRelationship={selectedRelationship}
               selectedRelationshipRef={selectedRelationshipRef}
@@ -178,9 +222,15 @@ export function ViewModePanel(props: ViewModePanelProps) {
               onSelectElement={onSelectElementFromProperties}
               onNavigateToDiagram={onNavigateToDiagram}
             />
-          </div>
-        )}
-      </main>
+          ) : (
+            <Empty
+              className="props-empty"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Выберите объект или связь на диаграмме."
+            />
+          )
+        }
+      />
     </div>
   )
 }

@@ -1,35 +1,27 @@
-import React, { useEffect, useRef } from 'react'
-import { drawRelationshipPalettePreview } from '../../lib/archimate/relationship-palette-draw'
-
-const ICON_WIDTH = 44
-const ICON_HEIGHT = 30
+import { useMemo } from 'react'
+import { buildRelationshipPaletteSvgDataUrl } from '../../lib/archimate/relationship-palette-svg'
 
 interface RelationshipPaletteIconProps {
   relationshipType: string
+  width?: number
+  height?: number
 }
 
-export function RelationshipPaletteIcon({ relationshipType }: RelationshipPaletteIconProps): React.JSX.Element {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) {
-      return
-    }
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      return
-    }
-    drawRelationshipPalettePreview(ctx, relationshipType, ICON_WIDTH, ICON_HEIGHT)
-  }, [relationshipType])
+export function RelationshipPaletteIcon({
+  relationshipType,
+  width = 28,
+  height = 20,
+}: RelationshipPaletteIconProps): React.JSX.Element {
+  const src = useMemo(() => buildRelationshipPaletteSvgDataUrl(relationshipType), [relationshipType])
 
   return (
-    <canvas
-      ref={canvasRef}
+    <img
+      src={src}
       className="element-palette-icon"
-      width={ICON_WIDTH}
-      height={ICON_HEIGHT}
-      aria-hidden="true"
+      width={width}
+      height={height}
+      alt=""
+      draggable={false}
     />
   )
 }
