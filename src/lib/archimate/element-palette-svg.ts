@@ -75,7 +75,7 @@ function buildElementIconMarkup(icon: string, color: string, fillColor: string):
     case 'actor':
       return `${gOpen}<circle cx="7" cy="2.5" r="2" fill="none"/><path d="M 7 4.5 V 7.5 M 3.5 5.5 H 10.5 M 7 7.5 L 4.5 10 M 7 7.5 L 9.5 10"/>${gClose}`
     case 'node':
-      return `${gOpen}<path d="M 1 8 4 5 12.5 5 9.5 2 H 1 Z" fill="${fill}" stroke="${stroke}"/><path d="M 9.5 2 V 8.5 L 12.5 5.5 V 11.5 H 1 V 8 Z" fill="${fill}" stroke="${stroke}"/><rect x="1" y="8" width="8.5" height="3.5" fill="${fill}" stroke="${stroke}"/>${gClose}`
+      return `${gOpen}<path d="M 1 4 L 4 1 L 12.5 1 L 9.5 4 Z" fill="${fill}" stroke="${stroke}"/><path d="M 9.5 4 L 12.5 1 L 12.5 7.5 L 9.5 10.5 Z" fill="${fill}" stroke="${stroke}"/><rect x="1" y="4" width="8.5" height="6.5" fill="${fill}" stroke="${stroke}"/>${gClose}`
     case 'device':
       return `${gOpen}<rect x="1" y="1" width="12" height="7" rx="1.2" fill="none"/><path d="M 4.5 8.5 H 9.5 L 8.2 10.5 H 5.8 Z" fill="none"/>${gClose}`
     case 'equipment':
