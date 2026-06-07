@@ -205,6 +205,10 @@ export function ModelingWorkspace({
             mutations.placeDiagramReferenceOnDiagram(diagramId, { x, y } as Point)
           }
           onOpenDiagramReference={handleSelectDiagram}
+          onDeleteNodeFromDiagram={mutations.deleteSelectedFromDiagram}
+          onDeleteNodeFromModel={mutations.deleteElementFromModel}
+          onDeleteConnectionFromDiagram={mutations.deleteSelectedConnectionFromDiagram}
+          onDeleteRelationshipFromModel={mutations.deleteRelationshipFromModel}
         />
       }
       palettes={

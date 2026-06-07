@@ -3,6 +3,7 @@ import { ZoomInOutlined, ZoomOutOutlined, DownloadOutlined } from '@ant-design/i
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_WHEEL_FACTOR } from '../../lib/diagram-canvas'
 import type { DiagramCanvasProps } from '../../lib/diagram-canvas'
 import { useDiagramCanvas } from './use-diagram-canvas'
+import { DiagramCanvasContextMenu } from './diagram-canvas-context-menu'
 
 export function DiagramCanvas(props: DiagramCanvasProps) {
   const {
@@ -26,6 +27,9 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
     handleDragLeave,
     handleDrop,
     startPanView,
+    contextMenu,
+    closeContextMenu,
+    handleContextMenu,
   } = useDiagramCanvas(props)
 
   if (!diagram) {
@@ -106,6 +110,7 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
           style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
           onClick={handleCanvasClick}
           onAuxClick={handleAuxClick}
+          onContextMenu={handleContextMenu}
           onPointerDown={handlePointerDown}
           onDoubleClick={handleCanvasDoubleClick}
           onDragOver={handleDragOver}
@@ -113,6 +118,13 @@ export function DiagramCanvas(props: DiagramCanvasProps) {
           onDrop={handleDrop}
         />
       </div>
+      <DiagramCanvasContextMenu
+        open={Boolean(contextMenu)}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        items={contextMenu?.items}
+        onClose={closeContextMenu}
+      />
     </div>
   )
 }

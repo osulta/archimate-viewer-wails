@@ -46,3 +46,8 @@ export { clampZoom } from './zoom'
 export { exportDiagramPng } from './export-png'
 export { applyPanDelta, applyPointerDelta } from './interaction-delta'
 export type { PanDeltaResult, PointerDeltaResult } from './interaction-delta'
+export {
+  buildCanvasContextMenuItems,
+  resolveCanvasContextTarget,
+} from './context-menu'
+export type { BuildCanvasContextMenuOptions, CanvasContextTarget } from './context-menu'

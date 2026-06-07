@@ -191,6 +191,10 @@ export interface DiagramCanvasProps {
   onDropDiagramReferenceAtPoint?: (diagramId: string, x: number, y: number) => void
   onOpenDiagramReference?: (diagramId: string) => void
   onOptimizeConnections?: () => void
+  onDeleteNodeFromDiagram?: () => void
+  onDeleteNodeFromModel?: () => void
+  onDeleteConnectionFromDiagram?: () => void
+  onDeleteRelationshipFromModel?: () => void
   diagrams?: ParsedDiagram[]
 }
 

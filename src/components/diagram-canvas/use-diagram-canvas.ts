@@ -1,4 +1,5 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
+import type { MenuProps } from 'antd'
 import {
   getNodeAtPosition,
   roundDiagramCoord,
@@ -16,6 +17,7 @@ import {
   applyPanDelta,
   applyPointerDelta,
   BENDPOINT_DRAG_SLOP,
+  buildCanvasContextMenuItems,
   clampZoom,
   exportDiagramPng,
   findBendpointHitAtPoint,
@@ -24,6 +26,7 @@ import {
   isPointInResizeHandle,
   paintDiagramCanvas,
   pickRelationshipAtScreenPoint,
+  resolveCanvasContextTarget,
   ZOOM_WHEEL_FACTOR,
   CONNECTION_FLOW_CYCLE_MS,
 } from '../../lib/diagram-canvas'
@@ -69,6 +72,10 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     onDropNewRelationshipAtPoint,
     onDropDiagramReferenceAtPoint,
     onOpenDiagramReference,
+    onDeleteNodeFromDiagram,
+    onDeleteNodeFromModel,
+    onDeleteConnectionFromDiagram,
+    onDeleteRelationshipFromModel,
     diagrams,
   } = props
 
@@ -109,6 +116,11 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   const [isDragging, setIsDragging] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
   const [isElementDropTarget, setIsElementDropTarget] = useState(false)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    items: NonNullable<MenuProps['items']>
+  } | null>(null)
 
   const handleScrollContainerRef = useCallback(
     (element: HTMLDivElement | null) => {
@@ -746,6 +758,75 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     releaseInteraction(event.pointerId)
   }
 
+  function closeContextMenu(): void {
+    setContextMenu(null)
+  }
+
+  function handleContextMenu(event: React.MouseEvent) {
+    if (!diagram) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    suppressClickRef.current = true
+
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+    const ptr = getCanvasPointer(canvas, viewBoxRef.current, event)
+    if (!ptr) {
+      return
+    }
+
+    const target = resolveCanvasContextTarget(
+      diagram,
+      ptr.logicalX,
+      ptr.logicalY,
+      ptr.x,
+      ptr.y,
+      renderedConnectionsRef.current,
+    )
+
+    if (target.kind === 'node' && target.node) {
+      onRelationshipSelect?.(null)
+      onBendpointSelect?.(null)
+      onNodeSelect?.(target.node)
+    } else if (target.kind === 'relationship' && target.relationshipRef) {
+      onNodeSelect?.(null)
+      onRelationshipSelect?.(target.relationshipRef)
+      onBendpointSelect?.(target.bendpointIndex ?? null)
+    }
+
+    const items = buildCanvasContextMenuItems({
+      readOnly,
+      target,
+      onOpenDiagram: onOpenDiagramReference,
+      onDeleteNodeFromDiagram,
+      onDeleteNodeFromModel,
+      onDeleteConnectionFromDiagram,
+      onDeleteRelationshipFromModel,
+      onRemoveRelationshipBendpoint: onRelationshipBendpointRemove,
+      onAddRelationshipBendpoint: onRelationshipBendpointAdd,
+      onClearSelection: () => {
+        onRelationshipSelect?.(null)
+        onNodeSelect?.(null)
+        onBendpointSelect?.(null)
+      },
+    })
+
+    if (!items.length) {
+      closeContextMenu()
+      return
+    }
+
+    setContextMenu({
+      x: event.clientX,
+      y: event.clientY,
+      items,
+    })
+  }
+
   function handleAuxClick(event: React.MouseEvent) {
     if (event.button === 1) {
       event.preventDefault()
@@ -861,5 +942,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     handleDragLeave,
     handleDrop,
     startPanView,
+    contextMenu,
+    closeContextMenu,
+    handleContextMenu,
   }
 }
