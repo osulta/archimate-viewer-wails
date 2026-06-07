@@ -93,7 +93,7 @@ export function Sidebar({
     }
     return model.elements.filter((item) => {
       const name = elementOverrides.get(item.id)?.name ?? item.name
-      const hay = [name, item.type, item.id].join(' ').toLowerCase()
+      const hay = [name, item.type, item.id, item.folderPath ?? ''].join(' ').toLowerCase()
       return hay.includes(treeSearchNorm)
     })
   }, [model, treeSearchNorm, elementOverrides])

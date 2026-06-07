@@ -151,12 +151,12 @@ func getName(n *xmlNode) string {
 		return ""
 	}
 	if v, ok := n.attr("name"); ok && strings.TrimSpace(v) != "" {
-		return strings.TrimSpace(v)
+		return decodeXMLEntities(strings.TrimSpace(v))
 	}
 	for _, child := range n.Children {
 		if child.Local == "name" {
 			if t := strings.TrimSpace(child.textContent()); t != "" {
-				return t
+				return decodeXMLEntities(t)
 			}
 			break
 		}

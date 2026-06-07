@@ -1482,6 +1482,131 @@
   white-space: normal;
 }
 
+.diagram-tree.ant-tree,
+.element-tree.ant-tree {
+  background: transparent;
+  font-size: 13px;
+}
+
+.diagram-tree .ant-tree-treenode,
+.element-tree .ant-tree-treenode {
+  align-items: flex-start;
+  padding: 1px 0;
+}
+
+.diagram-tree .ant-tree-node-content-wrapper,
+.element-tree .ant-tree-node-content-wrapper {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.35;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.diagram-tree .ant-tree-node-content-wrapper:hover,
+.diagram-tree .ant-tree-node-content-wrapper.ant-tree-node-selected,
+.element-tree .ant-tree-node-content-wrapper:hover,
+.element-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: var(--app-color-surface-elevated);
+}
+
+.diagram-tree .ant-tree-indent-unit,
+.element-tree .ant-tree-indent-unit {
+  width: 12px;
+}
+
+.diagram-tree .ant-tree-switcher,
+.element-tree .ant-tree-switcher {
+  width: 18px;
+  margin-inline-end: 2px;
+}
+
+.diagram-tree .ant-tree-iconEle,
+.element-tree .ant-tree-iconEle {
+  width: 16px;
+  margin-inline-end: 4px;
+  color: var(--app-color-text-secondary);
+}
+
+.diagram-tree-folder-title,
+.diagram-tree-leaf-title {
+  display: block;
+  min-width: 0;
+}
+
+.diagram-tree-folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.diagram-tree-leaf-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.diagram-tree-leaf-id {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--app-color-text-secondary);
+}
+
+.diagram-tree-leaf-title.is-draggable {
+  cursor: grab;
+}
+
+.diagram-tree-leaf-title.is-draggable.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
+.element-tree-folder-title,
+.element-tree-leaf-title {
+  display: block;
+  min-width: 0;
+}
+
+.element-tree-folder-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.element-tree-leaf-name {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+}
+
+.element-tree-leaf-type {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--app-color-text-secondary);
+}
+
+.element-tree-leaf-title.is-draggable {
+  cursor: grab;
+}
+
+.element-tree-leaf-title.is-draggable.is-dragging {
+  opacity: 0.55;
+  cursor: grabbing;
+}
+
 /* Compact collapse for the model tree / palettes */
 .tree-collapse.ant-collapse {
   background: transparent;

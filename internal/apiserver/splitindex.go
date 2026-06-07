@@ -56,7 +56,7 @@ func headOf(content string) string {
 
 func headAttr(re *regexp.Regexp, head string) string {
 	if m := re.FindStringSubmatch(head); m != nil {
-		return m[1]
+		return decodeXMLEntities(m[1])
 	}
 	return ""
 }

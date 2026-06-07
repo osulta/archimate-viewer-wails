@@ -65,6 +65,7 @@ export function parseArchiToolFormat(modelNode: Element): ParsedModel {
         type,
         documentation: getDocumentation(node),
         properties: parseProperties(node),
+        folderPath: nextPath.join(' / '),
       })
     })
   }
