@@ -1,7 +1,7 @@
 import { apiUrl } from '../api-base'
 import type { ParsedModel, ParsedDiagram, ParsedElement } from '../../types/model'
 import { createParsedModel, hydrateParsedModel } from './domain/parsed-model'
-import { normalizeRelationshipType } from './diagram-model'
+import { filterConnectionsToExistingRelationships, normalizeRelationshipType } from './diagram-model'
 import { parseDiagramFile } from './parsing/split-files/diagram-file-parser'
 import { parseElementFile } from './parsing/split-files/element-file-parser'
 import { buildFolderPathResolver } from './parsing/split-files/folder-path-resolver'
@@ -30,7 +30,11 @@ export function mergeLoadedDiagram(model: ParsedModel, diagramId: string, conten
     throw new Error(`Не удалось разобрать диаграмму ${stub.sourceFile}`)
   }
 
-  const loadedDiagram: ParsedDiagram = { ...parsed, loaded: true }
+  const loadedDiagram: ParsedDiagram = {
+    ...parsed,
+    loaded: true,
+    connections: filterConnectionsToExistingRelationships(parsed.connections, model.relationshipById),
+  }
   const diagrams = model.diagrams.map((item) =>
     item.id === diagramId ? loadedDiagram : item,
   )

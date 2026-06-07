@@ -97,8 +97,8 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
           }
         }
 
-        if (override.properties) {
-          applyPropertiesToElementXml(el, documentNode, override.properties)
+        if (Object.prototype.hasOwnProperty.call(override, 'properties')) {
+          applyPropertiesToElementXml(el, documentNode, override.properties ?? [])
         }
 
         if (Object.prototype.hasOwnProperty.call(override, 'documentation')) {
@@ -126,8 +126,8 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
           }
         }
 
-        if (override.properties) {
-          applyPropertiesToElementXml(el, documentNode, override.properties)
+        if (Object.prototype.hasOwnProperty.call(override, 'properties')) {
+          applyPropertiesToElementXml(el, documentNode, override.properties ?? [])
         }
 
         if (Object.prototype.hasOwnProperty.call(override, 'documentation')) {

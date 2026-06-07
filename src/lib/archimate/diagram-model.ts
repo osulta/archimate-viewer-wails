@@ -3,12 +3,14 @@ import type {
   ParsedDiagram,
   ParsedModel,
   ParsedElement,
+  ParsedRelationship,
   NodeOverride,
   Bendpoint,
   DiagramConnection,
   DiagramOverridesMap,
   RelationshipOverridesMap,
 } from '../../types/model'
+import { idFromArchimateHref } from './parsing/xml/href-utils'
 import {
   getId,
   getName,
@@ -796,6 +798,22 @@ export function collectElementRefsUsedInDiagrams(diagrams: ParsedDiagram[]): Set
   return used
 }
 
+export function filterConnectionsToExistingRelationships(
+  connections: DiagramConnection[],
+  relationshipById: Map<string, ParsedRelationship>,
+): DiagramConnection[] {
+  return connections.filter((connection) => relationshipById.has(connection.relationshipRef))
+}
+
+function connectionElementRelationshipRef(el: Element): string {
+  const attrRef = el.getAttribute('archimateRelationship') ?? el.getAttribute('relationshipRef') ?? ''
+  if (attrRef) {
+    return attrRef
+  }
+  const href = getDirectChildByTag(el, 'archimateRelationship')?.getAttribute('href') ?? ''
+  return idFromArchimateHref(href)
+}
+
 export function removeDeletedFromXml(
   documentNode: Document,
   deletedDiagramNodeIds: Set<string>,
@@ -861,6 +879,19 @@ export function removeDeletedFromXml(
       const src = el.getAttribute('source') ?? ''
       const tgt = el.getAttribute('target') ?? ''
       if (nodeSet.has(src) || nodeSet.has(tgt)) {
+        el.parentNode?.removeChild(el)
+      }
+    }
+  }
+
+  if (relSet.size) {
+    const connectionTags = new Set(['sourceConnection', 'sourceConnections', 'connection'])
+    for (const el of Array.from(documentNode.getElementsByTagName('*'))) {
+      if (!connectionTags.has(el.localName)) {
+        continue
+      }
+      const relationshipRef = connectionElementRelationshipRef(el)
+      if (relationshipRef && relSet.has(relationshipRef)) {
         el.parentNode?.removeChild(el)
       }
     }

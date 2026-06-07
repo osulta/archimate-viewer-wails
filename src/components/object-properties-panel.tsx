@@ -349,56 +349,6 @@ export function ObjectPropertiesPanel({
     selectedDiagram,
   ])
 
-  useEffect(() => {
-    if (!elementId) {
-      return undefined
-    }
-    const handle = window.setTimeout(() => {
-      onUpdateElementOverride(elementId, { name: nameDraft })
-    }, 300)
-    return () => window.clearTimeout(handle)
-  }, [nameDraft, elementId, onUpdateElementOverride])
-
-  useEffect(() => {
-    if (!elementId) {
-      return undefined
-    }
-    const handle = window.setTimeout(() => {
-      onUpdateElementOverride(elementId, { documentation: documentationDraft })
-    }, 300)
-    return () => window.clearTimeout(handle)
-  }, [documentationDraft, elementId, onUpdateElementOverride])
-
-  useEffect(() => {
-    if (!elementId) {
-      return undefined
-    }
-    const handle = window.setTimeout(() => {
-      onUpdateElementOverride(elementId, { properties: propertiesDraft })
-    }, 300)
-    return () => window.clearTimeout(handle)
-  }, [propertiesDraft, elementId, onUpdateElementOverride])
-
-  useEffect(() => {
-    if (!selectedRelationshipRef) {
-      return undefined
-    }
-    const handle = window.setTimeout(() => {
-      onUpdateRelationshipMeta(selectedRelationshipRef, {
-        name: relationshipNameDraft,
-        documentation: relationshipDocumentationDraft,
-        properties: relationshipPropertiesDraft,
-      })
-    }, 300)
-    return () => window.clearTimeout(handle)
-  }, [
-    relationshipNameDraft,
-    relationshipDocumentationDraft,
-    relationshipPropertiesDraft,
-    selectedRelationshipRef,
-    onUpdateRelationshipMeta,
-  ])
-
   if (showDiagramProperties) {
     const diagramTypeLabel = formatArchimateTypeLabel(selectedDiagram!.type ?? '')
     const diagramFolder = selectedDiagram!.folderPath?.trim()

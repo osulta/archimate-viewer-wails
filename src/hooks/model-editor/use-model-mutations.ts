@@ -17,6 +17,7 @@ import {
   removeDiagramObjectsByElementRef,
   collectNodeIdsRemovedForElement,
   collectElementRefsUsedInDiagrams,
+  filterConnectionsToExistingRelationships,
   roundDiagramCoord,
   snapToGrid,
   isDiagramReferenceNode,
@@ -271,14 +272,19 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
   }
 
   function markDiagramsUsingRelationship(relationshipRef: string): void {
-    if (!model) {
+    if (!model || !isSplitFilesModel(model)) {
       return
     }
+    const diagramIds = new Set<string>()
+    model.diagramIndexByRelationshipRef?.get(relationshipRef)?.forEach((diagramId) => {
+      diagramIds.add(diagramId)
+    })
     model.diagrams.forEach((diagram) => {
       if (diagram.connections.some((connection) => connection.relationshipRef === relationshipRef)) {
-        markSplitDiagramDirty(diagram.id)
+        diagramIds.add(diagram.id)
       }
     })
+    diagramIds.forEach((diagramId) => markSplitDiagramDirty(diagramId))
   }
 
   const {
@@ -696,7 +702,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const prev = relationshipMetaOverrides.get(relationshipId) ?? {
       name: base.name,
       documentation: base.documentation ?? '',
-      properties: [...(base.properties ?? [])],
     }
     const all = new Map(relationshipMetaOverrides)
     all.set(relationshipId, { ...prev, ...patch })
@@ -714,7 +719,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const prev = elementOverrides.get(elementId) ?? {
       name: base.name,
       documentation: base.documentation ?? '',
-      properties: [...(base.properties ?? [])],
     }
     const next = {
       ...prev,
@@ -1470,13 +1474,17 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       })
     })
 
-    const nextDiagrams = model.diagrams.map((d) => ({
-      ...d,
-      connections: d.connections.filter((c) => c.relationshipRef !== ref),
-    }))
     const nextRelationships = model.relationships.filter((r) => r.id !== ref)
     const nextRelationshipById = new Map(model.relationshipById)
     nextRelationshipById.delete(ref)
+
+    const nextDiagrams = model.diagrams.map((d) => ({
+      ...d,
+      connections: filterConnectionsToExistingRelationships(d.connections, nextRelationshipById),
+    }))
+
+    const nextDiagramIndexByRelationshipRef = new Map(model.diagramIndexByRelationshipRef ?? [])
+    nextDiagramIndexByRelationshipRef.delete(ref)
 
     const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
     relationshipOverrides.forEach((relMap, diagramId) => {
@@ -1505,13 +1513,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     }
 
-    if (isSplitFilesModel(model)) {
-      model.diagrams.forEach((diagram) => {
-        if (diagram.connections.some((connection) => connection.relationshipRef === ref)) {
-          markSplitDiagramDirty(diagram.id)
-        }
-      })
-    }
+    markDiagramsUsingRelationship(ref)
 
     setCreatedRelationships((prev) => prev.filter((cr) => cr.relationship.id !== ref))
 
@@ -1526,6 +1528,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       diagrams: nextDiagrams,
       relationships: nextRelationships,
       relationshipById: nextRelationshipById,
+      diagramIndexByRelationshipRef: nextDiagramIndexByRelationshipRef,
     })
     setSelectedRelationshipRef(null)
   }, [
@@ -1534,7 +1537,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     relationshipOverrides,
     originalConnectionIds,
     originalRelationshipIds,
-    markSplitDiagramDirty,
   ])
 
   const deleteElementFromModel = useCallback(() => {

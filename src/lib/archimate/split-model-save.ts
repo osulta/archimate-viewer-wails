@@ -11,7 +11,13 @@ import type {
   ElementOverride,
   RelationshipMetaOverride,
 } from '../../types/model'
-import { applyOverridesToNodes, flattenNodes, formatDiagramCoord, serializeXml } from './diagram-model'
+import {
+  applyOverridesToNodes,
+  filterConnectionsToExistingRelationships,
+  flattenNodes,
+  formatDiagramCoord,
+  serializeXml,
+} from './diagram-model'
 import { fetchSplitModelFile } from './split-model-client'
 import { parseDiagramFile } from './parsing/split-files/diagram-file-parser'
 import {
@@ -231,8 +237,8 @@ export function buildSplitElementSaveXml(content: string, element: ParsedElement
     applyDocumentationToElementXml(root, documentNode, override.documentation)
   }
 
-  if (override.properties) {
-    applyPropertiesToElementXml(root, documentNode, override.properties)
+  if (Object.prototype.hasOwnProperty.call(override, 'properties')) {
+    applyPropertiesToElementXml(root, documentNode, override.properties ?? [])
   }
 
   return serializeXml(documentNode)
@@ -262,8 +268,8 @@ export function buildSplitRelationshipSaveXml(content: string, relationshipId: s
     applyDocumentationToElementXml(root, documentNode, override.documentation)
   }
 
-  if (override.properties) {
-    applyPropertiesToElementXml(root, documentNode, override.properties)
+  if (Object.prototype.hasOwnProperty.call(override, 'properties')) {
+    applyPropertiesToElementXml(root, documentNode, override.properties ?? [])
   }
 
   return serializeXml(documentNode)
@@ -349,11 +355,18 @@ async function resolveDiagramForSave(model: ParsedModel, diagramId: string): Pro
     throw new Error(`Не удалось разобрать диаграмму ${entry.sourceFile}`)
   }
 
+  let connections = parsed.connections
+  if (entry.connections?.length) {
+    connections = entry.connections
+  } else {
+    connections = filterConnectionsToExistingRelationships(parsed.connections, model.relationshipById)
+  }
+
   return {
     ...parsed,
     loaded: true,
     nodes: entry.nodes?.length ? entry.nodes : parsed.nodes,
-    connections: entry.connections?.length ? entry.connections : parsed.connections,
+    connections,
   }
 }
 
@@ -370,9 +383,9 @@ function elementOverrideIsDirty(element: ParsedElement, override: ElementOverrid
   ) {
     return true
   }
-  if (override.properties) {
+  if (Object.prototype.hasOwnProperty.call(override, 'properties')) {
     const baseProps = JSON.stringify(element.properties ?? [])
-    const nextProps = JSON.stringify(override.properties)
+    const nextProps = JSON.stringify(override.properties ?? [])
     if (baseProps !== nextProps) {
       return true
     }
@@ -390,9 +403,9 @@ function relationshipMetaIsDirty(relationship: ParsedRelationship, meta: Relatio
   if (meta.documentation !== undefined && meta.documentation !== (relationship.documentation ?? '')) {
     return true
   }
-  if (meta.properties) {
+  if (Object.prototype.hasOwnProperty.call(meta, 'properties')) {
     const baseProps = JSON.stringify(relationship.properties ?? [])
-    const nextProps = JSON.stringify(meta.properties)
+    const nextProps = JSON.stringify(meta.properties ?? [])
     if (baseProps !== nextProps) {
       return true
     }

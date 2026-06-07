@@ -1,4 +1,11 @@
-import type { ParsedElement, ParsedRelationship, ParsedDiagram, DiagramNode, DiagramConnection } from '../../types/model'
+import type {
+  ParsedElement,
+  ParsedRelationship,
+  ParsedDiagram,
+  DiagramNode,
+  DiagramConnection,
+  ElementProperty,
+} from '../../types/model'
 import {
   buildSplitElementRelativePath,
   buildSplitRelationshipRelativePath,
@@ -16,17 +23,37 @@ function escapeXmlAttr(value: string): string {
     .replace(/"/g, '&quot;')
 }
 
-export function buildSplitElementFileContent(element: { id: string; name: string; type: string; documentation?: string }): string {
+function buildSplitElementPropertiesXml(properties: ElementProperty[] | undefined): string {
+  return (properties ?? [])
+    .filter((prop) => prop.key || prop.value)
+    .map(
+      (prop) =>
+        `  <properties\n` +
+        `      key="${escapeXmlAttr(prop.key)}"\n` +
+        `      value="${escapeXmlAttr(prop.value ?? '')}"/>\n`,
+    )
+    .join('')
+}
+
+export function buildSplitElementFileContent(element: {
+  id: string
+  name: string
+  type: string
+  documentation?: string
+  properties?: ElementProperty[]
+}): string {
   const typeName = typeLocalName(element.type)
   const name = escapeXmlAttr(element.name || element.id)
   const doc = element.documentation?.trim()
-  if (doc) {
+  const propertiesXml = buildSplitElementPropertiesXml(element.properties)
+  if (doc || propertiesXml) {
     return (
       `<archimate:${typeName}\n` +
       `    xmlns:archimate="http://www.archimatetool.com/archimate"\n` +
       `    name="${name}"\n` +
       `    id="${element.id}">\n` +
-      `  <documentation>${escapeXmlAttr(doc)}</documentation>\n` +
+      (doc ? `  <documentation>${escapeXmlAttr(doc)}</documentation>\n` : '') +
+      propertiesXml +
       `</archimate:${typeName}>\n`
     )
   }
