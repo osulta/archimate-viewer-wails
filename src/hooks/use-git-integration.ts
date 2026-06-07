@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import { apiUrl } from '../lib/api-base'
 import { confirmDialog } from '../lib/ui/confirm-dialog'
 import { SelectDirectory, isWailsRuntime } from '../../wailsjs/go/main/App'
@@ -16,6 +16,32 @@ function localBranchNameFromRef(ref: string | null | undefined): string {
 interface BranchEntry {
   name: string
   local?: boolean
+  current?: boolean
+}
+
+function resolveCurrentBranchFromList(
+  branches: BranchEntry[],
+  probeBranch?: string,
+): string {
+  const marked = branches.find((branch) => branch.current)
+  if (marked) {
+    if (marked.local !== false) {
+      return marked.name.trim()
+    }
+    return localBranchNameFromRef(marked.name).trim()
+  }
+
+  const probe = String(probeBranch ?? '').trim()
+  if (!probe || probe === 'HEAD') {
+    return ''
+  }
+  if (branches.length === 0) {
+    return probe
+  }
+  if (branches.some((branch) => branch.local !== false && branch.name === probe)) {
+    return probe
+  }
+  return ''
 }
 
 interface GitCommandBlock {
@@ -335,13 +361,14 @@ export function useGitIntegration({
       })
       const data = await r.json()
       if (data.ok) {
+        const probeBranch = typeof data.currentBranch === 'string' ? data.currentBranch.trim() : ''
         setGitRepoProbe({
           loaded: true,
           loading: false,
           hasDotGit: Boolean(data.hasDotGit),
           workFolder: data.workFolder ?? '.',
           remoteUrl: typeof data.remoteUrl === 'string' ? data.remoteUrl : '',
-          currentBranch: typeof data.currentBranch === 'string' ? data.currentBranch : '',
+          currentBranch: probeBranch === 'HEAD' ? '' : probeBranch,
           modelLayout:
             data.modelLayout === 'split-files' || data.modelLayout === 'single-file'
               ? data.modelLayout
@@ -399,7 +426,13 @@ export function useGitIntegration({
             return
           }
           if (data.ok && Array.isArray(data.branches)) {
-            setGitBranches({ loading: false, list: data.branches, error: null })
+            const list = data.branches as BranchEntry[]
+            setGitBranches({ loading: false, list, error: null })
+            const resolvedBranch = resolveCurrentBranchFromList(list)
+            setGitRepoProbe((prev) => ({ ...prev, currentBranch: resolvedBranch }))
+            if (resolvedBranch) {
+              setGitCheckoutBranch((prev) => preferLocalBranchSelection(prev, list, resolvedBranch))
+            }
             if (fetchRemote) {
               const count = data.branches.length
               const localCount = data.branches.filter((b: BranchEntry) => b.local !== false).length
@@ -1054,6 +1087,13 @@ export function useGitIntegration({
       setGitOutput(apiUnavailableMessage)
       return
     }
+    const pullBranch =
+      resolveCurrentBranchFromList(gitBranches.list, gitRepoProbe.currentBranch) ||
+      gitCheckoutBranch.trim()
+    if (!pullBranch) {
+      setGitOutput('Не удалось определить текущую ветку для git pull')
+      return
+    }
     await withGitCommand('Получение изменений…', async () => {
     const rel = gitRepoPath.trim()
     const pat = gitConfigPat.trim()
@@ -1064,7 +1104,7 @@ export function useGitIntegration({
         body: JSON.stringify({
           ...(rel ? { path: rel } : { workFolder: '' }),
           remote: 'origin',
-          branch: 'main',
+          branch: pullBranch,
           ...(pat ? { pat } : {}),
         }),
       })
@@ -1165,7 +1205,13 @@ export function useGitIntegration({
     })
   }
 
+  const displayedGitBranch = useMemo(
+    () => resolveCurrentBranchFromList(gitBranches.list, gitRepoProbe.currentBranch),
+    [gitBranches.list, gitRepoProbe.currentBranch],
+  )
+
   return {
+    displayedGitBranch,
     gitApiReady,
     gitRepoPath,
     setGitRepoPath,

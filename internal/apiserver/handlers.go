@@ -128,10 +128,8 @@ func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 				resp["remoteUrl"] = v
 			}
 		}
-		if br := runGitInWorkTree(abs, []string{"rev-parse", "--abbrev-ref", "HEAD"}); br.Code == 0 {
-			if v := strings.TrimSpace(br.Stdout); v != "" {
-				resp["currentBranch"] = v
-			}
+		if branch := gitCurrentLocalBranchName(abs); branch != "" {
+			resp["currentBranch"] = branch
 		}
 		if entry := findModelEntryUnder(abs); entry != nil {
 			if mp, e := filepath.Rel(s.RepoRoot(), entry.absPath); e == nil {

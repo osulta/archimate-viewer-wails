@@ -2,6 +2,7 @@ import { Spin } from 'antd'
 import { Sidebar } from '../sidebar/sidebar'
 import { DiagramCanvas } from '../diagram-canvas'
 import { WorkspaceCanvasLayout } from '../workspace/workspace-canvas-layout'
+import { ModelingGitPanel } from '../workspace/modeling-git-panel'
 import { ModelingInspectorPanel } from '../workspace/modeling-inspector-panel'
 import { ModelingPalettesPanel } from '../workspace/modeling-palettes-panel'
 import type { useGitIntegration } from '../../hooks/use-git-integration'
@@ -130,14 +131,11 @@ export function ModelingWorkspace({
           setSelectedNode(found.node)
         }
       }}
-      onSelectRelationship={(relationshipId, diagramId) => {
+      onSelectRelationship={(relationshipId) => {
         setSelectedNode(null)
         setSelectedElementId(null)
         setSelectedRelationshipRef(relationshipId)
         setSelectedBendpointIndex(null)
-        if (diagramId) {
-          setSelectedDiagramId(diagramId)
-        }
       }}
       onSelectDiagram={handleSelectDiagram}
     />
@@ -157,6 +155,11 @@ export function ModelingWorkspace({
             Загрузка диаграммы…
           </p>
         ) : null
+      }
+      gitPanel={<ModelingGitPanel git={git} gitOutput={git.gitOutput} />}
+      gitTitle="Git"
+      gitBranchLabel={
+        git.gitRepoProbe.hasDotGit && git.displayedGitBranch ? git.displayedGitBranch : undefined
       }
       canvas={
         <DiagramCanvas

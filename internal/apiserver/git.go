@@ -46,6 +46,23 @@ func runGitInDir(dir string, args []string) gitResult {
 	return runGitInWorkTree(dir, args)
 }
 
+// gitCurrentLocalBranchName returns the checked-out local branch name, or "" when detached/unknown.
+func gitCurrentLocalBranchName(workTree string) string {
+	sym := runGitInWorkTree(workTree, []string{"symbolic-ref", "--short", "-q", "HEAD"})
+	if sym.Code != 0 {
+		return ""
+	}
+	name := strings.TrimSpace(sym.Stdout)
+	if name == "" || strings.EqualFold(name, "HEAD") {
+		return ""
+	}
+	verify := runGitInWorkTree(workTree, []string{"show-ref", "--verify", "--quiet", "refs/heads/" + name})
+	if verify.Code != 0 {
+		return ""
+	}
+	return name
+}
+
 func httpsURLWithoutCredentials(urlString string) string {
 	u, err := url.Parse(urlString)
 	if err != nil {

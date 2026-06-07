@@ -180,14 +180,11 @@ function App() {
                 selection.setSelectedNode(found.node)
               }
             }}
-            onSelectRelationship={(relationshipId, diagramId) => {
+            onSelectRelationship={(relationshipId) => {
               selection.setSelectedNode(null)
               selection.setSelectedElementId(null)
               selection.setSelectedRelationshipRef(relationshipId)
               selection.setSelectedBendpointIndex(null)
-              if (diagramId) {
-                handleViewModeSelectDiagram(diagramId)
-              }
             }}
             onSelectDiagram={handleViewModeSelectDiagram}
             workspaceLayout={workspaceLayout}

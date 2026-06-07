@@ -96,29 +96,11 @@ export function ModelTree({
     !treeSearchNorm && filteredTreeElements.length >= VIRTUAL_LIST_THRESHOLD
 
   function handleElementSelect(item: ParsedElement): void {
-    if (focusElementInDiagram) {
-      const { diagramId, node, pending } = focusElementInDiagram(item.id)
-      if (diagramId) {
-        onSelectDiagram(diagramId)
-      }
-      onSelectElement(
-        item.id,
-        node ? { diagramId: diagramId!, node } : pending && diagramId ? { diagramId, pending: true } : null,
-      )
-      return
-    }
-
     onSelectElement(item.id, null)
   }
 
   function handleRelationshipSelect(item: ParsedRelationship): void {
-    const diagramId = focusRelationshipInDiagram
-      ? focusRelationshipInDiagram(item.id)
-      : null
-    if (diagramId) {
-      onSelectDiagram(diagramId)
-    }
-    onSelectRelationship(item.id, diagramId)
+    onSelectRelationship(item.id, null)
   }
 
   function renderElementRow(item: ParsedElement): React.JSX.Element {

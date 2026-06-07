@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import {
   collectElementRelationships,
-  findDiagramIdForRelationship,
 } from '../../lib/archimate/element-relationships'
 import {
   applyRelationshipMetaToById,
@@ -290,10 +289,6 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
       setSelectedElementId(null)
       setSelectedRelationshipRef(relationshipId)
       setSelectedBendpointIndex(null)
-      const diagramId = findDiagramIdForRelationship(model, relationshipId)
-      if (diagramId) {
-        setSelectedDiagramId(diagramId)
-      }
     },
     [model],
   )

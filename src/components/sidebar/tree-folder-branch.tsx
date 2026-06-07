@@ -113,9 +113,7 @@ export function TreeFolderBranch({
                       type={selectedRelationshipRef === item.id ? 'primary' : 'text'}
                       ghost={selectedRelationshipRef === item.id}
                       className="tree-btn"
-                      onClick={() =>
-                        onSelectRelationship(item.id, findDiagramForRelationship?.(item.id) ?? null)
-                      }
+                      onClick={() => onSelectRelationship(item.id, null)}
                     >
                       <span className="node-label">{item.name || item.id}</span>
                       <span className="node-type">{formatArchimateTypeLabel(item.type)}</span>

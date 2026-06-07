@@ -2,22 +2,30 @@ import { useCallback, useEffect, useState } from 'react'
 
 export interface WorkspaceLayoutState {
   canvasFocusMode: boolean
+  gitOpen: boolean
   palettesOpen: boolean
   propertiesOpen: boolean
   toggleCanvasFocusMode: () => void
+  toggleGitOpen: () => void
   togglePalettesOpen: () => void
   togglePropertiesOpen: () => void
+  setGitOpen: (open: boolean) => void
   setPalettesOpen: (open: boolean) => void
   setPropertiesOpen: (open: boolean) => void
 }
 
 export function useWorkspaceLayout(): WorkspaceLayoutState {
   const [canvasFocusMode, setCanvasFocusMode] = useState(false)
+  const [gitOpen, setGitOpen] = useState(false)
   const [palettesOpen, setPalettesOpen] = useState(true)
   const [propertiesOpen, setPropertiesOpen] = useState(true)
 
   const toggleCanvasFocusMode = useCallback(() => {
     setCanvasFocusMode((value) => !value)
+  }, [])
+
+  const toggleGitOpen = useCallback(() => {
+    setGitOpen((value) => !value)
   }, [])
 
   const togglePalettesOpen = useCallback(() => {
@@ -43,11 +51,14 @@ export function useWorkspaceLayout(): WorkspaceLayoutState {
 
   return {
     canvasFocusMode,
+    gitOpen,
     palettesOpen,
     propertiesOpen,
     toggleCanvasFocusMode,
+    toggleGitOpen,
     togglePalettesOpen,
     togglePropertiesOpen,
+    setGitOpen,
     setPalettesOpen,
     setPropertiesOpen,
   }
