@@ -63,10 +63,85 @@
   overflow: hidden;
 }
 
-.layout {
-  display: grid;
-  grid-template-columns: 340px 1fr;
+.workspace-layout {
+  position: relative;
   height: 100%;
+  min-height: 0;
+  background: transparent !important;
+}
+
+.workspace-layout.ant-layout {
+  flex-direction: row;
+}
+
+.workspace-sider.ant-layout-sider {
+  background: var(--app-color-surface) !important;
+  border-right: 1px solid var(--app-color-border);
+  height: 100%;
+  overflow: hidden;
+}
+
+.workspace-sider .ant-layout-sider-children {
+  height: 100%;
+  overflow: hidden;
+}
+
+.workspace-sider-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.workspace-sider-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.workspace-sider-collapse-btn.ant-btn {
+  flex-shrink: 0;
+  width: 100%;
+  height: 40px;
+  margin-top: auto;
+  border: none;
+  border-top: 1px solid var(--app-color-border-faint);
+  border-radius: 0;
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+}
+
+.workspace-sider-collapse-btn.ant-btn:hover,
+.workspace-sider-collapse-btn.ant-btn:focus-visible {
+  color: var(--app-color-brand);
+  background: var(--app-color-surface-elevated);
+}
+
+.workspace-sider-expand-btn.ant-btn {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  z-index: 12;
+  width: 28px;
+  height: 40px;
+  border: 1px solid var(--app-color-border-faint);
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-secondary);
+  box-shadow: 2px 0 8px var(--app-shadow-overlay, rgba(15, 23, 42, 0.08));
+}
+
+.workspace-sider-expand-btn.ant-btn:hover,
+.workspace-sider-expand-btn.ant-btn:focus-visible {
+  color: var(--app-color-brand);
+  background: var(--app-color-surface-elevated);
+}
+
+.workspace-main.ant-layout-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   min-height: 0;
 }
 
@@ -477,8 +552,8 @@
   background: transparent;
 }
 
-.layout-canvas-focus {
-  grid-template-columns: 1fr !important;
+.workspace-layout-canvas-focus {
+  width: 100%;
 }
 
 .modeling-header-actions .ant-btn {
@@ -589,6 +664,12 @@
 
 .tab-page-head .ant-typography {
   margin-bottom: 0;
+}
+
+.layout {
+  display: grid;
+  height: 100%;
+  min-height: 0;
 }
 
 .admin-layout {
@@ -1000,11 +1081,8 @@
 }
 
 .sidebar {
-  border-right: 1px solid var(--app-color-border);
   padding: 16px;
-  overflow: auto;
-  background: var(--app-color-surface);
-  min-height: 0;
+  min-width: 0;
 }
 
 .sidebar-title.ant-typography {

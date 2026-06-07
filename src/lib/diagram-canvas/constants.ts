@@ -12,6 +12,9 @@ export const CONNECTION_FLOW_COLOR = '#1890ff'
 /** Screen px: pointer must move this far before bendpoint drag starts (allows dblclick). */
 export const BENDPOINT_DRAG_SLOP = 4
 
+/** Screen px: pointer must move this far before left-button canvas pan starts (allows click). */
+export const PAN_DRAG_SLOP = 4
+
 /** Screen px: hit radius for bendpoint handles and double-click removal. */
 export const BENDPOINT_HIT_RADIUS = 8
 

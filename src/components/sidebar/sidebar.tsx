@@ -132,7 +132,7 @@ export function Sidebar({
   }, [model, treeSearchNorm])
 
   return (
-    <aside className="sidebar">
+    <div className="sidebar">
       <Typography.Title level={4} className="sidebar-title">
         ArchiMate Viewer
       </Typography.Title>
@@ -197,6 +197,6 @@ export function Sidebar({
           />
         ) : null}
       </div>
-    </aside>
+    </div>
   )
 }

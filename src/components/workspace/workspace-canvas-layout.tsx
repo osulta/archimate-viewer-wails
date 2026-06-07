@@ -3,6 +3,7 @@ import { Button, Space } from 'antd'
 import { AppstoreOutlined, BranchesOutlined, ProfileOutlined } from '@ant-design/icons'
 import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
 import { WorkspaceSidePanel } from './workspace-side-panel'
+import { WorkspaceSidebarLayout } from './workspace-sidebar-layout'
 
 export interface WorkspaceCanvasLayoutProps {
   layout: WorkspaceLayoutState
@@ -53,9 +54,13 @@ export function WorkspaceCanvasLayout({
   const hasOpenPanel = showGitPanel || showPalettesPanel || showPropertiesPanel
 
   return (
-    <div className={canvasFocusMode ? 'layout layout-canvas-focus' : 'layout'}>
-      {!canvasFocusMode ? sidebar : null}
-      <main className="content workspace-content">
+    <WorkspaceSidebarLayout
+      layout={layout}
+      sidebar={sidebar}
+      showSidebar={!canvasFocusMode}
+      className={canvasFocusMode ? 'workspace-layout-canvas-focus' : undefined}
+    >
+      <div className="content workspace-content">
         <div className="workspace-toolbar workspace-toolbar-compact">
           <div className="workspace-diagram-bar">
             <div className="workspace-diagram-meta">
@@ -171,7 +176,7 @@ export function WorkspaceCanvasLayout({
             </div>
           ) : null}
         </div>
-      </main>
-    </div>
+      </div>
+    </WorkspaceSidebarLayout>
   )
 }

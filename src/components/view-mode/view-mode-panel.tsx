@@ -6,6 +6,7 @@ import { collectConnectionIdsForDiagramNode } from '../../lib/archimate/diagram-
 import { Sidebar } from '../sidebar/sidebar'
 import { ViewModeProperties } from './view-mode-properties'
 import { WorkspaceCanvasLayout } from '../workspace/workspace-canvas-layout'
+import { WorkspaceSidebarLayout } from '../workspace/workspace-sidebar-layout'
 import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
 import type {
   ParsedModel,
@@ -149,26 +150,32 @@ export function ViewModePanel(props: ViewModePanelProps) {
 
   if (!model) {
     return (
-      <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
-        {sidebar}
-        <main className="content workspace-content">
+      <WorkspaceSidebarLayout
+        layout={workspaceLayout}
+        sidebar={sidebar}
+        className="view-mode-layout"
+      >
+        <div className="content workspace-content" role="tabpanel" aria-label="Режим просмотра">
           <Empty
             className="view-mode-empty"
             description="Загрузите модель на вкладке «Моделирование» или клонируйте репозиторий в «Администрирование» → Git."
           />
-        </main>
-      </div>
+        </div>
+      </WorkspaceSidebarLayout>
     )
   }
 
   if (!selectedDiagram) {
     return (
-      <div className="layout view-mode-layout" role="tabpanel" aria-label="Режим просмотра">
-        {sidebar}
-        <main className="content workspace-content">
+      <WorkspaceSidebarLayout
+        layout={workspaceLayout}
+        sidebar={sidebar}
+        className="view-mode-layout"
+      >
+        <div className="content workspace-content" role="tabpanel" aria-label="Режим просмотра">
           <Empty className="view-mode-empty" description="Выберите диаграмму в дереве слева." />
-        </main>
-      </div>
+        </div>
+      </WorkspaceSidebarLayout>
     )
   }
 

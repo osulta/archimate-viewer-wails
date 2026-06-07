@@ -2,13 +2,16 @@ import { useCallback, useEffect, useState } from 'react'
 
 export interface WorkspaceLayoutState {
   canvasFocusMode: boolean
+  sidebarCollapsed: boolean
   gitOpen: boolean
   palettesOpen: boolean
   propertiesOpen: boolean
   toggleCanvasFocusMode: () => void
+  toggleSidebarCollapsed: () => void
   toggleGitOpen: () => void
   togglePalettesOpen: () => void
   togglePropertiesOpen: () => void
+  setSidebarCollapsed: (collapsed: boolean) => void
   setGitOpen: (open: boolean) => void
   setPalettesOpen: (open: boolean) => void
   setPropertiesOpen: (open: boolean) => void
@@ -16,12 +19,17 @@ export interface WorkspaceLayoutState {
 
 export function useWorkspaceLayout(): WorkspaceLayoutState {
   const [canvasFocusMode, setCanvasFocusMode] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [gitOpen, setGitOpen] = useState(false)
   const [palettesOpen, setPalettesOpen] = useState(true)
   const [propertiesOpen, setPropertiesOpen] = useState(true)
 
   const toggleCanvasFocusMode = useCallback(() => {
     setCanvasFocusMode((value) => !value)
+  }, [])
+
+  const toggleSidebarCollapsed = useCallback(() => {
+    setSidebarCollapsed((value) => !value)
   }, [])
 
   const toggleGitOpen = useCallback(() => {
@@ -51,13 +59,16 @@ export function useWorkspaceLayout(): WorkspaceLayoutState {
 
   return {
     canvasFocusMode,
+    sidebarCollapsed,
     gitOpen,
     palettesOpen,
     propertiesOpen,
     toggleCanvasFocusMode,
+    toggleSidebarCollapsed,
     toggleGitOpen,
     togglePalettesOpen,
     togglePropertiesOpen,
+    setSidebarCollapsed,
     setGitOpen,
     setPalettesOpen,
     setPropertiesOpen,

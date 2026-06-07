@@ -17,6 +17,7 @@ import {
   applyPanDelta,
   applyPointerDelta,
   BENDPOINT_DRAG_SLOP,
+  PAN_DRAG_SLOP,
   buildCanvasContextMenuItems,
   clampZoom,
   exportDiagramPng,
@@ -98,6 +99,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     startClientY: number
     startLogicalX: number
     startLogicalY: number
+  } | null>(null)
+  const pendingPanRef = useRef<{
+    pointerId: number
+    startClientX: number
+    startClientY: number
+    startScrollLeft: number
+    startScrollTop: number
   } | null>(null)
   const renderedConnectionsRef = useRef<RenderedConnection[]>([])
   const dragPreviewRef = useRef<DragPreview | null>(null)
@@ -312,6 +320,12 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
   }
 
+  function clearPendingPan(pointerId: number): void {
+    if (pendingPanRef.current?.pointerId === pointerId) {
+      pendingPanRef.current = null
+    }
+  }
+
   function startPendingBendpointDrag(
     canvas: HTMLCanvasElement,
     pending: NonNullable<typeof pendingBendpointRef.current>,
@@ -336,6 +350,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     const inter = interactionRef.current
     if (!inter || inter.pointerId !== pointerId) {
       clearPendingBendpoint(pointerId)
+      clearPendingPan(pointerId)
       return
     }
     interactionRef.current = null
@@ -377,6 +392,27 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
   }
 
+  function beginPanInteraction(
+    canvas: HTMLCanvasElement,
+    params: {
+      pointerId: number
+      startClientX: number
+      startClientY: number
+      startScrollLeft: number
+      startScrollTop: number
+    },
+  ): void {
+    suppressClickRef.current = true
+    beginInteraction(canvas, {
+      type: 'pan',
+      pointerId: params.pointerId,
+      startClientX: params.startClientX,
+      startClientY: params.startClientY,
+      startScrollLeft: params.startScrollLeft,
+      startScrollTop: params.startScrollTop,
+    })
+  }
+
   function startPanView(event: React.PointerEvent) {
     if (!diagram || event.button !== 1) {
       return
@@ -388,15 +424,27 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
     event.preventDefault()
     event.stopPropagation()
-    suppressClickRef.current = true
-    beginInteraction(canvas, {
-      type: 'pan',
+    beginPanInteraction(canvas, {
       pointerId: event.pointerId,
       startClientX: event.clientX,
       startClientY: event.clientY,
       startScrollLeft: scrollEl.scrollLeft,
       startScrollTop: scrollEl.scrollTop,
     })
+  }
+
+  function queueLeftButtonPan(event: React.PointerEvent): void {
+    const scrollEl = scrollContainerRef.current
+    if (!scrollEl) {
+      return
+    }
+    pendingPanRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: scrollEl.scrollLeft,
+      startScrollTop: scrollEl.scrollTop,
+    }
   }
 
   function handleDragOver(event: React.DragEvent) {
@@ -543,7 +591,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       startPanView(event)
       return
     }
-    if (readOnly || event.button !== 0) {
+    if (event.button !== 0) {
       return
     }
     const canvas = canvasRef.current
@@ -560,8 +608,9 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     suppressClickRef.current = false
     interactionRef.current = null
     setIsDragging(false)
+    pendingPanRef.current = null
 
-    if (linkCreateMode) {
+    if (!readOnly && linkCreateMode) {
       const hitForLink = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
       if (hitForLink) {
         event.preventDefault()
@@ -570,7 +619,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
 
     const hitNode = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
-    if (hitNode && hitNode.id === selectedNodeId) {
+    if (!readOnly && hitNode && hitNode.id === selectedNodeId) {
       if (isPointInResizeHandle(hitNode, translateX, translateY, x, y)) {
         beginInteraction(canvas, {
           type: 'resize',
@@ -588,7 +637,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       }
     }
 
-    if (selectedRelationshipRef) {
+    if (!readOnly && selectedRelationshipRef) {
       const endpointHit = findConnectionEndpointHit(
         selectedRelationshipRef,
         x,
@@ -662,6 +711,11 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
 
     const hitNodeForDrag = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
     if (!hitNodeForDrag) {
+      queueLeftButtonPan(event)
+      return
+    }
+
+    if (readOnly) {
       return
     }
 
@@ -683,6 +737,21 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handlePointerMove(event: React.PointerEvent) {
+    const pendingPan = pendingPanRef.current
+    if (!interactionRef.current && pendingPan?.pointerId === event.pointerId) {
+      const moved = Math.hypot(
+        event.clientX - pendingPan.startClientX,
+        event.clientY - pendingPan.startClientY,
+      )
+      if (moved >= PAN_DRAG_SLOP) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          beginPanInteraction(canvas, pendingPan)
+        }
+        pendingPanRef.current = null
+      }
+    }
+
     const pending = pendingBendpointRef.current
     if (!interactionRef.current && pending?.pointerId === event.pointerId) {
       const moved = Math.hypot(
@@ -751,10 +820,12 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
   }
 
   function handlePointerUp(event: React.PointerEvent) {
+    clearPendingPan(event.pointerId)
     releaseInteraction(event.pointerId)
   }
 
   function handlePointerCancel(event: React.PointerEvent) {
+    clearPendingPan(event.pointerId)
     releaseInteraction(event.pointerId)
   }
 
