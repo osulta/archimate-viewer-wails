@@ -98,7 +98,6 @@ export function DiagramTreePanel({
           }}
         >
           <span className="diagram-tree-leaf-name">{title}</span>
-          <span className="diagram-tree-leaf-id">{node.diagramId}</span>
         </span>
       )
     },

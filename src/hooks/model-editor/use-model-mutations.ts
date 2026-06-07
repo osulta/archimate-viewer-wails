@@ -12,11 +12,9 @@ import {
   findNodeById,
   findNodeByElementRefInDiagram,
   collectSubtreeIds,
-  collectSubtreeElementRefs,
   removeNodeFromTree,
   removeDiagramObjectsByElementRef,
   collectNodeIdsRemovedForElement,
-  collectElementRefsUsedInDiagrams,
   filterConnectionsToExistingRelationships,
   roundDiagramCoord,
   snapToGrid,
@@ -1209,7 +1207,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     }
     if (
       !window.confirm(
-        'Удалить объект с диаграммы (включая вложенные), неиспользуемые элементы модели и связанные связи?',
+        'Удалить объект с диаграммы (включая вложенные объекты и связанные линии)?',
       )
     ) {
       return
@@ -1222,9 +1220,9 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
     const root = selectedNodeLive
     const subtreeIds = new Set(collectSubtreeIds(root))
-    const subtreeRefs = collectSubtreeElementRefs(root)
+    const diagramBefore = model.diagrams.find((d) => d.id === selectedDiagramId)
 
-    const draftDiagrams = model.diagrams.map((d) => {
+    const nextDiagrams = model.diagrams.map((d) => {
       if (d.id !== selectedDiagramId) {
         return d
       }
@@ -1237,28 +1235,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     })
 
-    const usedRefs = collectElementRefsUsedInDiagrams(draftDiagrams)
-    const elementsToRemove = [...subtreeRefs].filter((ref) => ref && !usedRefs.has(ref))
-    const removedElementSet = new Set(elementsToRemove)
-
-    const relationshipsToRemove = model.relationships.filter(
-      (r) => removedElementSet.has(r.source) || removedElementSet.has(r.target),
-    )
-    const removedRelIds = new Set(relationshipsToRemove.map((r) => r.id))
-
-    const nextDiagrams = draftDiagrams.map((d) => ({
-      ...d,
-      connections: d.connections.filter((c) => !removedRelIds.has(c.relationshipRef)),
-    }))
-
-    const nextElements = model.elements.filter((e) => !removedElementSet.has(e.id))
-    const nextElementById = new Map(model.elementById)
-    elementsToRemove.forEach((id) => nextElementById.delete(id))
-
-    const nextRelationships = model.relationships.filter((r) => !removedRelIds.has(r.id))
-    const nextRelationshipById = new Map(model.relationshipById)
-    removedRelIds.forEach((id) => nextRelationshipById.delete(id))
-
     const nextDiagramOverrides = new Map(diagramOverrides)
     const diagramOv = diagramOverrides.get(selectedDiagramId)
     if (diagramOv?.size) {
@@ -1267,24 +1243,26 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       nextDiagramOverrides.set(selectedDiagramId, nextOv)
     }
 
-    const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
-    relationshipOverrides.forEach((relMap, diagramId) => {
-      const diagram = nextDiagrams.find((x) => x.id === diagramId)
-      const validRefs = new Set(diagram!.connections.map((c) => c.relationshipRef))
+    const currentDiagram = nextDiagrams.find((d) => d.id === selectedDiagramId)!
+    const validRefs = new Set(currentDiagram.connections.map((c) => c.relationshipRef))
+    const nextRelOverrides = new Map(relationshipOverrides)
+    const relMap = relationshipOverrides.get(selectedDiagramId)
+    if (relMap?.size) {
       const nextMap = new Map<string, Bendpoint[]>()
       relMap.forEach((bendpoints, ref) => {
         if (validRefs.has(ref)) {
           nextMap.set(ref, bendpoints)
         }
       })
-      nextRelOverrides.set(diagramId, nextMap)
+      nextRelOverrides.set(selectedDiagramId, nextMap)
+    }
+
+    const removedConnIds: string[] = []
+    diagramBefore?.connections.forEach((connection) => {
+      if (subtreeIds.has(connection.source) || subtreeIds.has(connection.target)) {
+        removedConnIds.push(connection.id)
+      }
     })
-
-    const nextElemOverrides = new Map(elementOverrides)
-    elementsToRemove.forEach((id) => nextElemOverrides.delete(id))
-
-    const nextRelMetaOverrides = new Map(relationshipMetaOverrides)
-    removedRelIds.forEach((id) => nextRelMetaOverrides.delete(id))
 
     const nextDeletedDiagramNodeIds = new Set(deletedDiagramNodeIds)
     subtreeIds.forEach((id) => {
@@ -1293,26 +1271,18 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     })
 
-    const nextDeletedElementIds = new Set(deletedElementIds)
-    elementsToRemove.forEach((id) => {
-      if (originalElementIds.has(id)) {
-        nextDeletedElementIds.add(id)
-      }
-    })
-
-    const nextDeletedRelationshipIds = new Set(deletedRelationshipIds)
-    relationshipsToRemove.forEach((relationship) => {
-      if (originalRelationshipIds.has(relationship.id)) {
-        nextDeletedRelationshipIds.add(relationship.id)
+    const nextDeletedConnectionIds = new Set(deletedConnectionIds)
+    removedConnIds.forEach((id) => {
+      if (originalConnectionIds.has(id)) {
+        nextDeletedConnectionIds.add(id)
       }
     })
 
     const nextCreatedObjects = createdObjects.filter((item) => !subtreeIds.has(item.node.id))
     const nextCreatedRelationships = createdRelationships.filter(
       (cr) =>
-        !removedRelIds.has(cr.relationship.id) &&
-        (cr.diagramId !== selectedDiagramId ||
-          (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target))),
+        cr.diagramId !== selectedDiagramId ||
+        (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target)),
     )
 
     const nextDirtySplitDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
@@ -1320,23 +1290,13 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
-      model: cloneModelSnapshot({
-        ...model,
-        diagrams: nextDiagrams,
-        elements: nextElements,
-        elementById: nextElementById,
-        relationships: nextRelationships,
-        relationshipById: nextRelationshipById,
-      }),
+      model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
       diagramOverrides: cloneNodeOverrideMap(nextDiagramOverrides),
       relationshipOverrides: cloneBendpointMap(nextRelOverrides),
-      elementOverrides: new Map(nextElemOverrides),
-      relationshipMetaOverrides: new Map(nextRelMetaOverrides),
       createdObjects: cloneCreatedObjects(nextCreatedObjects),
       createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
       deletedDiagramNodeIds: nextDeletedDiagramNodeIds,
-      deletedElementIds: nextDeletedElementIds,
-      deletedRelationshipIds: nextDeletedRelationshipIds,
+      deletedConnectionIds: nextDeletedConnectionIds,
       dirtySplitDiagramIds: nextDirtySplitDiagramIds,
       selectedNodeId: null,
       selectedElementId: null,
@@ -1356,16 +1316,12 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     selectedNodeLive,
     diagramOverrides,
     relationshipOverrides,
-    relationshipMetaOverrides,
-    elementOverrides,
     createdObjects,
     createdRelationships,
     deletedDiagramNodeIds,
-    deletedElementIds,
-    deletedRelationshipIds,
+    deletedConnectionIds,
     originalDiagramNodeIds,
-    originalElementIds,
-    originalRelationshipIds,
+    originalConnectionIds,
     pushSnapshotCommand,
   ])
 
