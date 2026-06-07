@@ -10,6 +10,7 @@ import type {
   DiagramOverridesMap,
   RelationshipOverridesMap,
 } from '../../types/model'
+import { serializeArchimateXml } from './archi-xml-serialize'
 import { idFromArchimateHref } from './parsing/xml/href-utils'
 import {
   getId,
@@ -549,8 +550,7 @@ export function applyDiagramLayoutToXml(
 }
 
 export function serializeXml(documentNode: Document): string {
-  const serializer = new XMLSerializer()
-  return serializer.serializeToString(documentNode)
+  return serializeArchimateXml(documentNode)
 }
 
 export function mapNodes(

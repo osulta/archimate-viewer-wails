@@ -61,6 +61,18 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-body.ant-layout-content {
+  min-height: 0;
+}
+
+.app-body > .workspace-layout,
+.app-body > .view-mode-layout {
+  flex: 1;
+  min-height: 0;
 }
 
 .workspace-layout {
@@ -71,7 +83,9 @@
 }
 
 .workspace-layout.ant-layout {
+  flex: 1;
   flex-direction: row;
+  min-height: 0;
 }
 
 .workspace-sider.ant-layout-sider {
@@ -140,20 +154,33 @@
 
 .workspace-main.ant-layout-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  height: 100%;
 }
 
 .view-mode-layout {
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.view-mode-layout > .workspace-layout {
+  flex: 1;
+  min-height: 0;
 }
 
 .content.workspace-content {
   display: flex;
+  flex: 1;
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
+  height: 100%;
   padding: 8px 12px;
 }
 
@@ -1929,12 +1956,14 @@
 
 .canvas-wrap {
   display: flex;
+  flex: 1;
   flex-direction: column;
   border: 1px solid var(--app-color-border);
   border-radius: 8px;
   overflow: hidden;
   background: var(--app-color-canvas);
-  max-height: calc(100vh - 120px);
+  min-height: 0;
+  max-height: none;
   position: relative;
 }
 

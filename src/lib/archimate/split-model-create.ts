@@ -113,7 +113,11 @@ export function buildSplitRelationshipFileContent(
 export function buildSplitDiagramFileContent(diagram: { id: string; name: string }): string {
   const name = escapeXmlAttr(diagram.name || diagram.id)
   return (
-    `<archimate:ArchimateDiagramModel xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:archimate="http://www.archimatetool.com/archimate" name="${name}" id="${diagram.id}">\n` +
+    `<archimate:ArchimateDiagramModel\n` +
+    `    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"\n` +
+    `    xmlns:archimate="http://www.archimatetool.com/archimate"\n` +
+    `    name="${name}"\n` +
+    `    id="${diagram.id}">\n` +
     `</archimate:ArchimateDiagramModel>\n`
   )
 }
