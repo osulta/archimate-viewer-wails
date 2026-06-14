@@ -103,8 +103,7 @@ export function DiagramTreePanel({
             event.currentTarget.classList.remove('is-dragging')
           }}
         >
-          <span className="diagram-tree-leaf-name">{title}</span>
-          <span className="diagram-tree-leaf-id">{node.diagramId}</span>
+          {title}
         </span>
       )
     },
