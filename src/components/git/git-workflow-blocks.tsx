@@ -149,7 +149,10 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps): JSX.Elemen
             placeholder="— нет веток —"
             options={branchOptions.map((branch) => ({
               value: branch.name,
-              label: `${branch.name}${branch.local === false ? ' (remote)' : ''}`,
+              label:
+                branch.local === false
+                  ? `${branch.name} (только на remote)`
+                  : branch.name,
             }))}
           />
           <Button

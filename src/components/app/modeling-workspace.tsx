@@ -1,3 +1,4 @@
+import { useCallback } from 'react'
 import { Spin } from 'antd'
 import { Sidebar } from '../sidebar/sidebar'
 import { DiagramCanvas } from '../diagram-canvas'
@@ -80,6 +81,14 @@ export function ModelingWorkspace({
       selectedElementId ||
       (selectedDiagramId && selectedDiagram),
   )
+
+  const handleShowObjectProperties = useCallback(() => {
+    workspaceLayout.setPropertiesOpen(true)
+    if (workspaceLayout.canvasFocusMode) {
+      workspaceLayout.toggleCanvasFocusMode()
+    }
+    setObjectPropsTab('details')
+  }, [workspaceLayout, setObjectPropsTab])
 
   const sidebar = (
     <Sidebar
@@ -208,6 +217,7 @@ export function ModelingWorkspace({
             mutations.placeDiagramReferenceOnDiagram(diagramId, { x, y } as Point)
           }
           onOpenDiagramReference={handleSelectDiagram}
+          onShowObjectProperties={handleShowObjectProperties}
           onDeleteNodeFromDiagram={mutations.deleteSelectedFromDiagram}
           onDeleteNodeFromModel={mutations.deleteElementFromModel}
           onDeleteConnectionFromDiagram={mutations.deleteSelectedConnectionFromDiagram}

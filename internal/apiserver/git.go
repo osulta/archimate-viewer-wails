@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -61,6 +62,255 @@ func gitCurrentLocalBranchName(workTree string) string {
 		return ""
 	}
 	return name
+}
+
+type gitRemoteBranch struct {
+	remote string
+	branch string
+}
+
+// gitUpstreamRemoteBranch returns the configured upstream (e.g. origin/main), or empty values.
+func gitUpstreamRemoteBranch(workTree string) gitRemoteBranch {
+	res := runGitInWorkTree(workTree, []string{"rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"})
+	if res.Code != 0 {
+		return gitRemoteBranch{}
+	}
+	upstream := strings.TrimSpace(res.Stdout)
+	idx := strings.Index(upstream, "/")
+	if idx <= 0 || idx >= len(upstream)-1 {
+		return gitRemoteBranch{}
+	}
+	return gitRemoteBranch{
+		remote: upstream[:idx],
+		branch: upstream[idx+1:],
+	}
+}
+
+func gitRemoteBranchExists(workTree, remote, branch string) bool {
+	ref := remote + "/" + branch
+	if _, err := safeBranchRef(ref); err != nil {
+		return false
+	}
+	verify := runGitInWorkTree(workTree, []string{"rev-parse", "--verify", "--quiet", "refs/remotes/" + ref})
+	return verify.Code == 0
+}
+
+// gitRemoteDefaultBranch returns the default branch on a remote after fetch (origin/HEAD symref).
+func gitRemoteDefaultBranch(workTree, remote string) string {
+	head := runGitInWorkTree(workTree, []string{"symbolic-ref", "-q", "refs/remotes/" + remote + "/HEAD"})
+	if head.Code != 0 {
+		return ""
+	}
+	ref := strings.TrimSpace(head.Stdout)
+	prefix := "refs/remotes/" + remote + "/"
+	if strings.HasPrefix(ref, prefix) {
+		branch := strings.TrimPrefix(ref, prefix)
+		if branch != "" && branch != "HEAD" {
+			return branch
+		}
+	}
+	return ""
+}
+
+// runGitFetchRemotePrune updates remote-tracking refs and drops deleted remote branches.
+func runGitFetchRemotePrune(workTree, remote, pat, patUsername string) gitResult {
+	if strings.TrimSpace(pat) == "" {
+		return runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
+	}
+	gr := runGitInWorkTree(workTree, []string{"remote", "get-url", remote})
+	if gr.Code != 0 {
+		return gr
+	}
+	remoteURL := strings.TrimSpace(gr.Stdout)
+	applied, err := applyHTTPSPat(remoteURL, pat, patUsername)
+	if err != nil || !applied.usedPat {
+		if err != nil {
+			return gitResult{Code: 1, Stderr: err.Error()}
+		}
+		return gitResult{Code: 1, Stderr: "Укажите PAT для HTTPS fetch"}
+	}
+	restoreURL := httpsURLWithoutCredentials(remoteURL)
+	setPat := runGitInWorkTree(workTree, []string{"remote", "set-url", remote, applied.cloneURL})
+	if setPat.Code != 0 {
+		return setPat
+	}
+	fetchResult := runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
+	runGitInWorkTree(workTree, []string{"remote", "set-url", remote, restoreURL})
+	return fetchResult
+}
+
+// resolveGitPullArgs picks `git pull remote branch` using remote-tracking refs refreshed by fetch.
+func resolveGitPullArgs(workTree, remoteName, branchHint string) ([]string, string, error) {
+	remote, err := safeRemoteName(firstNonEmpty(remoteName, "origin"))
+	if err != nil {
+		return nil, "", err
+	}
+
+	localBranch := gitCurrentLocalBranchName(workTree)
+	if localBranch == "" {
+		localBranch = strings.TrimSpace(branchHint)
+	}
+
+	tryBranch := func(branch string) ([]string, string, bool) {
+		branch = strings.TrimSpace(branch)
+		if branch == "" {
+			return nil, "", false
+		}
+		safe, err := safeBranchRef(branch)
+		if err != nil {
+			return nil, "", false
+		}
+		if !gitRemoteBranchExists(workTree, remote, safe) {
+			return nil, "", false
+		}
+		return []string{"pull", remote, safe}, safe, true
+	}
+
+	if args, branch, ok := tryBranch(localBranch); ok {
+		return args, branch, nil
+	}
+
+	if upstream := gitUpstreamRemoteBranch(workTree); upstream.remote == remote {
+		if args, branch, ok := tryBranch(upstream.branch); ok {
+			return args, branch, nil
+		}
+	}
+
+	if defaultBranch := gitRemoteDefaultBranch(workTree, remote); defaultBranch != "" {
+		if args, branch, ok := tryBranch(defaultBranch); ok {
+			return args, branch, nil
+		}
+	}
+
+	if args, branch, ok := tryBranch(strings.TrimSpace(branchHint)); ok {
+		return args, branch, nil
+	}
+
+	hint := localBranch
+	if hint == "" {
+		hint = strings.TrimSpace(branchHint)
+	}
+	if hint == "" {
+		hint = "(текущая ветка не определена)"
+	}
+	return nil, "", fmt.Errorf(
+		"На remote %s нет ветки для pull (локальная: %s). Обновите список веток или выполните checkout нужной ветки",
+		remote,
+		hint,
+	)
+}
+
+type gitRefLine struct {
+	current bool
+	short   string
+	full    string
+}
+
+func parseGitRefLines(stdout string) []gitRefLine {
+	var lines []gitRefLine
+	for _, line := range strings.Split(stdout, "\n") {
+		raw := strings.TrimRight(line, "\r")
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		parts := strings.Split(raw, "\t")
+		if len(parts) < 3 {
+			continue
+		}
+		shortName := strings.TrimSpace(parts[1])
+		full := strings.TrimSpace(parts[2])
+		if shortName == "" || full == "" || reControlChars.MatchString(shortName) {
+			continue
+		}
+		lines = append(lines, gitRefLine{
+			current: strings.TrimSpace(parts[0]) == "*",
+			short:   shortName,
+			full:    full,
+		})
+	}
+	return lines
+}
+
+// listGitBranches returns checkout-friendly branch names (without origin/ prefix for remote-only branches).
+func listGitBranches(workTree, remoteName string) ([]map[string]any, error) {
+	remote, err := safeRemoteName(firstNonEmpty(remoteName, "origin"))
+	if err != nil {
+		return nil, err
+	}
+	res := runGitInWorkTree(workTree, []string{
+		"for-each-ref", "--sort=refname",
+		"--format=%(HEAD)\t%(refname:short)\t%(refname)",
+		"refs/heads", "refs/remotes/" + remote,
+	})
+	if res.Code != 0 {
+		return nil, fmt.Errorf("%s", firstNonEmpty(strings.TrimSpace(res.Stderr), "Не удалось получить список веток"))
+	}
+
+	localNames := map[string]bool{}
+	var branches []map[string]any
+	remoteFullPrefix := "refs/remotes/" + remote + "/"
+
+	for _, ln := range parseGitRefLines(res.Stdout) {
+		if !strings.HasPrefix(ln.full, "refs/heads/") {
+			continue
+		}
+		name := strings.TrimPrefix(ln.full, "refs/heads/")
+		if name == "" {
+			continue
+		}
+		localNames[name] = true
+		branches = append(branches, map[string]any{
+			"name":    name,
+			"local":   true,
+			"current": ln.current,
+		})
+	}
+
+	for _, ln := range parseGitRefLines(res.Stdout) {
+		if !strings.HasPrefix(ln.full, remoteFullPrefix) {
+			continue
+		}
+		bare := strings.TrimPrefix(ln.full, remoteFullPrefix)
+		if bare == "" || bare == "HEAD" || strings.HasSuffix(bare, "/HEAD") {
+			continue
+		}
+		if localNames[bare] {
+			continue
+		}
+		entry := map[string]any{
+			"name":    bare,
+			"local":   false,
+			"current": ln.current,
+		}
+		if ln.short != "" {
+			entry["remoteRef"] = ln.short
+		}
+		branches = append(branches, entry)
+	}
+
+	sort.Slice(branches, func(i, j int) bool {
+		a, _ := branches[i]["name"].(string)
+		b, _ := branches[j]["name"].(string)
+		return a < b
+	})
+	return branches, nil
+}
+
+// gitResolveRemoteBranchRef maps a bare branch name to origin/branch when a remote-tracking ref exists.
+func gitResolveRemoteBranchRef(workTree, remoteName, branch string) string {
+	branch = strings.TrimSpace(branch)
+	if branch == "" || strings.Contains(branch, "/") {
+		return branch
+	}
+	remote, err := safeRemoteName(firstNonEmpty(remoteName, "origin"))
+	if err != nil {
+		return branch
+	}
+	candidate := remote + "/" + branch
+	if runGitInWorkTree(workTree, []string{"rev-parse", "--verify", "--quiet", "refs/remotes/" + candidate}).Code == 0 {
+		return candidate
+	}
+	return branch
 }
 
 func httpsURLWithoutCredentials(urlString string) string {

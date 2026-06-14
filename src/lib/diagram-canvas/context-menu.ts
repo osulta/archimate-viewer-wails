@@ -25,6 +25,7 @@ export interface BuildCanvasContextMenuOptions {
   readOnly: boolean
   target: CanvasContextTarget
   onOpenDiagram?: (diagramId: string) => void
+  onShowObjectProperties?: () => void
   onDeleteNodeFromDiagram?: () => void
   onDeleteNodeFromModel?: () => void
   onDeleteConnectionFromDiagram?: () => void
@@ -116,6 +117,7 @@ export function buildCanvasContextMenuItems(
     readOnly,
     target,
     onOpenDiagram,
+    onShowObjectProperties,
     onDeleteNodeFromDiagram,
     onDeleteNodeFromModel,
     onDeleteConnectionFromDiagram,
@@ -127,6 +129,13 @@ export function buildCanvasContextMenuItems(
 
   if (target.kind === 'node' && target.node) {
     const items: NonNullable<MenuProps['items']> = []
+    if (onShowObjectProperties) {
+      items.push({
+        key: 'show-properties',
+        label: 'Показать свойства',
+        onClick: () => onShowObjectProperties(),
+      })
+    }
     if (target.node.referencedDiagramId && onOpenDiagram) {
       items.push({
         key: 'open-diagram',

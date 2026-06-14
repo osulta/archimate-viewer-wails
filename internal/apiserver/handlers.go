@@ -460,19 +460,27 @@ func (s *Server) handlePushPull(w http.ResponseWriter, r *http.Request, isPull b
 	pat := strings.TrimSpace(bodyStr(body, "pat"))
 
 	var transferArgs []string
+	var resolvedPullBranch string
+	var fetchResult gitResult
 	resultKey := "push"
 	if isPull {
 		resultKey = "pull"
-		branchInput := strings.TrimSpace(bodyStr(body, "branch"))
-		if branchInput == "" {
-			branchInput = "main"
+		fetchResult = runGitFetchRemotePrune(workTree, remote, pat, bodyStr(body, "patUsername"))
+		if fetchResult.Code != 0 {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"ok":       false,
+				"error":    firstNonEmpty(strings.TrimSpace(fetchResult.Stderr), strings.TrimSpace(fetchResult.Stdout), "git fetch не удался"),
+				"workTree": workTree,
+				"fetch":    fetchResult,
+			})
+			return
 		}
-		branch, e := safeBranchRef(branchInput)
+		var e error
+		transferArgs, resolvedPullBranch, e = resolveGitPullArgs(workTree, remote, bodyStr(body, "branch"))
 		if e != nil {
 			errJSON(w, http.StatusBadRequest, e.Error())
 			return
 		}
-		transferArgs = []string{"pull", remote, branch}
 	} else {
 		branch, e := safeBranchRef(bodyStr(body, "branch"))
 		if e != nil {
@@ -491,7 +499,12 @@ func (s *Server) handlePushPull(w http.ResponseWriter, r *http.Request, isPull b
 
 	if pat == "" {
 		result := runGitInWorkTree(workTree, transferArgs)
-		writeJSON(w, http.StatusOK, map[string]any{"ok": result.Code == 0, "workTree": workTree, resultKey: result})
+		resp := map[string]any{"ok": result.Code == 0, "workTree": workTree, resultKey: result}
+		if isPull {
+			resp["fetch"] = fetchResult
+			resp["resolvedBranch"] = resolvedPullBranch
+		}
+		writeJSON(w, http.StatusOK, resp)
 		return
 	}
 
@@ -532,13 +545,18 @@ func (s *Server) handlePushPull(w http.ResponseWriter, r *http.Request, isPull b
 	}
 	result := runGitInWorkTree(workTree, transferArgs)
 	restore := runGitInWorkTree(workTree, []string{"remote", "set-url", remote, restoreURL})
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"ok":              result.Code == 0,
 		"workTree":        workTree,
 		resultKey:         result,
 		"originSanitized": restore.Code == 0,
 		"restoreRemote":   restore,
-	})
+	}
+	if isPull {
+		resp["fetch"] = fetchResult
+		resp["resolvedBranch"] = resolvedPullBranch
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
@@ -555,66 +573,28 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pat := strings.TrimSpace(bodyStr(body, "pat"))
-	var fetchResult gitResult
-	fetchRan := false
-	if doFetch {
-		fetchRan = true
-		if pat == "" {
-			fetchResult = runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
-		} else if gr := runGitInWorkTree(workTree, []string{"remote", "get-url", remote}); gr.Code == 0 {
-			remoteURL := strings.TrimSpace(gr.Stdout)
-			if applied, e := applyHTTPSPat(remoteURL, pat, bodyStr(body, "patUsername")); e == nil && applied.usedPat {
-				restoreURL := httpsURLWithoutCredentials(remoteURL)
-				if setPat := runGitInWorkTree(workTree, []string{"remote", "set-url", remote, applied.cloneURL}); setPat.Code == 0 {
-					fetchResult = runGitInWorkTree(workTree, []string{"fetch", "--prune", remote})
-					runGitInWorkTree(workTree, []string{"remote", "set-url", remote, restoreURL})
-				}
-			}
-		}
-	}
-	res := runGitInWorkTree(workTree, []string{
-		"for-each-ref", "--sort=refname",
-		"--format=%(HEAD)\t%(refname:short)\t%(refname)",
-		"refs/heads", "refs/remotes",
-	})
-	if res.Code != 0 {
+	fetchResult := runGitFetchRemotePrune(workTree, remote, pat, bodyStr(body, "patUsername"))
+	branches, listErr := listGitBranches(workTree, remote)
+	if listErr != nil {
 		resp := map[string]any{
 			"ok":       false,
-			"error":    firstNonEmpty(strings.TrimSpace(res.Stderr), "Не удалось получить список веток"),
+			"error":    listErr.Error(),
 			"workTree": workTree,
-		}
-		if fetchRan {
-			resp["fetch"] = fetchResult
+			"fetch":    fetchResult,
 		}
 		writeJSON(w, http.StatusBadRequest, resp)
 		return
 	}
-	branches := []any{}
-	seen := map[string]bool{}
-	for _, line := range strings.Split(res.Stdout, "\n") {
-		raw := strings.TrimRight(line, "\r")
-		if strings.TrimSpace(raw) == "" {
-			continue
-		}
-		parts := strings.Split(raw, "\t")
-		if len(parts) < 3 {
-			continue
-		}
-		shortName := strings.TrimSpace(parts[1])
-		full := strings.TrimSpace(parts[2])
-		if shortName == "" || seen[shortName] || reControlChars.MatchString(shortName) {
-			continue
-		}
-		seen[shortName] = true
-		branches = append(branches, map[string]any{
-			"name":    shortName,
-			"current": strings.TrimSpace(parts[0]) == "*",
-			"local":   strings.HasPrefix(full, "refs/heads/"),
-		})
+	resp := map[string]any{"ok": true, "branches": branches, "workTree": workTree, "fetch": fetchResult}
+	if fetchResult.Code != 0 {
+		resp["fetchWarning"] = firstNonEmpty(
+			strings.TrimSpace(fetchResult.Stderr),
+			strings.TrimSpace(fetchResult.Stdout),
+			"git fetch не удался — список веток может быть неполным",
+		)
 	}
-	resp := map[string]any{"ok": true, "branches": branches, "workTree": workTree}
-	if fetchRan {
-		resp["fetch"] = fetchResult
+	if doFetch && fetchResult.Code == 0 {
+		resp["fetchOk"] = true
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -645,7 +625,12 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 			args = append(args, startPoint)
 		}
 	} else {
-		branchForRemote := branch
+		remote, remoteErr := safeRemoteName(firstNonEmpty(bodyStr(body, "remote"), "origin"))
+		if remoteErr != nil {
+			errJSON(w, http.StatusBadRequest, remoteErr.Error())
+			return
+		}
+		branchForRemote := gitResolveRemoteBranchRef(workTree, remote, branch)
 		if reHeadSuffix.MatchString(branchForRemote) {
 			if symHead := runGitInWorkTree(workTree, []string{"symbolic-ref", "-q", "refs/remotes/" + branchForRemote}); symHead.Code == 0 {
 				short := strings.TrimPrefix(strings.TrimSpace(symHead.Stdout), "refs/remotes/")

@@ -13,6 +13,10 @@ function localBranchNameFromRef(ref: string | null | undefined): string {
   return match ? match[1] : trimmed
 }
 
+function normalizeBranchName(ref: string | null | undefined): string {
+  return localBranchNameFromRef(ref)
+}
+
 interface BranchEntry {
   name: string
   local?: boolean
@@ -25,20 +29,17 @@ function resolveCurrentBranchFromList(
 ): string {
   const marked = branches.find((branch) => branch.current)
   if (marked) {
-    if (marked.local !== false) {
-      return marked.name.trim()
-    }
-    return localBranchNameFromRef(marked.name).trim()
+    return normalizeBranchName(marked.name)
   }
 
-  const probe = String(probeBranch ?? '').trim()
+  const probe = normalizeBranchName(probeBranch)
   if (!probe || probe === 'HEAD') {
     return ''
   }
   if (branches.length === 0) {
     return probe
   }
-  if (branches.some((branch) => branch.local !== false && branch.name === probe)) {
+  if (branches.some((branch) => branch.name === probe)) {
     return probe
   }
   return ''
@@ -74,21 +75,16 @@ function preferLocalBranchSelection(
   currentBranch?: string,
 ): string {
   const list = Array.isArray(branches) ? branches : []
-  const current = String(currentBranch ?? '').trim()
-  if (current && list.some((b) => b.local && b.name === current)) {
+  const current = normalizeBranchName(currentBranch)
+  if (current && list.some((b) => b.name === current)) {
     return current
   }
 
-  const selectedTrim = String(selected ?? '').trim()
+  const selectedTrim = normalizeBranchName(selected)
   if (!selectedTrim) {
     return current || ''
   }
 
-  const localName = localBranchNameFromRef(selectedTrim)
-  const hasLocal = list.some((b) => b.local && b.name === localName)
-  if (hasLocal) {
-    return localName
-  }
   if (list.some((b) => b.name === selectedTrim)) {
     return selectedTrim
   }
@@ -124,6 +120,11 @@ interface RefreshRepoResult {
   modelPath: string
   modelLayout?: string
   hasDotGit: boolean
+}
+
+interface RefreshGitRepoOptions {
+  /** When true, overwrite the clone URL field from origin (e.g. after GIT_REPO_ROOT change). */
+  syncRemoteUrl?: boolean
 }
 
 interface GitCommandResult {
@@ -186,7 +187,9 @@ export function useGitIntegration({
   const [gitCloneShallow, setGitCloneShallow] = useState(false)
   const [gitPushUpstream, setGitPushUpstream] = useState(false)
   const [gitCheckoutBranch, setGitCheckoutBranch] = useState(() =>
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('archimate-git-checkout-branch') ?? '' : '',
+    typeof sessionStorage !== 'undefined'
+      ? normalizeBranchName(sessionStorage.getItem('archimate-git-checkout-branch') ?? '')
+      : '',
   )
   const [gitConfigPat, setGitConfigPat] = useState('')
   const [gitRepoRoot, setGitRepoRoot] = useState('')
@@ -245,7 +248,7 @@ export function useGitIntegration({
   }, [gitCloneUrl])
 
   useEffect(() => {
-    sessionStorage.setItem('archimate-git-checkout-branch', gitCheckoutBranch)
+    sessionStorage.setItem('archimate-git-checkout-branch', normalizeBranchName(gitCheckoutBranch))
   }, [gitCheckoutBranch])
 
   useEffect(() => {
@@ -351,7 +354,7 @@ export function useGitIntegration({
     }
   }, [])
 
-  const refreshGitRepoState = useCallback(async (): Promise<RefreshRepoResult> => {
+  const refreshGitRepoState = useCallback(async (options: RefreshGitRepoOptions = {}): Promise<RefreshRepoResult> => {
     setGitRepoProbe((p) => ({ ...p, loading: true }))
     try {
       const r = await fetch(apiUrl('/api/git/repo-state'), {
@@ -362,20 +365,23 @@ export function useGitIntegration({
       const data = await r.json()
       if (data.ok) {
         const probeBranch = typeof data.currentBranch === 'string' ? data.currentBranch.trim() : ''
+        const remoteUrl = typeof data.remoteUrl === 'string' ? data.remoteUrl : ''
         setGitRepoProbe({
           loaded: true,
           loading: false,
           hasDotGit: Boolean(data.hasDotGit),
           workFolder: data.workFolder ?? '.',
-          remoteUrl: typeof data.remoteUrl === 'string' ? data.remoteUrl : '',
+          remoteUrl,
           currentBranch: probeBranch === 'HEAD' ? '' : probeBranch,
           modelLayout:
             data.modelLayout === 'split-files' || data.modelLayout === 'single-file'
               ? data.modelLayout
               : '',
         })
-        if (typeof data.remoteUrl === 'string' && data.remoteUrl) {
-          setGitCloneUrl((prev) => (prev.trim() ? prev : data.remoteUrl))
+        if (options.syncRemoteUrl) {
+          setGitCloneUrl(remoteUrl)
+        } else if (remoteUrl) {
+          setGitCloneUrl((prev) => (prev.trim() ? prev : remoteUrl))
         }
         if (typeof data.modelPath === 'string' && data.modelPath) {
           setGitRepoPath(data.modelPath)
@@ -418,7 +424,8 @@ export function useGitIntegration({
             body: JSON.stringify({
               workFolder: '',
               ...(rel ? { path: rel } : {}),
-              ...(fetchRemote ? { fetch: true, ...(pat ? { pat } : {}) } : {}),
+              ...(fetchRemote ? { fetch: true } : {}),
+              ...(pat ? { pat } : {}),
             }),
           })
           const data = await res.json()
@@ -436,9 +443,12 @@ export function useGitIntegration({
             if (fetchRemote) {
               const count = data.branches.length
               const localCount = data.branches.filter((b: BranchEntry) => b.local !== false).length
+              const fetchWarning =
+                typeof data.fetchWarning === 'string' ? data.fetchWarning.trim() : ''
               setGitOutput(
                 joinGitCommandOutput([
                   formatGitCommandOutput('git fetch', data.fetch as GitCommandBlock | undefined),
+                  fetchWarning,
                   `Список веток обновлён: ${count} (${localCount} локальных).`,
                 ]),
               )
@@ -493,18 +503,15 @@ export function useGitIntegration({
     if (!gitBranches.list.length) {
       return
     }
-    const current = gitRepoProbe.currentBranch?.trim() || ''
-    const selected = gitCheckoutBranch.trim()
+    const current = normalizeBranchName(gitRepoProbe.currentBranch)
+    const selected = normalizeBranchName(gitCheckoutBranch)
     let next = selected
 
-    if (!selected && current) {
+    if (!next && current) {
       next = current
-    } else if (/^origin\/.+/i.test(selected)) {
-      const localName = localBranchNameFromRef(selected)
-      const onLocal = current === localName
-      const hasLocal = gitBranches.list.some((b) => b.local && b.name === localName)
-      if (onLocal && hasLocal) {
-        next = localName
+    } else if (next && !gitBranches.list.some((b) => b.name === next)) {
+      if (current && gitBranches.list.some((b) => b.name === current)) {
+        next = current
       }
     }
 
@@ -564,7 +571,7 @@ export function useGitIntegration({
     if (!gitApiReady) {
       return
     }
-    void refreshGitRepoState()
+    void refreshGitRepoState({ syncRemoteUrl: true })
   }, [gitApiReady, refreshGitRepoState])
 
   useEffect(() => {
@@ -807,7 +814,7 @@ export function useGitIntegration({
           setGitBranches({ loading: false, list: [], error: null })
           onRepositoryDeleted()
           setGitOutput(`Каталог GIT_REPO_ROOT изменён: ${root}`)
-          await refreshGitRepoState()
+          await refreshGitRepoState({ syncRemoteUrl: true })
           return
         }
         if (typeof data.error === 'string' && data.error) {
@@ -891,7 +898,7 @@ export function useGitIntegration({
             : `Репозиторий удалён с диска: ${data.rel === '.' ? repoRootLabel : (data.rel ?? repoRootLabel)}`,
         )
         onRepositoryDeleted()
-        await refreshGitRepoState()
+        await refreshGitRepoState({ syncRemoteUrl: true })
       } else {
         setGitOutput(data.error || JSON.stringify(data))
       }
@@ -1087,13 +1094,6 @@ export function useGitIntegration({
       setGitOutput(apiUnavailableMessage)
       return
     }
-    const pullBranch =
-      resolveCurrentBranchFromList(gitBranches.list, gitRepoProbe.currentBranch) ||
-      gitCheckoutBranch.trim()
-    if (!pullBranch) {
-      setGitOutput('Не удалось определить текущую ветку для git pull')
-      return
-    }
     await withGitCommand('Получение изменений…', async () => {
     const rel = gitRepoPath.trim()
     const pat = gitConfigPat.trim()
@@ -1104,7 +1104,6 @@ export function useGitIntegration({
         body: JSON.stringify({
           ...(rel ? { path: rel } : { workFolder: '' }),
           remote: 'origin',
-          branch: pullBranch,
           ...(pat ? { pat } : {}),
         }),
       })
@@ -1119,6 +1118,11 @@ export function useGitIntegration({
         return
       }
       let msg = [pullBlock.stdout, pullBlock.stderr].filter(Boolean).join('\n').trim()
+      if (typeof data.resolvedBranch === 'string' && data.resolvedBranch.trim()) {
+        msg = msg
+          ? `${msg}\n(ветка: ${data.resolvedBranch.trim()})`
+          : `(ветка: ${data.resolvedBranch.trim()})`
+      }
       if (data.workTree) {
         msg = msg ? `${msg}\n(work tree: ${data.workTree})` : `(work tree: ${data.workTree})`
       }

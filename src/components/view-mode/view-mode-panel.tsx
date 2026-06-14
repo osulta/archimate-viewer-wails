@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Button, Empty, Tooltip } from 'antd'
 import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons'
 import { DiagramCanvas } from '../diagram-canvas'
@@ -103,7 +103,14 @@ export function ViewModePanel(props: ViewModePanelProps) {
   } = props
 
   const selectedNodeId = selectedNodeLive?.id ?? ''
-  const { canvasFocusMode, toggleCanvasFocusMode } = workspaceLayout
+  const { canvasFocusMode, toggleCanvasFocusMode, setPropertiesOpen } = workspaceLayout
+
+  const handleShowObjectProperties = useCallback(() => {
+    setPropertiesOpen(true)
+    if (canvasFocusMode) {
+      toggleCanvasFocusMode()
+    }
+  }, [canvasFocusMode, setPropertiesOpen, toggleCanvasFocusMode])
 
   const flowConnectionIds = useMemo(() => {
     if (!selectedDiagram || !selectedNodeId || selectedRelationshipRef) {
@@ -209,6 +216,7 @@ export function ViewModePanel(props: ViewModePanelProps) {
             onNodeSelect={onCanvasNodeSelect}
             onRelationshipSelect={onCanvasRelationshipSelect}
             onOpenDiagramReference={onSelectDiagram}
+            onShowObjectProperties={handleShowObjectProperties}
           />
         }
         inspector={
