@@ -239,6 +239,46 @@ export function applyOverridesToNodes(
   })
 }
 
+export function getSelectionOverrideRoots(
+  selectedIds: Set<string>,
+  nodes: DiagramNode[],
+): string[] {
+  const roots: string[] = []
+
+  function walk(nodeList: DiagramNode[], ancestorSelected: boolean): void {
+    for (const node of nodeList) {
+      const selected = selectedIds.has(node.id)
+      if (selected && !ancestorSelected) {
+        roots.push(node.id)
+      }
+      walk(node.children ?? [], ancestorSelected || selected)
+    }
+  }
+
+  walk(nodes, false)
+  return roots
+}
+
+export function applyDragPreviewToNodeIds(
+  nodes: DiagramNode[],
+  nodeIds: Set<string>,
+  dx: number,
+  dy: number,
+  ancestorMoves = false,
+): DiagramNode[] {
+  return nodes.map((node) => {
+    const selfSelected = nodeIds.has(node.id)
+    const move = ancestorMoves || selfSelected
+    const childAncestorMoves = ancestorMoves || selfSelected
+    return {
+      ...node,
+      x: move ? roundDiagramCoord(node.x + dx) : node.x,
+      y: move ? roundDiagramCoord(node.y + dy) : node.y,
+      children: applyDragPreviewToNodeIds(node.children, nodeIds, dx, dy, childAncestorMoves),
+    }
+  })
+}
+
 export function applyDragPreviewToNodes(
   nodes: DiagramNode[],
   nodeId: string,

@@ -1,4 +1,4 @@
-import { applyDragPreviewToNodes } from '../archimate/diagram-model'
+import { applyDragPreviewToNodes, applyDragPreviewToNodeIds } from '../archimate/diagram-model'
 import { adjustBendpointsForNodeResize } from '../archimate/connection-geometry'
 import type { ParsedDiagram } from '../../types/model'
 import type { DragPreview } from './types'
@@ -15,14 +15,18 @@ export function applyDragPreviewToDiagram(
   let connections = diagram.connections
 
   if (preview.type === 'move' || preview.type === 'resize') {
-    nodes = applyDragPreviewToNodes(
-      nodes,
-      preview.nodeId,
-      preview.dx ?? 0,
-      preview.dy ?? 0,
-      preview.dw ?? 0,
-      preview.dh ?? 0,
-    )
+    if (preview.type === 'move' && preview.nodeIds?.length) {
+      nodes = applyDragPreviewToNodeIds(nodes, new Set(preview.nodeIds), preview.dx ?? 0, preview.dy ?? 0)
+    } else {
+      nodes = applyDragPreviewToNodes(
+        nodes,
+        preview.nodeId,
+        preview.dx ?? 0,
+        preview.dy ?? 0,
+        preview.dw ?? 0,
+        preview.dh ?? 0,
+      )
+    }
   }
 
   if (preview.type === 'resize' && (preview.dw || preview.dh)) {

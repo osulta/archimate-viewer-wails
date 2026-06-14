@@ -27,6 +27,11 @@ export interface ModelSelectionState {
   setSelectedDiagramId: React.Dispatch<React.SetStateAction<string>>
   selectedNode: DiagramNode | null
   setSelectedNode: React.Dispatch<React.SetStateAction<DiagramNode | null>>
+  selectedNodeIds: string[]
+  handleCanvasNodeSelect: (
+    node: DiagramNode | null,
+    options?: { shiftKey?: boolean; selectedIds?: string[] },
+  ) => void
   selectedElementId: string | null
   setSelectedElementId: React.Dispatch<React.SetStateAction<string | null>>
   selectedRelationshipRef: string | null
@@ -79,6 +84,7 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
 
   const [selectedDiagramId, setSelectedDiagramId] = useState('')
   const [selectedNode, setSelectedNode] = useState<DiagramNode | null>(null)
+  const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [selectedRelationshipRef, setSelectedRelationshipRef] = useState<string | null>(null)
   const [selectedBendpointIndex, setSelectedBendpointIndex] = useState<number | null>(null)
@@ -252,14 +258,68 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
   const clearSelection = useCallback(() => {
     setSelectedDiagramId('')
     setSelectedNode(null)
+    setSelectedNodeIds([])
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
     setSelectedBendpointIndex(null)
   }, [])
 
+  const handleCanvasNodeSelect = useCallback(
+    (node: DiagramNode | null, options?: { shiftKey?: boolean; selectedIds?: string[] }) => {
+      if (!node) {
+        setSelectedNode(null)
+        setSelectedNodeIds([])
+        setSelectedElementId(null)
+        setSelectedRelationshipRef(null)
+        setSelectedBendpointIndex(null)
+        return
+      }
+
+      if (options?.selectedIds) {
+        setSelectedNodeIds(options.selectedIds)
+        setSelectedNode(node)
+        setSelectedElementId(node.elementRef ?? null)
+        setSelectedRelationshipRef(null)
+        setSelectedBendpointIndex(null)
+        return
+      }
+
+      if (options?.shiftKey) {
+        setSelectedNodeIds((current) => {
+          const has = current.includes(node.id)
+          const next = has ? current.filter((id) => id !== node.id) : [...current, node.id]
+          if (has && selectedNode?.id === node.id) {
+            const fallbackId = next.at(-1)
+            const fallback =
+              fallbackId && selectedDiagram
+                ? findNodeById(selectedDiagram.nodes, fallbackId)
+                : null
+            setSelectedNode(fallback)
+            setSelectedElementId(fallback?.elementRef ?? null)
+          } else if (!has) {
+            setSelectedNode(node)
+            setSelectedElementId(node.elementRef ?? null)
+          }
+          return next
+        })
+        setSelectedRelationshipRef(null)
+        setSelectedBendpointIndex(null)
+        return
+      }
+
+      setSelectedNode(node)
+      setSelectedNodeIds([node.id])
+      setSelectedElementId(node.elementRef ?? null)
+      setSelectedRelationshipRef(null)
+      setSelectedBendpointIndex(null)
+    },
+    [selectedDiagram, selectedNode?.id],
+  )
+
   const handleSelectDiagram = useCallback((diagramId: string) => {
     setSelectedDiagramId(diagramId)
     setSelectedNode(null)
+    setSelectedNodeIds([])
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
     setSelectedBendpointIndex(null)
@@ -286,6 +346,7 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
         return
       }
       setSelectedNode(null)
+      setSelectedNodeIds([])
       setSelectedElementId(null)
       setSelectedRelationshipRef(relationshipId)
       setSelectedBendpointIndex(null)
@@ -301,6 +362,7 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
       setSelectedRelationshipRef(null)
       setSelectedElementId(elementId)
       setSelectedNode(null)
+      setSelectedNodeIds([])
       for (const diagram of model.diagrams) {
         const hit = findNodeByElementRefInDiagram(diagram, elementId)
         if (hit) {
@@ -314,12 +376,25 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
   )
 
   useEffect(() => {
+    if (!selectedNode) {
+      if (selectedNodeIds.length) {
+        setSelectedNodeIds([])
+      }
+      return
+    }
+    if (!selectedNodeIds.includes(selectedNode.id)) {
+      setSelectedNodeIds([selectedNode.id])
+    }
+  }, [selectedNode?.id, selectedNodeIds])
+
+  useEffect(() => {
     if (!selectedNode || !selectedDiagram) {
       return
     }
     const stillExists = findNodeById(selectedDiagram.nodes, selectedNode.id)
     if (!stillExists) {
       setSelectedNode(null)
+      setSelectedNodeIds((current) => current.filter((id) => id !== selectedNode.id))
     }
   }, [selectedDiagram, selectedNode])
 
@@ -361,6 +436,8 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     setSelectedDiagramId,
     selectedNode,
     setSelectedNode,
+    selectedNodeIds,
+    handleCanvasNodeSelect,
     selectedElementId,
     setSelectedElementId,
     selectedRelationshipRef,

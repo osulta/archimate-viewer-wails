@@ -17,6 +17,7 @@ export interface NodeDrawColors {
 export interface DragPreviewMove {
   type: 'move'
   nodeId: string
+  nodeIds?: string[]
   dx: number
   dy: number
   dw: number
@@ -61,6 +62,7 @@ export interface MoveInteraction {
   type: 'move'
   pointerId: number
   nodeId: string
+  nodeIds: string[]
   startLogicalX: number
   startLogicalY: number
   startNodeX: number
@@ -148,6 +150,7 @@ export interface DiagramPaintContext {
   flowConnectionIds?: string[] | Set<string>
   connectionFlowPhase?: number
   selectedNodeId?: string
+  selectedNodeIds?: string[] | Set<string>
   selectedRelationshipRef?: string | null
   selectedBendpointIndex?: number | null
   linkCreateMode?: boolean
@@ -167,11 +170,16 @@ export interface DiagramCanvasProps {
   flowConnectionIds?: string[] | Set<string>
   animateConnectionFlow?: boolean
   selectedNodeId?: string
+  selectedNodeIds?: string[] | Set<string>
   selectedRelationshipRef?: string | null
   linkCreateMode?: boolean
   linkCreateSourceId?: string | null
-  onNodeSelect?: (node: DiagramNode | null) => void
+  onNodeSelect?: (
+    node: DiagramNode | null,
+    options?: { shiftKey?: boolean; selectedIds?: string[] },
+  ) => void
   onNodeMove?: (nodeId: string, dx: number, dy: number) => void
+  onNodesMove?: (nodeIds: string[], dx: number, dy: number) => void
   onNodeResize?: (nodeId: string, dw: number, dh: number) => void
   onRelationshipSelect?: (ref: string | null) => void
   selectedBendpointIndex?: number | null

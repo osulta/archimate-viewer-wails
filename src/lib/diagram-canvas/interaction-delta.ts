@@ -63,6 +63,7 @@ export function applyPointerDelta(
       dragPreview: {
         type: 'move',
         nodeId: interaction.nodeId,
+        nodeIds: interaction.nodeIds.length > 1 ? interaction.nodeIds : undefined,
         dx: newDx,
         dy: newDy,
         dw: 0,

@@ -168,18 +168,13 @@ export function ModelingWorkspace({
           relationshipById={relationshipByIdForUi}
           diagrams={model?.diagrams}
           selectedNodeId={selectedNode?.id ?? ''}
+          selectedNodeIds={selection.selectedNodeIds}
           selectedRelationshipRef={selectedRelationshipRef}
           linkCreateMode={linkCreateMode}
           linkCreateSourceId={linkCreateSourceId}
-          onNodeSelect={(node) => {
-            setSelectedNode(node)
-            setSelectedElementId(node?.elementRef ?? null)
-            if (node && !linkCreateMode) {
-              setSelectedRelationshipRef(null)
-              setSelectedBendpointIndex(null)
-            }
-          }}
+          onNodeSelect={(node, options) => selection.handleCanvasNodeSelect(node, options)}
           onNodeMove={(nodeId, dx, dy) => mutations.moveNode(selectedDiagramId, nodeId, dx, dy)}
+          onNodesMove={(nodeIds, dx, dy) => mutations.moveNodes(selectedDiagramId, nodeIds, dx, dy)}
           onNodeResize={(nodeId, dw, dh) => mutations.resizeNode(selectedDiagramId, nodeId, dw, dh)}
           onRelationshipSelect={(ref) => {
             setSelectedRelationshipRef(ref)

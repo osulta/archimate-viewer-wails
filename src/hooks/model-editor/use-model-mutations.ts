@@ -13,6 +13,7 @@ import {
   findNodeByElementRefInDiagram,
   collectSubtreeIds,
   removeNodeFromTree,
+  getSelectionOverrideRoots,
   removeDiagramObjectsByElementRef,
   collectNodeIdsRemovedForElement,
   filterConnectionsToExistingRelationships,
@@ -55,6 +56,7 @@ import type { ModelSelectionState } from './use-model-selection'
 
 export interface ModelMutations {
   moveNode: (diagramId: string, nodeId: string, dx: number, dy: number) => void
+  moveNodes: (diagramId: string, nodeIds: string[], dx: number, dy: number) => void
   resizeNode: (diagramId: string, nodeId: string, dw: number, dh: number) => void
   updateNodeFillColor: (diagramId: string, nodeId: string, fillColor: string | null) => void
   updateDiagramMetadata: (diagramId: string, patch: Partial<ParsedDiagram>) => void
@@ -414,8 +416,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     ],
   )
 
-  function moveNode(diagramId: string, nodeId: string, dx: number, dy: number) {
-    if (!diagramId || !nodeId || (dx === 0 && dy === 0) || !model) {
+  function moveNodes(diagramId: string, nodeIds: string[], dx: number, dy: number) {
+    if (!diagramId || !nodeIds.length || (dx === 0 && dy === 0) || !model) {
       return
     }
     const diagram = model.diagrams.find((item) => item.id === diagramId)
@@ -423,20 +425,28 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
+    const roots = getSelectionOverrideRoots(new Set(nodeIds), diagram.nodes)
+    if (!roots.length) {
+      return
+    }
+
     const beforeAll = cloneNodeOverrideMap(diagramOverrides)
     const overrides = diagramOverrides.get(diagramId) ?? new Map()
-    const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
     const nextOverrides = new Map(overrides)
-    nextOverrides.set(nodeId, {
-      ...prev,
-      dx: roundDiagramCoord((prev.dx ?? 0) + dx),
-      dy: roundDiagramCoord((prev.dy ?? 0) + dy),
-    })
+    for (const nodeId of roots) {
+      const prev = nextOverrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
+      nextOverrides.set(nodeId, {
+        ...prev,
+        dx: roundDiagramCoord((prev.dx ?? 0) + dx),
+        dy: roundDiagramCoord((prev.dy ?? 0) + dy),
+      })
+    }
     const nextAll = new Map(diagramOverrides)
     nextAll.set(diagramId, nextOverrides)
 
     const layoutNodes = applyOverridesToNodes(diagram.nodes, nextOverrides)
-    const movedNode = findNodeById(layoutNodes, nodeId)
+    const primaryNodeId = roots[0]
+    const movedNode = findNodeById(layoutNodes, primaryNodeId)
 
     let nextDiagramNodes = diagram.nodes
     let nextRelationships = model.relationships
@@ -445,19 +455,19 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     let createdRelationship: CreatedRelationship | undefined
     let nestingChanged = false
 
-    const canReparentOnMove =
-      movedNode && (Boolean(movedNode.elementRef) || isDiagramReferenceNode(movedNode))
-    if (canReparentOnMove) {
+    const canReparentOnMove = roots.length === 1 && movedNode &&
+      (Boolean(movedNode.elementRef) || isDiagramReferenceNode(movedNode))
+    if (canReparentOnMove && movedNode) {
       const excludeIds = new Set(collectSubtreeIds(movedNode))
       const containerNode = findInnermostContainingNodeExcluding(layoutNodes, movedNode, excludeIds)
       if (
         containerNode?.elementRef &&
         !isDiagramReferenceNode(containerNode) &&
-        containerNode.id !== nodeId
+        containerNode.id !== primaryNodeId
       ) {
-        const currentParentId = findDirectParentNodeId(diagram.nodes, nodeId)
+        const currentParentId = findDirectParentNodeId(diagram.nodes, primaryNodeId)
         if (containerNode.id !== currentParentId) {
-          nextDiagramNodes = reparentNodeInTree(diagram.nodes, nodeId, containerNode.id)
+          nextDiagramNodes = reparentNodeInTree(diagram.nodes, primaryNodeId, containerNode.id)
           nestingChanged = true
         }
         if (!isDiagramReferenceNode(movedNode)) {
@@ -468,7 +478,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
               item.id === diagramId ? { ...item, nodes: nextDiagramNodes } : item,
             ),
             containerNode.id,
-            nodeId,
+            primaryNodeId,
           )
           if (aggregationResult) {
             nextDiagramNodes =
@@ -516,7 +526,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const afterRelationshipById = nextRelationshipById
 
     pushSnapshotCommand(
-      'Перемещение объекта',
+      roots.length > 1 ? 'Перемещение объектов' : 'Перемещение объекта',
       () => {
         commitDiagramOverrides(cloneNodeOverrideMap(beforeAll))
         if (nestingChanged) {
@@ -548,6 +558,10 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         }
       },
     )
+  }
+
+  function moveNode(diagramId: string, nodeId: string, dx: number, dy: number) {
+    moveNodes(diagramId, [nodeId], dx, dy)
   }
 
   function resizeNode(diagramId: string, nodeId: string, dw: number, dh: number) {
@@ -1901,6 +1915,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
   return {
     moveNode,
+    moveNodes,
     resizeNode,
     updateNodeFillColor,
     updateDiagramMetadata,

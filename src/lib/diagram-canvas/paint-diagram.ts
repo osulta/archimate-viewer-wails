@@ -41,6 +41,17 @@ function highlightIdSetHas(ids: string[] | Set<string> | undefined, id: string):
   return ids instanceof Set ? ids.has(id) : ids.includes(id)
 }
 
+function isDiagramNodeSelected(
+  nodeId: string,
+  selectedNodeId: string | undefined,
+  selectedNodeIds: string[] | Set<string> | undefined,
+): boolean {
+  if (selectedNodeIds && highlightIdSetHas(selectedNodeIds, nodeId)) {
+    return true
+  }
+  return Boolean(selectedNodeId && selectedNodeId === nodeId)
+}
+
 export function paintDiagramCanvas(
   canvas: HTMLCanvasElement,
   ctx: DiagramPaintContext,
@@ -54,6 +65,7 @@ export function paintDiagramCanvas(
     flowConnectionIds: flowConns,
     connectionFlowPhase,
     selectedNodeId: selNodeId,
+    selectedNodeIds: selNodeIds,
     selectedRelationshipRef: selRelRef,
     selectedBendpointIndex: selBpIndex,
     readOnly: isReadOnly = false,
@@ -224,7 +236,7 @@ export function paintDiagramCanvas(
     const visual = elementVisualKind(subtitle)
     const isNote = Boolean(visual.bare)
 
-    const isSelected = selNodeId === node.id
+    const isSelected = isDiagramNodeSelected(node.id, selNodeId, selNodeIds)
     const isChanged = Boolean(
       hlNodes && (hlNodes instanceof Set ? hlNodes.has(node.id) : (hlNodes as string[]).includes(node.id)),
     )

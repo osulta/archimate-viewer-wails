@@ -54,11 +54,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     flowConnectionIds,
     animateConnectionFlow = false,
     selectedNodeId,
+    selectedNodeIds,
     selectedRelationshipRef,
     linkCreateMode,
     linkCreateSourceId,
     onNodeSelect,
     onNodeMove,
+    onNodesMove,
     onNodeResize,
     onRelationshipSelect,
     selectedBendpointIndex,
@@ -168,6 +170,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
   }, [])
 
+  const selectedNodeIdSet = useMemo(() => {
+    if (selectedNodeIds) {
+      return selectedNodeIds instanceof Set ? selectedNodeIds : new Set(selectedNodeIds)
+    }
+    return selectedNodeId ? new Set([selectedNodeId]) : new Set<string>()
+  }, [selectedNodeId, selectedNodeIds])
+
   const paintDiagram = useCallback(() => {
     const canvas = canvasRef.current
     if (!canvas || !diagram) {
@@ -184,6 +193,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       flowConnectionIds,
       connectionFlowPhase: animateConnectionFlow ? connectionFlowPhaseRef.current : undefined,
       selectedNodeId,
+      selectedNodeIds: selectedNodeIds ?? (selectedNodeId ? [selectedNodeId] : []),
       selectedRelationshipRef,
       selectedBendpointIndex,
       linkCreateMode,
@@ -273,6 +283,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     highlightConnectionIds,
     flowConnectionIds,
     selectedNodeId,
+    selectedNodeIds,
     selectedRelationshipRef,
     selectedBendpointIndex,
     linkCreateMode,
@@ -291,11 +302,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     if (preview.type === 'move' && (preview.dx || preview.dy)) {
-      onNodeMove?.(
-        preview.nodeId,
-        roundDiagramCoord(preview.dx),
-        roundDiagramCoord(preview.dy),
-      )
+      const dx = roundDiagramCoord(preview.dx)
+      const dy = roundDiagramCoord(preview.dy)
+      if (preview.nodeIds?.length) {
+        onNodesMove?.(preview.nodeIds, dx, dy)
+      } else {
+        onNodeMove?.(preview.nodeId, dx, dy)
+      }
       return
     }
     if (preview.type === 'resize' && (preview.dw || preview.dh)) {
@@ -537,6 +550,38 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     )
   }
 
+  function resolveDragNodeIds(hitNodeId: string, shiftKey: boolean): string[] {
+    if (shiftKey) {
+      const next = new Set(selectedNodeIdSet)
+      if (next.has(hitNodeId)) {
+        next.delete(hitNodeId)
+      } else {
+        next.add(hitNodeId)
+      }
+      return [...next]
+    }
+    if (selectedNodeIdSet.has(hitNodeId) && selectedNodeIdSet.size > 1) {
+      return [...selectedNodeIdSet]
+    }
+    return [hitNodeId]
+  }
+
+  function syncNodeSelection(
+    hitNode: import('../../types/model').DiagramNode | null,
+    shiftKey: boolean,
+    dragNodeIds: string[],
+  ): void {
+    if (!hitNode) {
+      onNodeSelect?.(null)
+      return
+    }
+    if (shiftKey || dragNodeIds.length > 1) {
+      onNodeSelect?.(hitNode, { shiftKey, selectedIds: dragNodeIds })
+      return
+    }
+    onNodeSelect?.(hitNode, { shiftKey: false })
+  }
+
   function handleCanvasClick(event: React.MouseEvent) {
     if (suppressClickRef.current) {
       suppressClickRef.current = false
@@ -575,7 +620,11 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     const hitNode = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
     if (hitNode) {
       onRelationshipSelect?.(null)
-      onNodeSelect?.(hitNode)
+      if (event.shiftKey) {
+        onNodeSelect?.(hitNode, { shiftKey: true })
+      } else {
+        onNodeSelect?.(hitNode, { shiftKey: false })
+      }
       return
     }
     if (readOnly) {
@@ -620,7 +669,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
 
     const hitNode = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
-    if (!readOnly && hitNode && hitNode.id === selectedNodeId) {
+    if (!readOnly && hitNode && selectedNodeIdSet.has(hitNode.id) && selectedNodeIdSet.size === 1) {
       if (isPointInResizeHandle(hitNode, translateX, translateY, x, y)) {
         beginInteraction(canvas, {
           type: 'resize',
@@ -721,12 +770,18 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
 
     onRelationshipSelect?.(null)
-    onNodeSelect?.(hitNodeForDrag)
+    const dragNodeIds = resolveDragNodeIds(hitNodeForDrag.id, event.shiftKey)
+    if (!dragNodeIds.length) {
+      syncNodeSelection(hitNodeForDrag, event.shiftKey, dragNodeIds)
+      return
+    }
+    syncNodeSelection(hitNodeForDrag, event.shiftKey, dragNodeIds)
     dragPreviewRef.current = null
     beginInteraction(canvas, {
       type: 'move',
       pointerId: event.pointerId,
       nodeId: hitNodeForDrag.id,
+      nodeIds: dragNodeIds,
       startLogicalX: logicalX,
       startLogicalY: logicalY,
       startNodeX: hitNodeForDrag.x,
