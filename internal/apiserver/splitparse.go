@@ -63,6 +63,7 @@ type diagramConnection struct {
 	Source           string      `json:"source"`
 	Target           string      `json:"target"`
 	Bendpoints       []bendpoint `json:"bendpoints"`
+	LineColor        *string     `json:"lineColor,omitempty"`
 }
 
 // parsedDiagram mirrors ParsedDiagram. Pointer fields allow omitting keys that
@@ -369,14 +370,20 @@ func parseDiagramFromXmlNode(diagramNodeEl *xmlNode, folderPath string) parsedDi
 		for _, conn := range getConnectionChildren(child) {
 			source, _ := conn.attr("source")
 			target, _ := conn.attr("target")
-			*out = append(*out, diagramConnection{
+			entry := diagramConnection{
 				ID:               getID(conn),
 				RelationshipRef:  getConnectionRelationshipRef(conn),
 				RelationshipType: getConnectionRelationshipType(conn),
 				Source:           source,
 				Target:           target,
 				Bendpoints:       parseConnectionBendpoints(conn),
-			})
+			}
+			if lineColor, ok := conn.attr("lineColor"); ok {
+				if trimmed := strings.TrimSpace(lineColor); trimmed != "" {
+					entry.LineColor = &trimmed
+				}
+			}
+			*out = append(*out, entry)
 		}
 		for _, nested := range getDiagramObjectChildren(child) {
 			collectConnections(nested, out)

@@ -31,6 +31,7 @@ export {
   BENDPOINT_HIT_RADIUS,
   CONNECTION_ENDPOINT_HIT_RADIUS,
 } from './constants'
+export { resolveConnectionLineColor, DEFAULT_CONNECTION_LINE_COLOR } from './connection-colors'
 export { resolveNodeDrawColors } from './node-colors'
 export { getResizeHandleRect, isPointInResizeHandle } from './resize-handle'
 export { applyDragPreviewToDiagram } from './diagram-preview'

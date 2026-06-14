@@ -121,6 +121,7 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
   function collectConnections(childNode: Element, out: DiagramConnection[]): void {
     getConnectionChildren(childNode).forEach((conn) => {
       const bendpoints = parseConnectionBendpoints(conn)
+      const { lineColor } = parseDiagramObjectColors(conn)
 
       out.push({
         id: getId(conn),
@@ -129,6 +130,7 @@ export function parseDiagramFromXmlNode(diagramNode: Element, folderPath?: strin
         source: conn.getAttribute('source') ?? '',
         target: conn.getAttribute('target') ?? '',
         bendpoints,
+        ...(lineColor ? { lineColor } : {}),
       })
     })
 
@@ -174,13 +176,17 @@ export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagra
 
   const nodeTree = getDirectChildrenByTag(viewNode, 'node').map(parseNodeTree)
 
-  const connections: DiagramConnection[] = getDirectChildrenByTag(viewNode, 'connection').map((connectionNode) => ({
-    id: getId(connectionNode),
-    relationshipRef: connectionNode.getAttribute('relationshipRef') ?? '',
-    source: connectionNode.getAttribute('source') ?? '',
-    target: connectionNode.getAttribute('target') ?? '',
-    bendpoints: [],
-  }))
+  const connections: DiagramConnection[] = getDirectChildrenByTag(viewNode, 'connection').map((connectionNode) => {
+    const { lineColor } = parseDiagramObjectColors(connectionNode)
+    return {
+      id: getId(connectionNode),
+      relationshipRef: connectionNode.getAttribute('relationshipRef') ?? '',
+      source: connectionNode.getAttribute('source') ?? '',
+      target: connectionNode.getAttribute('target') ?? '',
+      bendpoints: [],
+      ...(lineColor ? { lineColor } : {}),
+    }
+  })
 
   return {
     id: getId(viewNode),

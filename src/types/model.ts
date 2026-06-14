@@ -63,6 +63,8 @@ export interface DiagramConnection {
   source: string
   target: string
   bendpoints: Bendpoint[]
+  /** Diagram line color from Archi sourceConnection (lineColor attribute or exchange style). */
+  lineColor?: string
 }
 
 export interface ParsedDiagram {

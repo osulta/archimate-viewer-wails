@@ -28,6 +28,7 @@ import {
 } from '../archimate/canvas-draw'
 import type { Point } from '../../types/model'
 import { CONNECTION_FLOW_COLOR } from './constants'
+import { resolveConnectionLineColor } from './connection-colors'
 import { applyDragPreviewToDiagram } from './diagram-preview'
 import { resolveNodeDrawColors } from './node-colors'
 import { getResizeHandleRect } from './resize-handle'
@@ -149,13 +150,14 @@ export function paintDiagramCanvas(
 
     const { points, sourceCenter, targetCenter, layout } = resolved
 
+    const baseLineColor = resolveConnectionLineColor(connection)
     const lineColor = isSelectedRelationship
       ? '#ff7a00'
       : isChangedConnection
         ? '#e65100'
         : isFlowConnection
           ? CONNECTION_FLOW_COLOR
-          : '#242424'
+          : baseLineColor
 
     const lineWidth = isSelectedRelationship
       ? 3
