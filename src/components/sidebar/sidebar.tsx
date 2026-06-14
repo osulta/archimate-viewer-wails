@@ -42,8 +42,6 @@ interface SidebarProps {
   onReloadModel?: () => Promise<void> | void
   onSaveEditedModel?: () => Promise<void> | void
   canSaveModel?: boolean
-  modelLayoutHint?: string
-  saveTargetPath?: string
   saveStatusMessage?: string
   modelActionLoading?: boolean
   modelLoading?: boolean
@@ -72,8 +70,6 @@ export function Sidebar({
   onReloadModel,
   onSaveEditedModel,
   canSaveModel = true,
-  modelLayoutHint = '',
-  saveTargetPath,
   saveStatusMessage = '',
   modelActionLoading = false,
   modelLoading = false,
@@ -163,16 +159,6 @@ export function Sidebar({
       </Typography.Title>
       {!isViewMode && model ? (
         <>
-          {modelLayoutHint ? (
-            <p className="save-path-hint" title="Формат загрузки модели">
-              {modelLayoutHint}
-            </p>
-          ) : null}
-          {saveTargetPath ? (
-            <p className="save-path-hint" title="Файл на диске (относительно GIT_REPO_ROOT)">
-              → {saveTargetPath}
-            </p>
-          ) : null}
           {saveStatusMessage && !error ? (
             <Alert
               className="save-status"

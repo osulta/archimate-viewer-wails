@@ -103,16 +103,6 @@ export function ModelingWorkspace({
       onReloadModel={undefined}
       onSaveEditedModel={undefined}
       canSaveModel={Boolean(model)}
-      modelLayoutHint={
-        git.modelLayout === 'split-files'
-          ? 'Модель: множество XML (split). Сохраняются изменённые файлы.'
-          : ''
-      }
-      saveTargetPath={
-        git.modelLayout === 'split-files'
-          ? (git.gitRepoPath ?? undefined)
-          : (git.buildRepoModelWriteRelativePath() ?? undefined)
-      }
       saveStatusMessage={saveStatusMessage}
       modelActionLoading={git.gitCommandLoading}
       modelLoading={git.modelLoading || splitRuntime.isDiagramLoading}

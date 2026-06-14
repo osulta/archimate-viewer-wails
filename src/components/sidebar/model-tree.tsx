@@ -19,8 +19,6 @@ import type {
   ElementOverride,
 } from '../../types/model'
 
-const VIRTUAL_LIST_THRESHOLD = 80
-
 interface TreeSearchSectionMeta {
   truncated: boolean
   totalMatches: number
@@ -246,12 +244,6 @@ export function ModelTree({
         <p className="tree-hint-compact">
           Введите ещё {treeSearchRemainingChars}{' '}
           {treeSearchRemainingChars === 1 ? 'символ' : 'символа'} для поиска.
-        </p>
-      ) : null}
-      {model.format === 'split-files' && model.elements.length >= VIRTUAL_LIST_THRESHOLD ? (
-        <p className="tree-hint-compact">
-          Элементы: лёгкий индекс ({model.elements.length.toLocaleString()}). Детали подгружаются при
-          выборе. Используйте поиск (от {TREE_SEARCH_MIN_LENGTH} символов) для узкого списка.
         </p>
       ) : null}
       <Collapse
