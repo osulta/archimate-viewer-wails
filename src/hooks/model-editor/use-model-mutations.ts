@@ -735,9 +735,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       .trim()
       .replace(/^archimate:/i, '') || 'BusinessProcess'
     const name = String(nameOverride ?? '').trim() || `New ${type}`
-    const nonce = Math.random().toString(36).slice(2, 8)
-    const elementId = `id-new-${Date.now()}-${nonce}`
-    const nodeId = `id-new-node-${Date.now()}-${nonce}`
+    const elementId = generateArchimateModelId()
+    const nodeId = generateArchimateModelId()
 
     const targetDiagram = model.diagrams.find((d) => d.id === selectedDiagramId)
     if (!targetDiagram) {
@@ -854,8 +853,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const nonce = Math.random().toString(36).slice(2, 8)
-    const nodeId = `id-new-node-${Date.now()}-${nonce}`
+    const nodeId = generateArchimateModelId()
 
     const flat = flattenNodes(targetDiagram.nodes)
     const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
@@ -962,8 +960,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const nonce = Math.random().toString(36).slice(2, 8)
-    const nodeId = `id-new-ref-${Date.now()}-${nonce}`
+    const nodeId = generateArchimateModelId()
 
     const flat = flattenNodes(targetDiagram.nodes)
     const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
@@ -1023,8 +1020,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
     const name = String(nameOverride ?? '').trim() || 'New view'
-    const nonce = Math.random().toString(36).slice(2, 8)
-    const id = `id-new-diagram-${Date.now()}-${nonce}`
+    const id = generateArchimateModelId()
     const templateDiagram =
       model.diagrams.find((d) => d.id === selectedDiagramId) ?? model.diagrams[0] ?? null
     const diagramType =
