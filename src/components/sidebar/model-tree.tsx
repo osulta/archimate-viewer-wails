@@ -9,6 +9,7 @@ import {
 import { DiagramTreePanel } from './diagram-tree-panel'
 import { ElementTreePanel } from './element-tree-panel'
 import { getRelationshipDisplayLabel } from '../../lib/archimate/relationship-meta'
+import { TREE_SEARCH_MIN_LENGTH } from '../../lib/archimate/tree-search'
 import type {
   ParsedModel,
   ParsedElement,
@@ -20,6 +21,11 @@ import type {
 
 const VIRTUAL_LIST_THRESHOLD = 80
 
+interface TreeSearchSectionMeta {
+  truncated: boolean
+  totalMatches: number
+}
+
 interface FocusElementResult {
   diagramId: string | null
   node: DiagramNode | null
@@ -28,10 +34,15 @@ interface FocusElementResult {
 
 interface ModelTreeProps {
   model: ParsedModel | null
-  treeSearchNorm: string
+  treeSearchActive: boolean
+  treeSearchPending: boolean
+  treeSearchRemainingChars: number
   filteredTreeElements: ParsedElement[]
   filteredTreeRelationships: ParsedRelationship[]
   filteredTreeDiagrams: ParsedDiagram[]
+  elementSearchMeta: TreeSearchSectionMeta
+  relationshipSearchMeta: TreeSearchSectionMeta
+  diagramSearchMeta: TreeSearchSectionMeta
   elementOverrides: Map<string, ElementOverride>
   selectedElementId: string | null
   selectedRelationshipRef: string | null
@@ -53,10 +64,15 @@ interface ModelTreeProps {
 
 export function ModelTree({
   model,
-  treeSearchNorm,
+  treeSearchActive,
+  treeSearchPending,
+  treeSearchRemainingChars,
   filteredTreeElements,
   filteredTreeRelationships,
   filteredTreeDiagrams,
+  elementSearchMeta,
+  relationshipSearchMeta,
+  diagramSearchMeta,
   elementOverrides,
   selectedElementId,
   selectedRelationshipRef,
@@ -82,11 +98,6 @@ export function ModelTree({
     [filteredTreeDiagrams],
   )
 
-  const visibleElementCount = useMemo(
-    () => countItemsInFolderTree(elementFolderTree, 'element') + rootTreeElements.length,
-    [elementFolderTree, rootTreeElements],
-  )
-
   const visibleDiagramCount = useMemo(
     () => countItemsInFolderTree(diagramFolderTree, 'diagram') + rootTreeDiagrams.length,
     [diagramFolderTree, rootTreeDiagrams],
@@ -106,23 +117,40 @@ export function ModelTree({
   }
 
   const elementsPanel = (
-    <ElementTreePanel
-      folders={elementFolderTree}
-      rootElements={rootTreeElements}
-      elementOverrides={elementOverrides}
-      selectedElementId={selectedElementId}
-      treeSearchNorm={treeSearchNorm}
-      emptyMessage={treeSearchNorm ? 'Нет совпадений' : 'Нет элементов'}
-      allowElementDrag={allowElementDrag}
-      onSelectElement={(elementId) => onSelectElement(elementId, null)}
-    />
+    <>
+      {elementSearchMeta.truncated ? (
+        <p className="tree-hint-compact">
+          Показаны первые {filteredTreeElements.length.toLocaleString()} из{' '}
+          {elementSearchMeta.totalMatches.toLocaleString()}. Уточните запрос.
+        </p>
+      ) : null}
+      <ElementTreePanel
+        folders={elementFolderTree}
+        rootElements={rootTreeElements}
+        elementOverrides={elementOverrides}
+        selectedElementId={selectedElementId}
+        treeSearchActive={treeSearchActive}
+        emptyMessage={treeSearchActive ? 'Нет совпадений' : 'Нет элементов'}
+        allowElementDrag={allowElementDrag}
+        onSelectElement={(elementId) => onSelectElement(elementId, null)}
+      />
+    </>
   )
 
   const relationshipsPanel =
     filteredTreeRelationships.length === 0 ? (
-      <p className="tree-search-empty">Нет совпадений</p>
+      <p className="tree-search-empty">
+        {treeSearchActive ? 'Нет совпадений' : 'Нет связей'}
+      </p>
     ) : (
-      <ul className="tree-list">
+      <>
+        {relationshipSearchMeta.truncated ? (
+          <p className="tree-hint-compact">
+            Показаны первые {filteredTreeRelationships.length} из{' '}
+            {relationshipSearchMeta.totalMatches.toLocaleString()}. Уточните запрос.
+          </p>
+        ) : null}
+        <ul className="tree-list">
         {filteredTreeRelationships.map((item) => (
           <li key={item.id} title={`${item.source} -> ${item.target}`}>
             <Button
@@ -138,32 +166,35 @@ export function ModelTree({
             </Button>
           </li>
         ))}
-      </ul>
+        </ul>
+      </>
     )
 
   const innerItems = [
     {
       key: 'elements',
       label: `Elements (${
-        treeSearchNorm
-          ? `${visibleElementCount} / ${model.elements.length}`
-          : model.elements.length
+        treeSearchActive
+          ? `${elementSearchMeta.totalMatches.toLocaleString()} / ${model.elements.length.toLocaleString()}`
+          : model.elements.length.toLocaleString()
       })`,
       children: elementsPanel,
     },
     {
       key: 'relationships',
       label: `Relationships (${
-        treeSearchNorm
-          ? `${filteredTreeRelationships.length} / ${model.relationships.length}`
-          : model.relationships.length
+        treeSearchActive
+          ? `${relationshipSearchMeta.totalMatches.toLocaleString()} / ${model.relationships.length.toLocaleString()}`
+          : model.relationships.length.toLocaleString()
       })`,
       children: relationshipsPanel,
     },
     {
       key: 'diagrams',
       label: `Diagrams (${
-        treeSearchNorm ? `${visibleDiagramCount} / ${model.diagrams.length}` : model.diagrams.length
+        treeSearchActive
+          ? `${diagramSearchMeta.totalMatches.toLocaleString()} / ${model.diagrams.length.toLocaleString()}`
+          : model.diagrams.length.toLocaleString()
       })`,
       extra: onCreateDiagram ? (
         <Button
@@ -184,8 +215,11 @@ export function ModelTree({
           folders={diagramFolderTree}
           rootDiagrams={rootTreeDiagrams}
           selectedDiagramId={selectedDiagramId}
-          treeSearchNorm={treeSearchNorm}
-          emptyMessage={treeSearchNorm ? 'Нет совпадений' : 'Нет диаграмм'}
+          treeSearchActive={treeSearchActive}
+          emptyMessage={treeSearchActive ? 'Нет совпадений' : 'Нет диаграмм'}
+          searchTruncated={diagramSearchMeta.truncated}
+          searchTotalMatches={diagramSearchMeta.totalMatches}
+          searchVisibleCount={visibleDiagramCount}
           allowDiagramDrag={allowDiagramDrag}
           onSelectDiagram={onSelectDiagram}
         />
@@ -203,15 +237,21 @@ export function ModelTree({
         prefix={<SearchOutlined />}
         value={sidebarTreeSearch}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onSidebarTreeSearchChange(e.target.value)}
-        placeholder="Поиск: имя, тип, id…"
+        placeholder={`Поиск: мин. ${TREE_SEARCH_MIN_LENGTH} символа…`}
         spellCheck={false}
         autoComplete="off"
         aria-label="Поиск по элементам, связям и диаграммам"
       />
+      {treeSearchPending ? (
+        <p className="tree-hint-compact">
+          Введите ещё {treeSearchRemainingChars}{' '}
+          {treeSearchRemainingChars === 1 ? 'символ' : 'символа'} для поиска.
+        </p>
+      ) : null}
       {model.format === 'split-files' && model.elements.length >= VIRTUAL_LIST_THRESHOLD ? (
         <p className="tree-hint-compact">
           Элементы: лёгкий индекс ({model.elements.length.toLocaleString()}). Детали подгружаются при
-          выборе. Используйте поиск для узкого списка.
+          выборе. Используйте поиск (от {TREE_SEARCH_MIN_LENGTH} символов) для узкого списка.
         </p>
       ) : null}
       <Collapse

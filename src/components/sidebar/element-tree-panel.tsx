@@ -17,7 +17,7 @@ interface ElementTreePanelProps {
   rootElements: ParsedElement[]
   elementOverrides: Map<string, ElementOverride>
   selectedElementId: string | null
-  treeSearchNorm: string
+  treeSearchActive: boolean
   emptyMessage: string
   allowElementDrag?: boolean
   onSelectElement: (elementId: string) => void
@@ -36,7 +36,7 @@ export function ElementTreePanel({
   rootElements,
   elementOverrides,
   selectedElementId,
-  treeSearchNorm,
+  treeSearchActive,
   emptyMessage,
   allowElementDrag = false,
   onSelectElement,
@@ -49,10 +49,10 @@ export function ElementTreePanel({
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
   useEffect(() => {
-    if (treeSearchNorm) {
+    if (treeSearchActive) {
       setExpandedKeys(collectElementFolderKeys(treeData))
     }
-  }, [treeSearchNorm, treeData])
+  }, [treeSearchActive, treeData])
 
   const handleSelect = useCallback(
     (_keys: Key[], info: { node: ElementSidebarTreeNode }) => {

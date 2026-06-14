@@ -1,6 +1,12 @@
-import React, { useMemo, useState } from 'react'
+import React, { useDeferredValue, useMemo, useState } from 'react'
 import { Alert, Spin, Typography } from 'antd'
 import { applyRelationshipMetaToList } from '../../lib/archimate/relationship-meta'
+import {
+  capTreeSearchResults,
+  matchesTreeSearchHaystack,
+  resolveTreeSearchState,
+  TREE_SEARCH_DEBOUNCE_MS,
+} from '../../lib/archimate/tree-search'
 import { useDebouncedValue } from '../../hooks/use-debounced-value'
 import { ModelTree } from './model-tree'
 import type {
@@ -81,55 +87,74 @@ export function Sidebar({
 }: SidebarProps): React.JSX.Element {
   const isViewMode = variant === 'view'
   const [sidebarTreeSearch, setSidebarTreeSearch] = useState('')
-  const debouncedTreeSearch = useDebouncedValue(sidebarTreeSearch, 200)
-  const treeSearchNorm = debouncedTreeSearch.trim().toLowerCase()
+  const immediateSearchState = useMemo(
+    () => resolveTreeSearchState(sidebarTreeSearch),
+    [sidebarTreeSearch],
+  )
+  const debouncedTreeSearch = useDebouncedValue(sidebarTreeSearch, TREE_SEARCH_DEBOUNCE_MS)
+  const debouncedSearchState = useMemo(
+    () => resolveTreeSearchState(debouncedTreeSearch),
+    [debouncedTreeSearch],
+  )
+  const treeSearchNorm = useDeferredValue(debouncedSearchState.query)
+  const treeSearchActive = treeSearchNorm.length > 0
 
-  const filteredTreeElements = useMemo(() => {
+  const elementSearchResult = useMemo(() => {
     if (!model) {
-      return [] as ParsedElement[]
+      return { items: [] as ParsedElement[], truncated: false, totalMatches: 0 }
     }
-    if (!treeSearchNorm) {
-      return model.elements
+    if (!treeSearchActive) {
+      return { items: model.elements, truncated: false, totalMatches: model.elements.length }
     }
-    return model.elements.filter((item) => {
+    const matched = model.elements.filter((item) => {
       const name = elementOverrides.get(item.id)?.name ?? item.name
       const hay = [name, item.type, item.id, item.folderPath ?? ''].join(' ').toLowerCase()
-      return hay.includes(treeSearchNorm)
+      return matchesTreeSearchHaystack(hay, treeSearchNorm)
     })
-  }, [model, treeSearchNorm, elementOverrides])
+    return capTreeSearchResults(matched, true)
+  }, [model, treeSearchActive, treeSearchNorm, elementOverrides])
 
-  const filteredTreeRelationships = useMemo(() => {
+  const relationshipSearchResult = useMemo(() => {
     if (!model) {
-      return [] as ParsedRelationship[]
+      return { items: [] as ParsedRelationship[], truncated: false, totalMatches: 0 }
     }
     const relationships = applyRelationshipMetaToList(
       model.relationships,
       relationshipMetaOverrides,
     )
-    if (!treeSearchNorm) {
-      return relationships
+    if (!treeSearchActive) {
+      return { items: relationships, truncated: false, totalMatches: relationships.length }
     }
-    return relationships.filter((item: ParsedRelationship) => {
+    const matched = relationships.filter((item: ParsedRelationship) => {
       const hay = [item.name, item.id, item.type, item.source, item.target]
         .join(' ')
         .toLowerCase()
-      return hay.includes(treeSearchNorm)
+      return matchesTreeSearchHaystack(hay, treeSearchNorm)
     })
-  }, [model, treeSearchNorm, relationshipMetaOverrides])
+    return capTreeSearchResults(matched, true)
+  }, [model, treeSearchActive, treeSearchNorm, relationshipMetaOverrides])
 
-  const filteredTreeDiagrams = useMemo(() => {
+  const diagramSearchResult = useMemo(() => {
     if (!model) {
-      return [] as ParsedDiagram[]
+      return { items: [] as ParsedDiagram[], truncated: false, totalMatches: 0 }
     }
-    if (!treeSearchNorm) {
-      return model.diagrams
+    if (!treeSearchActive) {
+      return { items: model.diagrams, truncated: false, totalMatches: model.diagrams.length }
     }
-    return model.diagrams.filter((d) => {
+    const matched = model.diagrams.filter((d) => {
       const label = d.folderPath ? `${d.folderPath} / ${d.name}` : d.name
       const hay = [label, d.name, d.folderPath ?? '', d.id, d.type ?? ''].join(' ').toLowerCase()
-      return hay.includes(treeSearchNorm)
+      return matchesTreeSearchHaystack(hay, treeSearchNorm)
     })
-  }, [model, treeSearchNorm])
+    return capTreeSearchResults(matched, true)
+  }, [model, treeSearchActive, treeSearchNorm])
+
+  const filteredTreeElements = elementSearchResult.items
+  const filteredTreeRelationships = relationshipSearchResult.items
+  const filteredTreeDiagrams = diagramSearchResult.items
+  const elementSearchMeta = elementSearchResult
+  const relationshipSearchMeta = relationshipSearchResult
+  const diagramSearchMeta = diagramSearchResult
 
   return (
     <div className="sidebar">
@@ -176,10 +201,15 @@ export function Sidebar({
         {!(modelLoading && !model) ? (
           <ModelTree
             model={model}
-            treeSearchNorm={treeSearchNorm}
+            treeSearchActive={treeSearchActive}
+            treeSearchPending={immediateSearchState.isPending}
+            treeSearchRemainingChars={immediateSearchState.remainingChars}
             filteredTreeElements={filteredTreeElements}
             filteredTreeRelationships={filteredTreeRelationships}
             filteredTreeDiagrams={filteredTreeDiagrams}
+            elementSearchMeta={elementSearchMeta}
+            relationshipSearchMeta={relationshipSearchMeta}
+            diagramSearchMeta={diagramSearchMeta}
             elementOverrides={elementOverrides}
             selectedElementId={selectedElementId}
             selectedRelationshipRef={selectedRelationshipRef}

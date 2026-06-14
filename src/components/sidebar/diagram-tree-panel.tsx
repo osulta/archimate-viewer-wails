@@ -15,8 +15,11 @@ interface DiagramTreePanelProps {
   folders: ModelFolderNode[]
   rootDiagrams: ParsedDiagram[]
   selectedDiagramId: string | null
-  treeSearchNorm: string
+  treeSearchActive: boolean
   emptyMessage: string
+  searchTruncated?: boolean
+  searchTotalMatches?: number
+  searchVisibleCount?: number
   allowDiagramDrag?: boolean
   onSelectDiagram: (diagramId: string) => void
 }
@@ -33,8 +36,11 @@ export function DiagramTreePanel({
   folders,
   rootDiagrams,
   selectedDiagramId,
-  treeSearchNorm,
+  treeSearchActive,
   emptyMessage,
+  searchTruncated = false,
+  searchTotalMatches = 0,
+  searchVisibleCount = 0,
   allowDiagramDrag = false,
   onSelectDiagram,
 }: DiagramTreePanelProps): React.JSX.Element {
@@ -46,10 +52,10 @@ export function DiagramTreePanel({
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
   useEffect(() => {
-    if (treeSearchNorm) {
+    if (treeSearchActive) {
       setExpandedKeys(collectDiagramFolderKeys(treeData))
     }
-  }, [treeSearchNorm, treeData])
+  }, [treeSearchActive, treeData])
 
   const handleSelect = useCallback(
     (_keys: Key[], info: { node: DiagramSidebarTreeNode }) => {
@@ -98,6 +104,7 @@ export function DiagramTreePanel({
           }}
         >
           <span className="diagram-tree-leaf-name">{title}</span>
+          <span className="diagram-tree-leaf-id">{node.diagramId}</span>
         </span>
       )
     },
@@ -109,7 +116,14 @@ export function DiagramTreePanel({
   }
 
   return (
-    <Tree
+    <>
+      {searchTruncated ? (
+        <p className="tree-hint-compact">
+          Показаны первые {searchVisibleCount.toLocaleString()} из{' '}
+          {searchTotalMatches.toLocaleString()}. Уточните запрос.
+        </p>
+      ) : null}
+      <Tree
       className="diagram-tree"
       blockNode
       showLine
@@ -120,5 +134,6 @@ export function DiagramTreePanel({
       onSelect={handleSelect}
       titleRender={renderTitle}
     />
+    </>
   )
 }
