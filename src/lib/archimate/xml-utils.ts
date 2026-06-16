@@ -179,6 +179,14 @@ export function parseProperties(node: Element): ElementProperty[] {
   return props
 }
 
+export function getElementNoteContent(properties: ElementProperty[] | undefined): string {
+  if (!properties?.length) {
+    return ''
+  }
+  const contentProp = properties.find((prop) => prop.key?.toLowerCase() === 'content')
+  return contentProp?.value?.trim() ?? ''
+}
+
 export interface DiagramObjectColors {
   fillColor?: string
   lineColor?: string

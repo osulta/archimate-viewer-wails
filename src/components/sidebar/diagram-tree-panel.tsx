@@ -15,6 +15,7 @@ interface DiagramTreePanelProps {
   folders: ModelFolderNode[]
   rootDiagrams: ParsedDiagram[]
   selectedDiagramId: string | null
+  diagramTreeSelectedKey: string
   treeSearchActive: boolean
   emptyMessage: string
   searchTruncated?: boolean
@@ -22,6 +23,7 @@ interface DiagramTreePanelProps {
   searchVisibleCount?: number
   allowDiagramDrag?: boolean
   onSelectDiagram: (diagramId: string) => void
+  onSelectFolder: (folderKey: string) => void
 }
 
 function withTreeIcons(nodes: DiagramSidebarTreeNode[]): DiagramSidebarTreeNode[] {
@@ -36,6 +38,7 @@ export function DiagramTreePanel({
   folders,
   rootDiagrams,
   selectedDiagramId,
+  diagramTreeSelectedKey,
   treeSearchActive,
   emptyMessage,
   searchTruncated = false,
@@ -43,6 +46,7 @@ export function DiagramTreePanel({
   searchVisibleCount = 0,
   allowDiagramDrag = false,
   onSelectDiagram,
+  onSelectFolder,
 }: DiagramTreePanelProps): React.JSX.Element {
   const treeData = useMemo(
     () => withTreeIcons(buildDiagramSidebarTreeData(folders, rootDiagrams)),
@@ -61,10 +65,21 @@ export function DiagramTreePanel({
     (_keys: Key[], info: { node: DiagramSidebarTreeNode }) => {
       if (info.node.diagramId) {
         onSelectDiagram(info.node.diagramId)
+        return
+      }
+      if (info.node.key) {
+        onSelectFolder(String(info.node.key))
       }
     },
-    [onSelectDiagram],
+    [onSelectDiagram, onSelectFolder],
   )
+
+  const selectedKeys = useMemo(() => {
+    if (diagramTreeSelectedKey) {
+      return [diagramTreeSelectedKey]
+    }
+    return selectedDiagramId ? [selectedDiagramId] : []
+  }, [diagramTreeSelectedKey, selectedDiagramId])
 
   const renderTitle = useCallback(
     (node: DiagramSidebarTreeNode) => {
@@ -127,7 +142,7 @@ export function DiagramTreePanel({
       blockNode
       showLine
       treeData={treeData}
-      selectedKeys={selectedDiagramId ? [selectedDiagramId] : []}
+      selectedKeys={selectedKeys}
       expandedKeys={expandedKeys}
       onExpand={setExpandedKeys}
       onSelect={handleSelect}

@@ -56,6 +56,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
     const parser = new DOMParser()
     const documentNode = parser.parseFromString(params.loadedXml, 'application/xml')
 
+    ensureDiagramFoldersInXml(documentNode, params.model, params.model.diagramFolderPaths ?? [])
     ensureCreatedDiagramsInXml(documentNode, params.model, params.createdDiagramIds)
 
     applyDiagramMetadataToXml(documentNode, params.model)

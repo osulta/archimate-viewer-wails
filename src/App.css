@@ -1383,6 +1383,13 @@
   min-width: 0;
 }
 
+.tree-section-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .tree-section-add-btn {
   flex-shrink: 0;
   width: 22px;

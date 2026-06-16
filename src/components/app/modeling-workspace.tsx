@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { Spin } from 'antd'
 import { Sidebar } from '../sidebar/sidebar'
 import { DiagramCanvas } from '../diagram-canvas'
@@ -13,6 +13,7 @@ import type { ModelSelectionState } from '../../hooks/model-editor/use-model-sel
 import type { ModelMutations } from '../../hooks/model-editor/use-model-mutations'
 import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
 import type { Point } from '../../types/model'
+import { resolveSelectedDiagramFolderInfo } from '../../lib/archimate/model-folder-tree'
 
 type GitIntegration = ReturnType<typeof useGitIntegration>
 type SplitModelRuntime = ReturnType<typeof useSplitModelRuntime>
@@ -70,15 +71,25 @@ export function ModelingWorkspace({
     selectedRelationship,
     elementByIdForCanvas,
     handleSelectDiagram,
+    handleSelectDiagramFolder,
+    diagramTreeSelectedKey,
     handleSelectRelationshipType,
     handleSelectRelationshipFromProperties,
     handleSelectElementFromProperties,
   } = selection
 
+  const selectedDiagramFolder = useMemo(() => {
+    if (!model || !diagramTreeSelectedKey.startsWith('diagram-folder:')) {
+      return null
+    }
+    return resolveSelectedDiagramFolderInfo(model, diagramTreeSelectedKey)
+  }, [model, diagramTreeSelectedKey])
+
   const hasInspectorContent = Boolean(
     (selectedRelationshipRef && selectedRelationship) ||
       selectedNodeLive ||
       selectedElementId ||
+      selectedDiagramFolder ||
       (selectedDiagramId && selectedDiagram),
   )
 
@@ -114,6 +125,10 @@ export function ModelingWorkspace({
         model?.format === 'split-files' ? splitRuntime.focusRelationshipInDiagram : undefined
       }
       onCreateDiagram={mutations.createNewDiagram}
+      onCreateFolder={mutations.createNewDiagramFolder}
+      onSelectDiagram={handleSelectDiagram}
+      onSelectDiagramFolder={handleSelectDiagramFolder}
+      diagramTreeSelectedKey={diagramTreeSelectedKey}
       onSelectElement={(elementId, found) => {
         setSelectedRelationshipRef(null)
         if (found?.pending) {
@@ -136,7 +151,6 @@ export function ModelingWorkspace({
         setSelectedRelationshipRef(relationshipId)
         setSelectedBendpointIndex(null)
       }}
-      onSelectDiagram={handleSelectDiagram}
     />
   )
 
@@ -229,7 +243,10 @@ export function ModelingWorkspace({
           selectedElement={selectedElement}
           selectedDiagram={selectedDiagram}
           selectedDiagramId={selectedDiagramId}
+          selectedDiagramFolder={selectedDiagramFolder}
+          diagramTreeSelectedKey={diagramTreeSelectedKey}
           onUpdateDiagramMetadata={mutations.updateDiagramMetadata}
+          onUpdateDiagramFolderMetadata={mutations.updateDiagramFolderMetadata}
           selectedElementRelationships={selectedElementRelationships}
           diagramsUsingSelectedElement={diagramsUsingSelectedElement}
           objectPropsTab={objectPropsTab}
@@ -245,9 +262,9 @@ export function ModelingWorkspace({
           onSelectRelationshipFromProperties={handleSelectRelationshipFromProperties}
           onSelectElementFromProperties={handleSelectElementFromProperties}
           onNavigateToDiagram={({ diagramId, nodes }) => {
-            setSelectedDiagramId(diagramId)
+            handleSelectDiagram(diagramId)
             setSelectedNode(nodes[0] ?? null)
-            setSelectedElementId(selectedElementRefForUsage)
+            setSelectedElementId(null)
             setSelectedRelationshipRef(null)
           }}
           onUpdateNodeFillColor={(nodeId, fillColor) => {

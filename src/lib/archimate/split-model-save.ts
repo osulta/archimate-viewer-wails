@@ -27,11 +27,15 @@ import {
   appendMissingDiagramConnectionsToXml,
   appendMissingDiagramNodesToXml,
   buildSplitDiagramFileContent,
+  buildSplitDiagramFolderFileContent,
+  buildSplitDiagramFolderRelativePath,
+  buildSplitFolderSaveXml,
   buildSplitDiagramRelativePath,
   buildSplitElementFileContent,
   buildSplitRelationshipFileContent,
   findDiagramXmlObjectById,
 } from './split-model-create'
+import { inferDiagramsBranchName, getDiagramFolderDisplayName, normalizeDiagramFolderFullPath, inferDiagramFolderIdsFromModel } from './model-folder-tree'
 import {
   buildSplitElementRelativePath,
   buildSplitRelationshipRelativePath,
@@ -464,6 +468,8 @@ interface SaveSplitModelPayload {
   createdObjects?: Array<{ diagramId: string; element: ParsedElement; node: DiagramNode; existingElement?: boolean }>
   createdRelationships?: Array<{ diagramId: string; relationship: ParsedRelationship; connection: DiagramConnection }>
   createdDiagramIds?: Set<string> | Iterable<string>
+  createdDiagramFolderPaths?: Set<string> | Iterable<string>
+  dirtyDiagramFolderPaths?: Set<string> | Iterable<string>
   deletedSplitModelFiles?: Iterable<string>
 }
 
@@ -486,6 +492,8 @@ export async function saveSplitModelChanges({
   createdObjects = [],
   createdRelationships = [],
   createdDiagramIds,
+  createdDiagramFolderPaths,
+  dirtyDiagramFolderPaths,
   deletedSplitModelFiles = [],
 }: SaveSplitModelPayload): Promise<SaveSplitModelResult> {
   if (!model?.modelRoot) {
@@ -567,14 +575,54 @@ export async function saveSplitModelChanges({
     pendingRelationshipPaths.set(relationshipToWrite.id, relativePath)
   }
 
+  const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
+  const folderStorage = inferDiagramFolderIdsFromModel(model, branchName)
+  const diagramFolderIds = folderStorage.diagramFolderIds
+
   for (const diagramId of createdDiagramIds ?? []) {
     const diagram = model.diagrams.find((item) => item.id === diagramId)
     if (!diagram || diagram.sourceFile) {
       continue
     }
-    const relativePath = buildSplitDiagramRelativePath(diagram.id)
+    const relativePath = buildSplitDiagramRelativePath(
+      diagram.id,
+      diagram.folderPath,
+      branchName,
+      diagramFolderIds,
+    )
     await writeOnce(relativePath, buildSplitDiagramFileContent(diagram))
     pendingDiagramPaths.set(diagramId, relativePath)
+  }
+
+  for (const folderPath of createdDiagramFolderPaths ?? []) {
+    const trimmed = normalizeDiagramFolderFullPath(String(folderPath ?? '').trim(), branchName)
+    if (!trimmed || trimmed === branchName) {
+      continue
+    }
+    const folderId = diagramFolderIds[trimmed]
+    if (!folderId) {
+      throw new Error(`Не найден id для новой папки «${trimmed}».`)
+    }
+    const relativePath = buildSplitDiagramFolderRelativePath(trimmed, branchName, diagramFolderIds)
+    const folderName = getDiagramFolderDisplayName(trimmed, branchName)
+    await writeOnce(relativePath, buildSplitDiagramFolderFileContent(folderName, folderId))
+  }
+
+  for (const folderPath of dirtyDiagramFolderPaths ?? []) {
+    const trimmed = normalizeDiagramFolderFullPath(String(folderPath ?? '').trim(), branchName)
+    if (!trimmed || trimmed === branchName) {
+      continue
+    }
+    const sourceFile = model.diagramFolderSourceFiles?.[trimmed]
+    if (!sourceFile) {
+      continue
+    }
+    const folderName = getDiagramFolderDisplayName(trimmed, branchName)
+    const original = await fetchSplitModelFile(model.modelRoot!, sourceFile)
+    const updated = buildSplitFolderSaveXml(original, folderName)
+    if (updated !== original) {
+      await writeOnce(sourceFile, updated)
+    }
   }
 
   const saveContext: SaveContext = {
@@ -623,7 +671,12 @@ export async function saveSplitModelChanges({
     const diagramPath =
       diagram?.sourceFile ??
       pendingDiagramPaths.get(diagramId) ??
-      buildSplitDiagramRelativePath(diagramId)
+      buildSplitDiagramRelativePath(
+        diagramId,
+        diagram?.folderPath,
+        branchName,
+        diagramFolderIds,
+      )
     if (!diagram) {
       continue
     }

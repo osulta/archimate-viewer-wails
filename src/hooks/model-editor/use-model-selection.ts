@@ -12,6 +12,10 @@ import {
   findNodeById,
   findNodeByElementRefInDiagram,
 } from '../../lib/archimate/diagram-model'
+import {
+  inferDiagramsBranchName,
+  resolveDiagramParentFolderKey,
+} from '../../lib/archimate/model-folder-tree'
 import type {
   ParsedModel,
   ParsedElement,
@@ -49,6 +53,11 @@ export interface ModelSelectionState {
   elementByIdForCanvas: Map<string, ParsedElement>
   clearSelection: () => void
   handleSelectDiagram: (diagramId: string) => void
+  handleSelectDiagramFolder: (folderKey: string) => void
+  selectedDiagramFolderKey: string
+  setSelectedDiagramFolderKey: React.Dispatch<React.SetStateAction<string>>
+  diagramTreeSelectedKey: string
+  setDiagramTreeSelectedKey: React.Dispatch<React.SetStateAction<string>>
   handleSelectRelationshipType: (relationshipType: string) => void
   handleSelectRelationshipFromProperties: (relationshipId: string) => void
   handleSelectElementFromProperties: (elementId: string) => void
@@ -88,6 +97,8 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [selectedRelationshipRef, setSelectedRelationshipRef] = useState<string | null>(null)
   const [selectedBendpointIndex, setSelectedBendpointIndex] = useState<number | null>(null)
+  const [selectedDiagramFolderKey, setSelectedDiagramFolderKey] = useState('')
+  const [diagramTreeSelectedKey, setDiagramTreeSelectedKey] = useState('')
 
   const selectedDiagram = useMemo(() => {
     if (!model || !selectedDiagramId) {
@@ -262,6 +273,8 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
     setSelectedBendpointIndex(null)
+    setSelectedDiagramFolderKey('')
+    setDiagramTreeSelectedKey('')
   }, [])
 
   const handleCanvasNodeSelect = useCallback(
@@ -316,13 +329,32 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     [selectedDiagram, selectedNode?.id],
   )
 
-  const handleSelectDiagram = useCallback((diagramId: string) => {
-    setSelectedDiagramId(diagramId)
-    setSelectedNode(null)
-    setSelectedNodeIds([])
-    setSelectedElementId(null)
-    setSelectedRelationshipRef(null)
-    setSelectedBendpointIndex(null)
+  const handleSelectDiagram = useCallback(
+    (diagramId: string) => {
+      setSelectedDiagramId(diagramId)
+      setSelectedNode(null)
+      setSelectedNodeIds([])
+      setSelectedElementId(null)
+      setSelectedRelationshipRef(null)
+      setSelectedBendpointIndex(null)
+      setDiagramTreeSelectedKey(diagramId)
+      if (model) {
+        const diagram = model.diagrams.find((item) => item.id === diagramId)
+        if (diagram) {
+          const branchName = inferDiagramsBranchName(
+            model.diagrams,
+            model.diagramFolderPaths ?? [],
+          )
+          setSelectedDiagramFolderKey(resolveDiagramParentFolderKey(diagram, branchName))
+        }
+      }
+    },
+    [model],
+  )
+
+  const handleSelectDiagramFolder = useCallback((folderKey: string) => {
+    setSelectedDiagramFolderKey(folderKey)
+    setDiagramTreeSelectedKey(folderKey)
   }, [])
 
   const handleSelectRelationshipType = useCallback(
@@ -455,6 +487,11 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     elementByIdForCanvas,
     clearSelection,
     handleSelectDiagram,
+    handleSelectDiagramFolder,
+    selectedDiagramFolderKey,
+    setSelectedDiagramFolderKey,
+    diagramTreeSelectedKey,
+    setDiagramTreeSelectedKey,
     handleSelectRelationshipType,
     handleSelectRelationshipFromProperties,
     handleSelectElementFromProperties,

@@ -115,20 +115,311 @@ export function formatArchimateTypeLabel(type: string): string {
   return local.replace(/([a-z])([A-Z])/g, '$1 $2')
 }
 
-export function getDiagramTreePathParts(folderPath: string | undefined): string[] {
+export function getDiagramTreePathParts(
+  folderPath: string | undefined,
+  branchName = 'Views',
+): string[] {
   const parts = splitFolderPath(folderPath)
-  return parts.length > 0 ? parts.slice(1) : []
+  if (!parts.length) {
+    return []
+  }
+  if (parts[0] === branchName) {
+    return parts.slice(1)
+  }
+  return parts
 }
 
-export function getElementTreePathParts(folderPath: string | undefined): string[] {
-  return splitFolderPath(folderPath)
+export function normalizeDiagramFolderFullPath(
+  folderPath: string | undefined,
+  branchName: string,
+): string {
+  const parts = splitFolderPath(folderPath)
+  if (!parts.length) {
+    return branchName
+  }
+  if (parts[0] === branchName) {
+    return parts.join(' / ')
+  }
+  return `${branchName} / ${parts.join(' / ')}`
 }
 
-function splitFolderPath(folderPath: string | undefined): string[] {
+export function getDiagramFolderDisplayName(folderPath: string, branchName: string): string {
+  const parts = splitFolderPath(normalizeDiagramFolderFullPath(folderPath, branchName))
+  return parts.at(-1) ?? 'Folder'
+}
+
+export function splitFolderPath(folderPath: string | undefined): string[] {
   return decodeXmlEntities(folderPath)
     .split(' / ')
     .map((segment) => segment.trim())
     .filter(Boolean)
+}
+
+export function inferDiagramsBranchName(
+  diagrams: ParsedDiagram[],
+  diagramFolderPaths: Iterable<string> = [],
+): string {
+  for (const diagram of diagrams) {
+    const parts = splitFolderPath(diagram.folderPath)
+    if (parts.length > 0) {
+      return parts[0]
+    }
+  }
+  for (const path of diagramFolderPaths) {
+    const parts = splitFolderPath(path)
+    if (parts.length > 0) {
+      return parts[0]
+    }
+  }
+  return 'Views'
+}
+
+export function diagramFolderKeyFromPathParts(relativeParts: string[]): string {
+  return relativeParts.length ? `diagram-folder:${relativeParts.join('/')}` : ''
+}
+
+export function resolveDiagramFolderPathFromKey(
+  folderKey: string,
+  branchName: string,
+): string {
+  if (!folderKey.startsWith('diagram-folder:')) {
+    return ''
+  }
+  const relative = folderKey.slice('diagram-folder:'.length).trim()
+  if (!relative) {
+    return branchName
+  }
+  return `${branchName} / ${relative.split('/').join(' / ')}`
+}
+
+export function resolveDiagramParentFolderKey(
+  diagram: ParsedDiagram,
+  branchName: string,
+): string {
+  const parts = getDiagramTreePathParts(diagram.folderPath, branchName)
+  if (!parts.length) {
+    return ''
+  }
+  return diagramFolderKeyFromPathParts(parts)
+}
+
+export interface SelectedDiagramFolderInfo {
+  key: string
+  name: string
+  fullPath: string
+  parentPath: string
+  directDiagramCount: number
+  directSubfolderCount: number
+  totalDiagramCount: number
+  diagrams: ParsedDiagram[]
+}
+
+export function findDiagramFolderNodeByKey(
+  folders: ModelFolderNode[],
+  folderKey: string,
+): ModelFolderNode | null {
+  for (const folder of folders ?? []) {
+    if (folder.key === folderKey) {
+      return folder
+    }
+    const nested = findDiagramFolderNodeByKey(folder.folders ?? [], folderKey)
+    if (nested) {
+      return nested
+    }
+  }
+  return null
+}
+
+export function inferDiagramFolderIdsFromModel(
+  model: {
+    diagrams: ParsedDiagram[]
+    diagramFolderPaths?: string[]
+    diagramFolderIds?: Record<string, string>
+    diagramFolderSourceFiles?: Record<string, string>
+  },
+  branchName: string,
+): {
+  diagramFolderIds: Record<string, string>
+  diagramFolderSourceFiles: Record<string, string>
+} {
+  const diagramFolderIds = { ...(model.diagramFolderIds ?? {}) }
+  const diagramFolderSourceFiles = { ...(model.diagramFolderSourceFiles ?? {}) }
+
+  for (const [folderPath, sourceFile] of Object.entries(diagramFolderSourceFiles)) {
+    if (!diagramFolderIds[folderPath]) {
+      const dir = sourceFile.replace(/\/folder\.xml$/i, '')
+      const folderId = dir.split('/').pop()
+      if (folderId) {
+        diagramFolderIds[folderPath] = folderId
+      }
+    }
+  }
+
+  for (const diagram of model.diagrams) {
+    const sourceFile = diagram.sourceFile
+    const folderPath = diagram.folderPath?.trim()
+    if (!sourceFile?.startsWith('diagrams/') || !folderPath) {
+      continue
+    }
+    const normalizedPath = normalizeDiagramFolderFullPath(folderPath, branchName)
+    const dirParts = sourceFile
+      .slice(0, sourceFile.lastIndexOf('/'))
+      .replace(/^diagrams\/?/, '')
+      .split('/')
+      .filter(Boolean)
+    const pathParts = splitFolderPath(normalizedPath)
+    const relativeParts = pathParts[0] === branchName ? pathParts.slice(1) : pathParts
+    for (let index = 0; index < relativeParts.length; index += 1) {
+      const currentPath = [branchName, ...relativeParts.slice(0, index + 1)].join(' / ')
+      const folderId = dirParts[index]
+      if (!folderId) {
+        continue
+      }
+      if (!diagramFolderIds[currentPath]) {
+        diagramFolderIds[currentPath] = folderId
+      }
+      if (!diagramFolderSourceFiles[currentPath]) {
+        diagramFolderSourceFiles[currentPath] =
+          `diagrams/${dirParts.slice(0, index + 1).join('/')}/folder.xml`
+      }
+    }
+  }
+
+  for (const folderPath of model.diagramFolderPaths ?? []) {
+    const normalizedPath = normalizeDiagramFolderFullPath(folderPath, branchName)
+    if (diagramFolderIds[normalizedPath] && !diagramFolderSourceFiles[normalizedPath]) {
+      const pathParts = splitFolderPath(normalizedPath)
+      const relativeParts = pathParts[0] === branchName ? pathParts.slice(1) : pathParts
+      const idSegments = relativeParts.map((_, index) => {
+        const currentPath = [branchName, ...relativeParts.slice(0, index + 1)].join(' / ')
+        return diagramFolderIds[currentPath]
+      })
+      if (idSegments.every(Boolean)) {
+        diagramFolderSourceFiles[normalizedPath] =
+          `diagrams/${idSegments.join('/')}/folder.xml`
+      }
+    }
+  }
+
+  return { diagramFolderIds, diagramFolderSourceFiles }
+}
+
+export function remapDiagramFolderFullPath(
+  oldFullPath: string,
+  newFullPath: string,
+  path: string,
+): string {
+  if (path === oldFullPath) {
+    return newFullPath
+  }
+  const prefix = `${oldFullPath} / `
+  if (path.startsWith(prefix)) {
+    return `${newFullPath} / ${path.slice(prefix.length)}`
+  }
+  return path
+}
+
+export function buildRenamedDiagramFolderFullPath(
+  oldFullPath: string,
+  newFolderName: string,
+): string {
+  const parts = splitFolderPath(oldFullPath)
+  const trimmed = String(newFolderName ?? '').trim()
+  if (!parts.length || !trimmed) {
+    return oldFullPath
+  }
+  return [...parts.slice(0, -1), trimmed].join(' / ')
+}
+
+export function resolveSelectedDiagramFolderInfo(
+  model: { diagrams: ParsedDiagram[]; diagramFolderPaths?: string[] },
+  folderKey: string,
+): SelectedDiagramFolderInfo | null {
+  if (!folderKey.startsWith('diagram-folder:')) {
+    return null
+  }
+  const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
+  const fullPath = resolveDiagramFolderPathFromKey(folderKey, branchName)
+  const parts = splitFolderPath(fullPath)
+  if (!parts.length) {
+    return null
+  }
+  const name = parts.at(-1) ?? ''
+  const parentPath = parts.length > 1 ? parts.slice(0, -1).join(' / ') : branchName
+  const { folders } = buildDiagramFolderTree(model.diagrams, model.diagramFolderPaths ?? [])
+  const folderNode = findDiagramFolderNodeByKey(folders, folderKey)
+  const directDiagrams = folderNode?.diagrams ?? []
+  const directSubfolderCount = folderNode?.folders?.length ?? 0
+  const pathPrefix = `${fullPath} / `
+  const totalDiagramCount = model.diagrams.filter((diagram) => {
+    const folderPath = diagram.folderPath?.trim()
+    return folderPath === fullPath || Boolean(folderPath?.startsWith(pathPrefix))
+  }).length
+
+  return {
+    key: folderKey,
+    name,
+    fullPath,
+    parentPath,
+    directDiagramCount: directDiagrams.length,
+    directSubfolderCount,
+    totalDiagramCount,
+    diagrams: [...directDiagrams].sort((a, b) =>
+      compareNames(a.name ?? '', b.name ?? ''),
+    ),
+  }
+}
+
+function insertDiagramFolderPathIntoTree(
+  folders: ModelFolderNode[],
+  fullFolderPath: string,
+  branchName: string,
+): void {
+  const parts = splitFolderPath(fullFolderPath)
+  const relativeParts = parts[0] === branchName ? parts.slice(1) : parts
+  if (!relativeParts.length) {
+    return
+  }
+
+  let currentLevel = folders
+  let pathKey = ''
+
+  for (let index = 0; index < relativeParts.length; index += 1) {
+    const part = relativeParts[index]
+    pathKey = pathKey ? `${pathKey}/${part}` : part
+
+    let folder = currentLevel.find((entry) => entry.name === part)
+    if (!folder) {
+      folder = {
+        key: diagramFolderKeyFromPathParts(relativeParts.slice(0, index + 1)),
+        name: part,
+        folderType: index === 0 ? 'diagram-folder' : '',
+        folders: [],
+        diagrams: [],
+      }
+      currentLevel.push(folder)
+    }
+
+    currentLevel = folder.folders
+  }
+}
+
+function dedupeFolderPaths(paths: Iterable<string>): string[] {
+  const seen = new Set<string>()
+  const result: string[] = []
+  for (const path of paths) {
+    const normalized = String(path ?? '').trim()
+    if (!normalized || seen.has(normalized)) {
+      continue
+    }
+    seen.add(normalized)
+    result.push(normalized)
+  }
+  return result
+}
+
+export function getElementTreePathParts(folderPath: string | undefined): string[] {
+  return splitFolderPath(folderPath)
 }
 
 function buildItemFolderTree<T extends { folderPath?: string }>(
@@ -180,7 +471,10 @@ function buildItemFolderTree<T extends { folderPath?: string }>(
   return { folders, rootItems }
 }
 
-export function buildDiagramFolderTree(diagrams: ParsedDiagram[]): {
+export function buildDiagramFolderTree(
+  diagrams: ParsedDiagram[],
+  extraFolderPaths: Iterable<string> = [],
+): {
   folders: ModelFolderNode[]
   rootDiagrams: ParsedDiagram[]
 } {
@@ -192,6 +486,11 @@ export function buildDiagramFolderTree(diagrams: ParsedDiagram[]): {
       folder.diagrams!.push(diagram)
     },
   )
+
+  const branchName = inferDiagramsBranchName(diagrams, extraFolderPaths)
+  for (const folderPath of dedupeFolderPaths(extraFolderPaths)) {
+    insertDiagramFolderPathIntoTree(folders, folderPath, branchName)
+  }
 
   return {
     folders: sortModelFolderNodes(folders),
@@ -255,7 +554,7 @@ function folderNodesToSidebarTreeData(folders: ModelFolderNode[]): DiagramSideba
       key: folder.key,
       title: folder.name,
       tooltip: folder.name,
-      selectable: false,
+      selectable: true,
       children: children.length > 0 ? children : undefined,
     }
   })

@@ -4,7 +4,6 @@ import { createParsedModel, hydrateParsedModel } from './domain/parsed-model'
 import { filterConnectionsToExistingRelationships, normalizeRelationshipType } from './diagram-model'
 import { parseDiagramFile } from './parsing/split-files/diagram-file-parser'
 import { parseElementFile } from './parsing/split-files/element-file-parser'
-import { buildFolderPathResolver } from './parsing/split-files/folder-path-resolver'
 
 export async function fetchSplitModelFile(modelRoot: string, relativePath: string): Promise<string> {
   const response = await fetch(apiUrl('/api/model/read-split-file'), {
@@ -47,6 +46,9 @@ export function mergeLoadedDiagram(model: ParsedModel, diagramId: string, conten
     elements: enriched.elements,
     relationships: enriched.relationships,
     diagrams,
+    diagramFolderPaths: enriched.diagramFolderPaths,
+    diagramFolderIds: enriched.diagramFolderIds,
+    diagramFolderSourceFiles: enriched.diagramFolderSourceFiles,
     modelRoot: enriched.modelRoot,
     manifestPath: enriched.manifestPath,
     indexes: {

@@ -63,14 +63,25 @@ export function useArchimateApp() {
         derived.parsedModel,
         derived.selectedDiagramId,
       )
-      selection.setSelectedDiagramId(selectedDiagramId)
-      selection.setSelectedNode(null)
+      if (selectedDiagramId) {
+        selection.handleSelectDiagram(selectedDiagramId)
+      } else {
+        selection.setSelectedDiagramId('')
+        selection.setSelectedNode(null)
+        selection.setSelectedDiagramFolderKey('')
+        selection.setDiagramTreeSelectedKey('')
+      }
       selection.setSelectedElementId(null)
       selection.setSelectedRelationshipRef(null)
       editState.resetSplitEditState()
       editState.setCreatedObjects([])
       editState.setCreatedRelationships([])
       editState.setCreatedDiagramIds(new Set())
+      editState.setCreatedDiagramFolderPaths(new Set())
+      editState.setDirtyDiagramFolderPaths(new Set())
+      editState.setOriginalDiagramFolderPaths(
+        new Set(derived.parsedModel.diagramFolderPaths ?? []),
+      )
       editState.setPendingLinkType(null)
       editState.setLinkCreateSourceId(null)
       editState.setOriginalDiagramNodeIds(derived.originalDiagramNodeIds)

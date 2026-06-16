@@ -32,6 +32,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     createdObjects,
     createdRelationships,
     createdDiagramIds,
+    createdDiagramFolderPaths,
+    dirtyDiagramFolderPaths,
     deletedDiagramNodeIds,
     deletedElementIds,
     deletedRelationshipIds,
@@ -47,6 +49,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     setCreatedObjects,
     setCreatedRelationships,
     setCreatedDiagramIds,
+    setCreatedDiagramFolderPaths,
+    setDirtyDiagramFolderPaths,
     setSaveStatusMessage,
     setModelSaving,
     clearCreatedAndDeletedTracking,
@@ -101,6 +105,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
         createdObjects,
           createdRelationships,
           createdDiagramIds,
+          createdDiagramFolderPaths,
+          dirtyDiagramFolderPaths,
           deletedSplitModelFiles: deletedSplitModelFilesRef.current,
         })
         if (result.written.length === 0) {
@@ -113,6 +119,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
         setCreatedObjects([])
         setCreatedRelationships([])
         setCreatedDiagramIds(new Set())
+        setCreatedDiagramFolderPaths(new Set())
+        setDirtyDiagramFolderPaths(new Set())
         clearCreatedAndDeletedTracking()
         setModel((prev) => {
           if (!prev || prev.format !== 'split-files') {
@@ -177,6 +185,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     createdObjects,
     createdRelationships,
     createdDiagramIds,
+    createdDiagramFolderPaths,
+    dirtyDiagramFolderPaths,
     diagramOverridesRef,
     relationshipOverridesRef,
     elementOverridesRef,
@@ -191,6 +201,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     setCreatedObjects,
     setCreatedRelationships,
     setCreatedDiagramIds,
+    setCreatedDiagramFolderPaths,
+    setDirtyDiagramFolderPaths,
     setModel,
   ])
 

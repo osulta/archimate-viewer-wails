@@ -54,7 +54,10 @@ interface SidebarProps {
   ) => void
   onSelectRelationship: (id: string, diagramId: string | null) => void
   onSelectDiagram: (id: string) => void
+  onSelectDiagramFolder?: (folderKey: string) => void
+  diagramTreeSelectedKey?: string
   onCreateDiagram?: () => void
+  onCreateFolder?: () => void
 }
 
 export function Sidebar({
@@ -79,7 +82,10 @@ export function Sidebar({
   onSelectElement,
   onSelectRelationship,
   onSelectDiagram,
+  onSelectDiagramFolder,
+  diagramTreeSelectedKey = '',
   onCreateDiagram,
+  onCreateFolder,
 }: SidebarProps): React.JSX.Element {
   const isViewMode = variant === 'view'
   const [sidebarTreeSearch, setSidebarTreeSearch] = useState('')
@@ -207,9 +213,12 @@ export function Sidebar({
         onSelectElement={onSelectElement}
         onSelectRelationship={onSelectRelationship}
         onSelectDiagram={onSelectDiagram}
+        onSelectDiagramFolder={onSelectDiagramFolder}
+        diagramTreeSelectedKey={diagramTreeSelectedKey}
         allowElementDrag={!isViewMode && Boolean(model)}
         allowDiagramDrag={!isViewMode && Boolean(model)}
         onCreateDiagram={!isViewMode && model ? onCreateDiagram : undefined}
+        onCreateFolder={!isViewMode && model ? onCreateFolder : undefined}
           />
         ) : null}
       </div>

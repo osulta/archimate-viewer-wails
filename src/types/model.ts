@@ -90,6 +90,12 @@ export interface ParsedModel {
   manifestPath?: string
   diagramIndexByElementRef?: Map<string, string[]>
   diagramIndexByRelationshipRef?: Map<string, string[]>
+  /** Explicit diagram folder paths (Views / …), including empty folders. */
+  diagramFolderPaths?: string[]
+  /** Logical folder path → folder id from folder.xml (split-files). */
+  diagramFolderIds?: Record<string, string>
+  /** Logical folder path → folder.xml relative path (split-files). */
+  diagramFolderSourceFiles?: Record<string, string>
 }
 
 export interface NodeOverride {

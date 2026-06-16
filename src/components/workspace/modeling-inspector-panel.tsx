@@ -17,7 +17,7 @@ export function ModelingInspectorPanel({
       <Empty
         className="props-empty"
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description="Выберите диаграмму, объект или связь, чтобы увидеть свойства."
+        description="Выберите диаграмму, папку, объект или связь, чтобы увидеть свойства."
       />
     )
   }

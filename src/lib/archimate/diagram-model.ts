@@ -11,6 +11,8 @@ import type {
   RelationshipOverridesMap,
 } from '../../types/model'
 import { serializeArchimateXml } from './archi-xml-serialize'
+import { generateArchimateModelId } from './model-id'
+import { inferDiagramsBranchName } from './model-folder-tree'
 import { idFromArchimateHref } from './parsing/xml/href-utils'
 import {
   getId,
@@ -19,6 +21,7 @@ import {
   getDirectChildByTag,
   getDirectChildrenByTag,
   applyDiagramObjectVisualToXml,
+  getElementNoteContent,
 } from './xml-utils'
 
 export function flattenNodes(nodes: DiagramNode[]): DiagramNode[] {
@@ -55,6 +58,66 @@ export function resolveReferencedDiagramName(
   return diagrams?.find((item) => item.id === refId)?.name ?? refId
 }
 
+function isNoteElementType(type: string | undefined): boolean {
+  if (!type) {
+    return false
+  }
+  return /Note/i.test(type)
+}
+
+function isNoteDiagramNode(
+  node: DiagramNode | null | undefined,
+  linkedElement: ParsedElement | null | undefined,
+): boolean {
+  if (isNoteElementType(linkedElement?.type) || isNoteElementType(node?.type)) {
+    return true
+  }
+  return /DiagramModelNote/i.test(String(node?.type ?? ''))
+}
+
+export function resolveNoteContentFromElement(
+  element: ParsedElement | null | undefined,
+): string {
+  if (!element || !isNoteElementType(element.type)) {
+    return ''
+  }
+  const fromProperties = getElementNoteContent(element.properties)
+  if (fromProperties) {
+    return fromProperties
+  }
+  const documentation = element.documentation?.trim()
+  if (documentation) {
+    return documentation
+  }
+  const name = element.name?.trim()
+  if (name && name !== element.id) {
+    return name
+  }
+  return ''
+}
+
+export function syncNoteLabelsFromElements(
+  nodes: DiagramNode[],
+  elementById: Map<string, ParsedElement>,
+): DiagramNode[] {
+  function syncNode(node: DiagramNode): DiagramNode {
+    const linked = node.elementRef ? elementById.get(node.elementRef) : undefined
+    let label = node.label
+    if (isNoteDiagramNode(node, linked) && !label?.trim()) {
+      const content = resolveNoteContentFromElement(linked)
+      if (content) {
+        label = content
+      }
+    }
+    const children = (node.children ?? []).map(syncNode)
+    if (label === node.label && children === node.children) {
+      return node
+    }
+    return { ...node, label, children }
+  }
+  return nodes.map(syncNode)
+}
+
 export function getDiagramNodeDisplayTitle(
   node: DiagramNode | null | undefined,
   linkedElement: ParsedElement | null | undefined,
@@ -63,6 +126,11 @@ export function getDiagramNodeDisplayTitle(
   const diagramLabel = node?.label?.trim()
   if (diagramLabel) {
     return diagramLabel
+  }
+
+  const noteContent = resolveNoteContentFromElement(linkedElement)
+  if (noteContent) {
+    return noteContent
   }
 
   const refName = referencedDiagramName?.trim()
@@ -400,6 +468,72 @@ export function applyDiagramMetadataToXml(documentNode: Document, model: ParsedM
         labelNode.textContent = name
       }
     })
+  }
+}
+
+function ensureArchiFolderPath(parentFolder: Element, documentNode: Document, pathParts: string[]): Element {
+  let current = parentFolder
+  for (const part of pathParts) {
+    const folders = getDirectChildrenByTag(current, 'folder')
+    let next = folders.find((folder) => (getName(folder) || '').trim() === part)
+    if (!next) {
+      next = documentNode.createElement(current.prefix ? `${current.prefix}:folder` : 'folder')
+      next.setAttribute('id', generateArchimateModelId())
+      next.setAttribute('name', part)
+      current.appendChild(next)
+    }
+    current = next
+  }
+  return current
+}
+
+export function ensureDiagramFoldersInXml(
+  documentNode: Document,
+  model: ParsedModel,
+  folderPaths: Iterable<string> = [],
+): void {
+  if (!documentNode || model.format !== 'archi-tool') {
+    return
+  }
+
+  const modelEl = Array.from(documentNode.getElementsByTagName('*')).find((n) => n.localName === 'model')
+  if (!modelEl) {
+    return
+  }
+
+  const branchName = inferDiagramsBranchName(model.diagrams, folderPaths)
+  const viewsRoot = findFirstDiagramsTypedFolder(modelEl)
+  if (!viewsRoot) {
+    return
+  }
+
+  const allPaths = new Set<string>()
+  for (const path of folderPaths) {
+    const trimmed = String(path ?? '').trim()
+    if (trimmed) {
+      allPaths.add(trimmed)
+    }
+  }
+  for (const diagram of model.diagrams) {
+    const trimmed = String(diagram.folderPath ?? '').trim()
+    if (trimmed) {
+      allPaths.add(trimmed)
+    }
+  }
+
+  for (const fullPath of allPaths) {
+    const parts = fullPath
+      .split(' / ')
+      .map((segment) => segment.trim())
+      .filter(Boolean)
+    if (!parts.length || parts[0] !== branchName) {
+      continue
+    }
+    const nestedParts = parts.slice(1)
+    if (!nestedParts.length) {
+      continue
+    }
+    ensureArchiFolderPath(viewsRoot, documentNode, nestedParts)
   }
 }
 

@@ -8,6 +8,7 @@ import {
   getDocumentation,
 } from '../../xml-utils'
 import { createParsedModel } from '../../domain/parsed-model'
+import { syncNoteLabelsFromElements } from '../../diagram-model'
 import { parseDiagramFromXmlNode } from '../diagram/parse-diagram-tree'
 
 export function parseArchiToolFormat(modelNode: Element): ParsedModel {
@@ -16,12 +17,17 @@ export function parseArchiToolFormat(modelNode: Element): ParsedModel {
   const elements: ParsedElement[] = []
   const relationships: ParsedRelationship[] = []
   const diagrams: ParsedDiagram[] = []
+  const diagramFolderPaths: string[] = []
 
   function walkFolder(folderNode: Element, pathParts: string[], inDiagramsBranch = false): void {
     const folderName = getName(folderNode) || 'Folder'
     const folderType = folderNode.getAttribute('type') ?? ''
     const nextPath = [...pathParts, folderName]
     const isDiagramsBranch = inDiagramsBranch || folderType === 'diagrams'
+
+    if (isDiagramsBranch && inDiagramsBranch) {
+      diagramFolderPaths.push(nextPath.join(' / '))
+    }
 
     const childFolders = getDirectChildrenByTag(folderNode, 'folder')
     childFolders.forEach((child) => walkFolder(child, nextPath, isDiagramsBranch))
@@ -72,11 +78,19 @@ export function parseArchiToolFormat(modelNode: Element): ParsedModel {
 
   getDirectChildrenByTag(modelNode, 'folder').forEach((folder) => walkFolder(folder, []))
 
+  const elementById = new Map(elements.map((item) => [item.id, item]))
+  const diagramsWithNoteLabels = diagrams.map((diagram) => ({
+    ...diagram,
+    loaded: true,
+    nodes: syncNoteLabelsFromElements(diagram.nodes, elementById),
+  }))
+
   return createParsedModel({
     modelName,
     format: 'archi-tool',
     elements,
     relationships,
-    diagrams,
+    diagrams: diagramsWithNoteLabels,
+    diagramFolderPaths: [...new Set(diagramFolderPaths.map((path) => path.trim()).filter(Boolean))],
   })
 }

@@ -23,6 +23,15 @@ import {
 } from '../../lib/archimate/diagram-model'
 import { isSplitFilesModel } from '../../lib/model-editor/is-split-files-model'
 import {
+  diagramFolderKeyFromPathParts,
+  getDiagramTreePathParts,
+  inferDiagramsBranchName,
+  resolveDiagramFolderPathFromKey,
+  buildRenamedDiagramFolderFullPath,
+  remapDiagramFolderFullPath,
+  normalizeDiagramFolderFullPath,
+} from '../../lib/archimate/model-folder-tree'
+import {
   resolveSplitElementFilePath,
   resolveSplitRelationshipFilePath,
 } from '../../lib/archimate/split-model-save'
@@ -60,12 +69,14 @@ export interface ModelMutations {
   resizeNode: (diagramId: string, nodeId: string, dw: number, dh: number) => void
   updateNodeFillColor: (diagramId: string, nodeId: string, fillColor: string | null) => void
   updateDiagramMetadata: (diagramId: string, patch: Partial<ParsedDiagram>) => void
+  updateDiagramFolderMetadata: (folderKey: string, patch: { name: string }) => void
   updateRelationshipMetaOverride: (relationshipId: string, patch: Partial<RelationshipMetaOverride>) => void
   updateElementOverride: (elementId: string, patch: Partial<ElementOverride>) => void
   createNewObject: (elementType: string, atPoint: Point | null, nameOverride?: string) => void
   placeElementOnDiagram: (elementId: string, atPoint: Point) => void
   placeDiagramReferenceOnDiagram: (referencedDiagramId: string, atPoint: Point) => void
   createNewDiagram: (nameOverride?: string) => void
+  createNewDiagramFolder: (nameOverride?: string) => void
   createRelationshipBetweenNodes: (relationshipType: string, sourceNodeId: string, targetNodeId: string) => boolean
   handleDropNewRelationshipAtPoint: (relationshipType: string, x: number, y: number, targetNodeId: string | null) => void
   pickLinkNode: (node: DiagramNode) => void
@@ -253,7 +264,10 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     model, setModel,
     diagramOverrides, relationshipOverrides, elementOverrides, relationshipMetaOverrides,
     createdObjects, createdRelationships,
-    setCreatedObjects, setCreatedRelationships, setCreatedDiagramIds,
+    setCreatedObjects, setCreatedRelationships, setCreatedDiagramIds, setCreatedDiagramFolderPaths,
+    setDirtyDiagramFolderPaths,
+    createdDiagramFolderPaths,
+    originalDiagramFolderPaths,
     deletedDiagramNodeIds, deletedElementIds, deletedRelationshipIds, deletedConnectionIds,
     originalDiagramNodeIds, originalElementIds, originalRelationshipIds, originalConnectionIds,
     setDeletedDiagramNodeIds, setDeletedElementIds, setDeletedRelationshipIds, setDeletedConnectionIds,
@@ -293,6 +307,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     selectedElementId,
     selectedRelationshipRef, setSelectedRelationshipRef,
     setSelectedBendpointIndex, selectedBendpointIndex,
+    selectedDiagramFolderKey, setSelectedDiagramFolderKey,
+    setDiagramTreeSelectedKey,
     selectedDiagram, selectedElement, selectedNodeLive,
   } = selection
 
@@ -675,6 +691,119 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     [diagramOverrides, commitDiagramOverrides, markSplitDiagramDirty, model, pushSnapshotCommand],
   )
 
+  const updateDiagramFolderMetadata = useCallback(
+    (folderKey: string, patch: { name: string }) => {
+      if (!model || !folderKey || !patch.name?.trim()) {
+        return
+      }
+      const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
+      const oldPath = normalizeDiagramFolderFullPath(
+        resolveDiagramFolderPathFromKey(folderKey, branchName),
+        branchName,
+      )
+      const newPath = normalizeDiagramFolderFullPath(
+        buildRenamedDiagramFolderFullPath(oldPath, patch.name),
+        branchName,
+      )
+      if (!newPath || newPath === oldPath) {
+        return
+      }
+
+      const nextFolderPaths = [
+        ...new Set(
+          (model.diagramFolderPaths ?? []).map((path) =>
+            remapDiagramFolderFullPath(oldPath, newPath, normalizeDiagramFolderFullPath(path, branchName)),
+          ),
+        ),
+      ]
+      if (!nextFolderPaths.includes(newPath)) {
+        nextFolderPaths.push(newPath)
+      }
+
+      const nextFolderIds = { ...(model.diagramFolderIds ?? {}) }
+      const folderId = nextFolderIds[oldPath]
+      if (folderId) {
+        delete nextFolderIds[oldPath]
+        nextFolderIds[newPath] = folderId
+      }
+
+      const nextSourceFiles = { ...(model.diagramFolderSourceFiles ?? {}) }
+      const sourceFile = nextSourceFiles[oldPath]
+      if (sourceFile) {
+        delete nextSourceFiles[oldPath]
+        nextSourceFiles[newPath] = sourceFile
+      }
+
+      const nextDiagrams = model.diagrams.map((diagram) => {
+        const folderPath = diagram.folderPath?.trim()
+        if (!folderPath) {
+          return diagram
+        }
+        const normalized = normalizeDiagramFolderFullPath(folderPath, branchName)
+        const remapped = remapDiagramFolderFullPath(oldPath, newPath, normalized)
+        if (remapped === normalized) {
+          return diagram
+        }
+        return { ...diagram, folderPath: remapped }
+      })
+
+      setModel({
+        ...model,
+        diagramFolderPaths: nextFolderPaths,
+        diagramFolderIds: nextFolderIds,
+        diagramFolderSourceFiles: nextSourceFiles,
+        diagrams: nextDiagrams,
+      })
+
+      setCreatedDiagramFolderPaths((prev) => {
+        const next = new Set<string>()
+        for (const path of prev) {
+          next.add(
+            remapDiagramFolderFullPath(
+              oldPath,
+              newPath,
+              normalizeDiagramFolderFullPath(path, branchName),
+            ),
+          )
+        }
+        return next
+      })
+
+      const wasCreated = [...createdDiagramFolderPaths].some(
+        (path) => normalizeDiagramFolderFullPath(path, branchName) === oldPath,
+      )
+      const wasOriginal = [...originalDiagramFolderPaths].some(
+        (path) => normalizeDiagramFolderFullPath(path, branchName) === oldPath,
+      )
+      if (wasOriginal && !wasCreated && sourceFile) {
+        setDirtyDiagramFolderPaths((prev) => new Set([...prev, newPath]))
+      }
+
+      for (const diagram of nextDiagrams) {
+        const folderPath = diagram.folderPath?.trim()
+        if (
+          folderPath &&
+          (folderPath === newPath || folderPath.startsWith(`${newPath} / `))
+        ) {
+          markSplitDiagramDirty(diagram.id)
+        }
+      }
+
+      const nextFolderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
+      setSelectedDiagramFolderKey(nextFolderKey)
+      setDiagramTreeSelectedKey(nextFolderKey)
+    },
+    [
+      model,
+      originalDiagramFolderPaths,
+      createdDiagramFolderPaths,
+      markSplitDiagramDirty,
+      setSelectedDiagramFolderKey,
+      setDiagramTreeSelectedKey,
+      setDirtyDiagramFolderPaths,
+    ],
+  )
+
   const updateDiagramMetadata = useCallback(
     (diagramId: string, patch: Partial<ParsedDiagram>) => {
       if (!model || !diagramId) {
@@ -1029,6 +1158,43 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     clearLinkCreation()
   }
 
+  function createNewDiagramFolder(nameOverride = '') {
+    if (!model) {
+      return
+    }
+    const name = String(nameOverride ?? '').trim() || 'New folder'
+    const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
+    const parentPath = selectedDiagramFolderKey
+      ? resolveDiagramFolderPathFromKey(selectedDiagramFolderKey, branchName)
+      : branchName
+    const newPath = normalizeDiagramFolderFullPath(
+      `${parentPath} / ${name}`.replace(/\s+\/\s+/g, ' / ').trim(),
+      branchName,
+    )
+    const existing = new Set(
+      (model.diagramFolderPaths ?? []).map((path) =>
+        normalizeDiagramFolderFullPath(path, branchName),
+      ),
+    )
+    if (existing.has(newPath)) {
+      return
+    }
+    const folderId = generateArchimateModelId()
+
+    setModel({
+      ...model,
+      diagramFolderPaths: [...existing, newPath],
+      diagramFolderIds: {
+        ...(model.diagramFolderIds ?? {}),
+        [newPath]: folderId,
+      },
+    })
+    setCreatedDiagramFolderPaths((prev) => new Set([...prev, newPath]))
+    const folderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
+    setSelectedDiagramFolderKey(folderKey)
+    setDiagramTreeSelectedKey(folderKey)
+  }
+
   function createNewDiagram(nameOverride = '') {
     if (!model) {
       return
@@ -1041,12 +1207,21 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       model.format === 'exchange'
         ? templateDiagram?.type ?? 'archimate:Diagram'
         : 'archimate:ArchimateDiagramModel'
+    const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
+    const targetFolderPath = selectedDiagramFolderKey
+      ? resolveDiagramFolderPathFromKey(selectedDiagramFolderKey, branchName)
+      : templateDiagram?.folderPath ?? branchName
 
     const newDiagram: ParsedDiagram = {
       id,
       name,
       type: diagramType,
-      folderPath: model.format === 'archi-tool' ? templateDiagram?.folderPath ?? '' : undefined,
+      folderPath:
+        model.format === 'exchange'
+          ? undefined
+          : model.format === 'archi-tool' || model.format === 'split-files'
+            ? targetFolderPath
+            : undefined,
       nodes: [],
       connections: [],
     }
@@ -1057,6 +1232,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     })
     setCreatedDiagramIds((prev) => new Set([...prev, id]))
     setSelectedDiagramId(id)
+    setDiagramTreeSelectedKey(id)
     setSelectedNode(null)
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
@@ -1919,12 +2095,14 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     resizeNode,
     updateNodeFillColor,
     updateDiagramMetadata,
+    updateDiagramFolderMetadata,
     updateRelationshipMetaOverride,
     updateElementOverride,
     createNewObject,
     placeElementOnDiagram,
     placeDiagramReferenceOnDiagram,
     createNewDiagram,
+    createNewDiagramFolder,
     createRelationshipBetweenNodes,
     handleDropNewRelationshipAtPoint,
     pickLinkNode,

@@ -3,7 +3,7 @@ import { Button, ColorPicker, Empty, Input, Tabs } from 'antd'
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons'
 import { ObjectRelationshipsPanel } from './object-relationships-panel'
 import { flattenNodes } from '../lib/archimate/diagram-model'
-import { formatArchimateTypeLabel } from '../lib/archimate/model-folder-tree'
+import { formatArchimateTypeLabel, type SelectedDiagramFolderInfo } from '../lib/archimate/model-folder-tree'
 import { getElementNotationStyle } from '../lib/archimate/notation'
 import {
   formatRelationshipEndpointLabel,
@@ -232,6 +232,9 @@ interface ObjectPropertiesPanelProps {
   onNavigateToDiagram: (payload: { diagramId: string; nodes: DiagramNode[] }) => void
   selectedDiagramId: string | null
   onUpdateDiagramMetadata?: (diagramId: string, patch: { name: string }) => void
+  onUpdateDiagramFolderMetadata?: (folderKey: string, patch: { name: string }) => void
+  selectedDiagramFolder?: SelectedDiagramFolderInfo | null
+  diagramTreeSelectedKey?: string
   onUpdateNodeFillColor?: (nodeId: string, fillColor: string | null) => void
   elementLoadingId?: string
 }
@@ -260,6 +263,9 @@ export function ObjectPropertiesPanel({
   onNavigateToDiagram,
   selectedDiagramId,
   onUpdateDiagramMetadata,
+  onUpdateDiagramFolderMetadata,
+  selectedDiagramFolder = null,
+  diagramTreeSelectedKey = '',
   onUpdateNodeFillColor,
   elementLoadingId = '',
 }: ObjectPropertiesPanelProps): React.JSX.Element | null {
@@ -270,6 +276,7 @@ export function ObjectPropertiesPanel({
   const [relationshipDocumentationDraft, setRelationshipDocumentationDraft] = useState('')
   const [relationshipPropertiesDraft, setRelationshipPropertiesDraft] = useState<ElementProperty[]>([])
   const [diagramNameDraft, setDiagramNameDraft] = useState('')
+  const [folderNameDraft, setFolderNameDraft] = useState('')
 
   const elementId = selectedElement?.id ?? ''
   const isElementPropertiesLoading =
@@ -278,8 +285,15 @@ export function ObjectPropertiesPanel({
     () => (selectedDiagram?.nodes ? flattenNodes(selectedDiagram.nodes).length : 0),
     [selectedDiagram?.nodes],
   )
+  const showFolderProperties =
+    Boolean(selectedDiagramFolder) &&
+    diagramTreeSelectedKey.startsWith('diagram-folder:') &&
+    !selectedRelationshipRef &&
+    !selectedNodeLive &&
+    !selectedElementId
   const showDiagramProperties =
     Boolean(selectedDiagram && selectedDiagramId) &&
+    !showFolderProperties &&
     !selectedRelationshipRef &&
     !selectedNodeLive &&
     !selectedElementId
@@ -321,6 +335,34 @@ export function ObjectPropertiesPanel({
   }, [selectedRelationshipRef])
 
   useEffect(() => {
+    if (!selectedDiagramFolder) {
+      setFolderNameDraft('')
+      return
+    }
+    setFolderNameDraft(selectedDiagramFolder.name ?? '')
+  }, [selectedDiagramFolder?.key, selectedDiagramFolder?.name])
+
+  useEffect(() => {
+    if (!showFolderProperties || !selectedDiagramFolder) {
+      return undefined
+    }
+    const nextName = folderNameDraft.trim()
+    const currentName = (selectedDiagramFolder.name ?? '').trim()
+    if (nextName === currentName) {
+      return undefined
+    }
+    const handle = window.setTimeout(() => {
+      onUpdateDiagramFolderMetadata?.(selectedDiagramFolder.key, { name: folderNameDraft })
+    }, 300)
+    return () => window.clearTimeout(handle)
+  }, [
+    folderNameDraft,
+    selectedDiagramFolder,
+    showFolderProperties,
+    onUpdateDiagramFolderMetadata,
+  ])
+
+  useEffect(() => {
     if (!selectedDiagramId || !selectedDiagram) {
       setDiagramNameDraft('')
       return
@@ -348,6 +390,68 @@ export function ObjectPropertiesPanel({
     onUpdateDiagramMetadata,
     selectedDiagram,
   ])
+
+  if (showFolderProperties && selectedDiagramFolder) {
+    return (
+      <section className="properties">
+        <h3>Свойства папки</h3>
+        <div className="props-grid">
+          <div>
+            <b>Name:</b>{' '}
+            <Input
+              className="prop-input"
+              value={folderNameDraft}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFolderNameDraft(e.target.value)}
+              onBlur={() =>
+                onUpdateDiagramFolderMetadata?.(selectedDiagramFolder.key, {
+                  name: folderNameDraft,
+                })
+              }
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <b>Path:</b> {selectedDiagramFolder.fullPath}
+          </div>
+          <div>
+            <b>Parent:</b> {selectedDiagramFolder.parentPath || '—'}
+          </div>
+          <div>
+            <b>Subfolders:</b> {selectedDiagramFolder.directSubfolderCount}
+          </div>
+          <div>
+            <b>Diagrams in folder:</b> {selectedDiagramFolder.directDiagramCount}
+          </div>
+          <div>
+            <b>Diagrams in subtree:</b> {selectedDiagramFolder.totalDiagramCount}
+          </div>
+        </div>
+        {selectedDiagramFolder.diagrams.length > 0 ? (
+          <div className="props-field-full">
+            <span className="props-label">Diagrams</span>
+            <ul className="props-diagram-list">
+              {selectedDiagramFolder.diagrams.map((diagram) => (
+                <li key={diagram.id}>
+                  <Button
+                    type={selectedDiagramId === diagram.id ? 'primary' : 'default'}
+                    ghost={selectedDiagramId === diagram.id}
+                    block
+                    className="diagram-btn diagram-btn-block"
+                    onClick={() =>
+                      onNavigateToDiagram({ diagramId: diagram.id, nodes: [] })
+                    }
+                  >
+                    <span className="props-diagram-title">{diagram.name || diagram.id}</span>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+    )
+  }
 
   if (showDiagramProperties) {
     const diagramTypeLabel = formatArchimateTypeLabel(selectedDiagram!.type ?? '')

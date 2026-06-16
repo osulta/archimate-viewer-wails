@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react'
 import { Button, Collapse, Input } from 'antd'
-import { SearchOutlined } from '@ant-design/icons'
+import { SearchOutlined, FolderOutlined } from '@ant-design/icons'
 import {
   buildDiagramFolderTree,
   buildElementFolderTree,
@@ -53,11 +53,14 @@ interface ModelTreeProps {
   ) => void
   onSelectRelationship: (id: string, diagramId: string | null) => void
   onSelectDiagram: (id: string) => void
+  onSelectDiagramFolder?: (folderKey: string) => void
+  diagramTreeSelectedKey?: string
   focusElementInDiagram?: (elementId: string) => FocusElementResult
   focusRelationshipInDiagram?: (relationshipId: string) => string | null
   allowElementDrag?: boolean
   allowDiagramDrag?: boolean
   onCreateDiagram?: () => void
+  onCreateFolder?: () => void
 }
 
 export function ModelTree({
@@ -80,11 +83,14 @@ export function ModelTree({
   onSelectElement,
   onSelectRelationship,
   onSelectDiagram,
+  onSelectDiagramFolder,
+  diagramTreeSelectedKey = '',
   focusElementInDiagram,
   focusRelationshipInDiagram,
   allowElementDrag = false,
   allowDiagramDrag = false,
   onCreateDiagram,
+  onCreateFolder,
 }: ModelTreeProps): React.JSX.Element {
   const { folders: elementFolderTree, rootElements: rootTreeElements } = useMemo(
     () => buildElementFolderTree(filteredTreeElements),
@@ -92,8 +98,8 @@ export function ModelTree({
   )
 
   const { folders: diagramFolderTree, rootDiagrams: rootTreeDiagrams } = useMemo(
-    () => buildDiagramFolderTree(filteredTreeDiagrams),
-    [filteredTreeDiagrams],
+    () => buildDiagramFolderTree(filteredTreeDiagrams, model?.diagramFolderPaths ?? []),
+    [filteredTreeDiagrams, model?.diagramFolderPaths],
   )
 
   const visibleDiagramCount = useMemo(
@@ -194,25 +200,45 @@ export function ModelTree({
           ? `${diagramSearchMeta.totalMatches.toLocaleString()} / ${model.diagrams.length.toLocaleString()}`
           : model.diagrams.length.toLocaleString()
       })`,
-      extra: onCreateDiagram ? (
-        <Button
-          size="small"
-          className="tree-section-add-btn"
-          title="Создать диаграмму"
-          aria-label="Создать диаграмму"
-          onClick={(event) => {
-            event.stopPropagation()
-            onCreateDiagram()
-          }}
-        >
-          +
-        </Button>
-      ) : undefined,
+      extra:
+        onCreateDiagram || onCreateFolder ? (
+          <span className="tree-section-actions">
+            {onCreateFolder ? (
+              <Button
+                size="small"
+                className="tree-section-add-btn"
+                title="Создать папку"
+                aria-label="Создать папку"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onCreateFolder()
+                }}
+              >
+                <FolderOutlined />
+              </Button>
+            ) : null}
+            {onCreateDiagram ? (
+              <Button
+                size="small"
+                className="tree-section-add-btn"
+                title="Создать диаграмму"
+                aria-label="Создать диаграмму"
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onCreateDiagram()
+                }}
+              >
+                +
+              </Button>
+            ) : null}
+          </span>
+        ) : undefined,
       children: (
         <DiagramTreePanel
           folders={diagramFolderTree}
           rootDiagrams={rootTreeDiagrams}
           selectedDiagramId={selectedDiagramId}
+          diagramTreeSelectedKey={diagramTreeSelectedKey}
           treeSearchActive={treeSearchActive}
           emptyMessage={treeSearchActive ? 'Нет совпадений' : 'Нет диаграмм'}
           searchTruncated={diagramSearchMeta.truncated}
@@ -220,6 +246,7 @@ export function ModelTree({
           searchVisibleCount={visibleDiagramCount}
           allowDiagramDrag={allowDiagramDrag}
           onSelectDiagram={onSelectDiagram}
+          onSelectFolder={onSelectDiagramFolder ?? (() => {})}
         />
       ),
     },

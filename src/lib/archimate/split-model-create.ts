@@ -14,7 +14,11 @@ import {
   typeLocalName,
 } from './split-model-paths'
 import { formatDiagramCoord, isDiagramReferenceNode } from './diagram-model'
-import { getDirectChildByTag, getDirectChildrenByTag, getId } from './xml-utils'
+import {
+  normalizeDiagramFolderFullPath,
+  splitFolderPath,
+} from './model-folder-tree'
+import { getDirectChildByTag, getDirectChildrenByTag, getId, getName } from './xml-utils'
 
 function escapeXmlAttr(value: string): string {
   return String(value ?? '')
@@ -122,8 +126,75 @@ export function buildSplitDiagramFileContent(diagram: { id: string; name: string
   )
 }
 
-export function buildSplitDiagramRelativePath(diagramId: string): string {
-  return `diagrams/ArchimateDiagramModel_${diagramId}.xml`
+export function buildSplitDiagramFolderFileContent(name: string, id: string): string {
+  const folderName = escapeXmlAttr(name || 'Folder')
+  return (
+    `<archimate:Folder\n` +
+    `    xmlns:archimate="http://www.archimatetool.com/archimate"\n` +
+    `    name="${folderName}"\n` +
+    `    id="${id}"/>\n`
+  )
+}
+
+export function buildSplitDiagramRelativePath(
+  diagramId: string,
+  folderPath?: string,
+  branchName = 'Views',
+  diagramFolderIds: Record<string, string> = {},
+): string {
+  const dir = folderPathToDiagramsRelativeDir(folderPath, branchName, diagramFolderIds)
+  return `${dir}/ArchimateDiagramModel_${diagramId}.xml`
+}
+
+export function buildSplitDiagramFolderRelativePath(
+  folderPath: string,
+  branchName = 'Views',
+  diagramFolderIds: Record<string, string> = {},
+): string {
+  const dir = folderPathToDiagramsRelativeDir(folderPath, branchName, diagramFolderIds)
+  return `${dir}/folder.xml`
+}
+
+function splitDiagramFolderPath(folderPath: string | undefined): string[] {
+  return splitFolderPath(folderPath)
+}
+
+export function folderPathToDiagramsRelativeDir(
+  folderPath: string | undefined,
+  branchName: string,
+  diagramFolderIds: Record<string, string> = {},
+): string {
+  const normalized = normalizeDiagramFolderFullPath(folderPath, branchName)
+  const parts = splitDiagramFolderPath(normalized)
+  const relativeParts = parts[0] === branchName ? parts.slice(1) : parts
+  if (!relativeParts.length) {
+    return 'diagrams'
+  }
+
+  const idSegments: string[] = []
+  let currentPath = branchName
+  for (const segment of relativeParts) {
+    currentPath =
+      currentPath === branchName ? `${branchName} / ${segment}` : `${currentPath} / ${segment}`
+    const folderId = diagramFolderIds[currentPath]
+    if (!folderId) {
+      throw new Error(`Не найден id папки для пути «${currentPath}».`)
+    }
+    idSegments.push(folderId)
+  }
+  return `diagrams/${idSegments.join('/')}`
+}
+
+export function buildSplitFolderSaveXml(originalContent: string, name: string): string {
+  const parser = new DOMParser()
+  const documentNode = parser.parseFromString(originalContent, 'application/xml')
+  const root = documentNode.documentElement
+  if (!root) {
+    return originalContent
+  }
+  root.setAttribute('name', name)
+  const serialized = new XMLSerializer().serializeToString(documentNode)
+  return serialized.endsWith('\n') ? serialized : `${serialized}\n`
 }
 
 const DIAGRAM_OBJECT_TAGS = ['child', 'children']

@@ -24,6 +24,12 @@ export interface ModelEditState {
   setCreatedRelationships: React.Dispatch<React.SetStateAction<CreatedRelationship[]>>
   createdDiagramIds: Set<string>
   setCreatedDiagramIds: React.Dispatch<React.SetStateAction<Set<string>>>
+  createdDiagramFolderPaths: Set<string>
+  setCreatedDiagramFolderPaths: React.Dispatch<React.SetStateAction<Set<string>>>
+  dirtyDiagramFolderPaths: Set<string>
+  setDirtyDiagramFolderPaths: React.Dispatch<React.SetStateAction<Set<string>>>
+  originalDiagramFolderPaths: Set<string>
+  setOriginalDiagramFolderPaths: React.Dispatch<React.SetStateAction<Set<string>>>
   pendingLinkType: string | null
   setPendingLinkType: React.Dispatch<React.SetStateAction<string | null>>
   linkCreateSourceId: string | null
@@ -111,6 +117,11 @@ export function useModelEditState(): ModelEditState {
   const [createdObjects, setCreatedObjects] = useState<CreatedObject[]>([])
   const [createdRelationships, setCreatedRelationships] = useState<CreatedRelationship[]>([])
   const [createdDiagramIds, setCreatedDiagramIds] = useState<Set<string>>(() => new Set())
+  const [createdDiagramFolderPaths, setCreatedDiagramFolderPaths] = useState<Set<string>>(() => new Set())
+  const [dirtyDiagramFolderPaths, setDirtyDiagramFolderPaths] = useState<Set<string>>(() => new Set())
+  const [originalDiagramFolderPaths, setOriginalDiagramFolderPaths] = useState<Set<string>>(
+    () => new Set(),
+  )
   const [pendingLinkType, setPendingLinkType] = useState<string | null>(null)
   const [linkCreateSourceId, setLinkCreateSourceId] = useState<string | null>(null)
   const linkCreateMode = Boolean(pendingLinkType)
@@ -237,6 +248,8 @@ export function useModelEditState(): ModelEditState {
     setCreatedObjects([])
     setCreatedRelationships([])
     setCreatedDiagramIds(new Set())
+    setCreatedDiagramFolderPaths(new Set())
+    setDirtyDiagramFolderPaths(new Set())
     setDeletedDiagramNodeIds(new Set())
     setDeletedElementIds(new Set())
     setDeletedRelationshipIds(new Set())
@@ -255,6 +268,7 @@ export function useModelEditState(): ModelEditState {
     setCreatedObjects([])
     setCreatedRelationships([])
     setCreatedDiagramIds(new Set())
+    setCreatedDiagramFolderPaths(new Set())
     setPendingLinkType(null)
     setLinkCreateSourceId(null)
     setOriginalDiagramNodeIds(new Set())
@@ -278,6 +292,7 @@ export function useModelEditState(): ModelEditState {
       setCreatedObjects([])
       setCreatedRelationships([])
       setCreatedDiagramIds(new Set())
+    setCreatedDiagramFolderPaths(new Set())
       setPendingLinkType(null)
       setLinkCreateSourceId(null)
       setOriginalDiagramNodeIds(new Set())
@@ -310,6 +325,12 @@ export function useModelEditState(): ModelEditState {
     setCreatedRelationships,
     createdDiagramIds,
     setCreatedDiagramIds,
+    createdDiagramFolderPaths,
+    setCreatedDiagramFolderPaths,
+    dirtyDiagramFolderPaths,
+    setDirtyDiagramFolderPaths,
+    originalDiagramFolderPaths,
+    setOriginalDiagramFolderPaths,
     pendingLinkType,
     setPendingLinkType,
     linkCreateSourceId,

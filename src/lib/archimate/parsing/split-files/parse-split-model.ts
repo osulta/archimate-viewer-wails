@@ -1,6 +1,7 @@
 import type { ParsedModel, ParsedElement, ParsedRelationship, ParsedDiagram } from '../../../../types/model'
 import { getName } from '../../xml-utils'
 import { createParsedModel } from '../../domain/parsed-model'
+import { normalizeDiagramFolderFullPath } from '../../model-folder-tree'
 import { getDocumentRootElement, parseXmlDocument, getRootLocalName } from '../xml/parse-xml-document'
 import { classifySplitModelFile } from './split-file-classifier'
 import { buildFolderPathResolver } from './folder-path-resolver'
@@ -26,11 +27,13 @@ export function parseSplitModel(payload: SplitModelPayload): ParsedModel {
   const manifestRoot = getDocumentRootElement(manifestDoc)
   const modelName = getName(manifestRoot) || 'ArchiMate model'
 
-  const resolveFolderPath = buildFolderPathResolver(files)
+  const branchName = 'Views'
+  const { resolveFolderPath, folderMaps } = buildFolderPathResolver(files, branchName)
 
   const elements: ParsedElement[] = []
   const relationships: ParsedRelationship[] = []
   const diagrams: ParsedDiagram[] = []
+  const diagramFolderPaths = new Set<string>()
 
   for (const file of files) {
     const relativePath = file.relativePath.replace(/\\/g, '/').replace(/^\/+/, '')
@@ -45,13 +48,19 @@ export function parseSplitModel(payload: SplitModelPayload): ParsedModel {
 
     const category = classifySplitModelFile(relativePath, rootLocalName)
     const folderPath = resolveFolderPath(relativePath)
+    const normalizedFolderPath = folderPath
+      ? normalizeDiagramFolderFullPath(folderPath, branchName)
+      : ''
 
     if (category === 'manifest' || category === 'folder') {
+      if (category === 'folder' && relativePath.startsWith('diagrams/') && normalizedFolderPath) {
+        diagramFolderPaths.add(normalizedFolderPath)
+      }
       continue
     }
 
     if (category === 'element') {
-      const element = parseElementFile(file.content, relativePath, folderPath)
+      const element = parseElementFile(file.content, relativePath, normalizedFolderPath || folderPath)
       if (element) {
         elements.push(element)
       }
@@ -64,7 +73,7 @@ export function parseSplitModel(payload: SplitModelPayload): ParsedModel {
     }
 
     if (category === 'diagram') {
-      const diagram = parseDiagramFile(file.content, relativePath, folderPath)
+      const diagram = parseDiagramFile(file.content, relativePath, normalizedFolderPath || folderPath)
       if (diagram) {
         diagrams.push(diagram)
       }
@@ -77,6 +86,9 @@ export function parseSplitModel(payload: SplitModelPayload): ParsedModel {
     elements,
     relationships,
     diagrams,
+    diagramFolderPaths: [...diagramFolderPaths],
+    diagramFolderIds: folderMaps.folderIdsByFullPath,
+    diagramFolderSourceFiles: folderMaps.folderSourceFilesByFullPath,
     modelRoot,
     manifestPath,
   })
