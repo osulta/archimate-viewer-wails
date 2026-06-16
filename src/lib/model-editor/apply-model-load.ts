@@ -25,7 +25,7 @@ export function deriveModelLoadState(payload: ModelLoadPayload): ModelLoadDerive
 
   return {
     parsedModel,
-    selectedDiagramId: parsedModel.diagrams[0]?.id ?? '',
+    selectedDiagramId: '',
     originalDiagramNodeIds: collectLoadedDiagramNodeIds(parsedModel.diagrams),
     originalElementIds: new Set(parsedModel.elements.map((e) => e.id)),
     originalRelationshipIds: new Set(parsedModel.relationships.map((r) => r.id)),
