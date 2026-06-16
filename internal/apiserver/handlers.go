@@ -586,6 +586,9 @@ func (s *Server) handleBranches(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := map[string]any{"ok": true, "branches": branches, "workTree": workTree, "fetch": fetchResult}
+	if defaultBranch := gitRemoteDefaultBranch(workTree, remote); defaultBranch != "" {
+		resp["defaultBranch"] = defaultBranch
+	}
 	if fetchResult.Code != 0 {
 		resp["fetchWarning"] = firstNonEmpty(
 			strings.TrimSpace(fetchResult.Stderr),

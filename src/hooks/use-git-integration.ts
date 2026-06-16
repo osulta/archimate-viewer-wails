@@ -105,6 +105,7 @@ interface GitBranchesState {
   loading: boolean
   list: BranchEntry[]
   error: string | null
+  defaultBranch: string
 }
 
 interface ReadModelResult {
@@ -205,7 +206,12 @@ export function useGitIntegration({
     currentBranch: '',
     modelLayout: '',
   })
-  const [gitBranches, setGitBranches] = useState<GitBranchesState>({ loading: false, list: [], error: null })
+  const [gitBranches, setGitBranches] = useState<GitBranchesState>({
+    loading: false,
+    list: [],
+    error: null,
+    defaultBranch: '',
+  })
   const [gitOutput, setGitOutput] = useState('')
   const [gitCommandLoading, setGitCommandLoading] = useState(false)
   const [gitCommandLabel, setGitCommandLabel] = useState('')
@@ -434,7 +440,9 @@ export function useGitIntegration({
           }
           if (data.ok && Array.isArray(data.branches)) {
             const list = data.branches as BranchEntry[]
-            setGitBranches({ loading: false, list, error: null })
+            const defaultBranch =
+              typeof data.defaultBranch === 'string' ? data.defaultBranch.trim() : ''
+            setGitBranches({ loading: false, list, error: null, defaultBranch })
             const resolvedBranch = resolveCurrentBranchFromList(list)
             setGitRepoProbe((prev) => ({ ...prev, currentBranch: resolvedBranch }))
             if (resolvedBranch) {
@@ -495,7 +503,7 @@ export function useGitIntegration({
   useEffect(() => {
     if (!gitRepoProbe.hasDotGit) {
       branchesRequestSeqRef.current += 1
-      setGitBranches({ loading: false, list: [], error: null })
+      setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
     }
   }, [gitRepoProbe.hasDotGit])
 
@@ -811,7 +819,7 @@ export function useGitIntegration({
             setGitRepoRootDefault(data.defaultRepoRoot)
           }
           setGitRepoPath('')
-          setGitBranches({ loading: false, list: [], error: null })
+          setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
           onRepositoryDeleted()
           setGitOutput(`Каталог GIT_REPO_ROOT изменён: ${root}`)
           await refreshGitRepoState({ syncRemoteUrl: true })
@@ -891,7 +899,7 @@ export function useGitIntegration({
       if (data.ok) {
         setGitRepoPath('')
         setModelLoading(false)
-        setGitBranches({ loading: false, list: [], error: null })
+        setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
         setGitOutput(
           data.deleted === false
             ? (data.message ?? `Каталог «${data.rel ?? repoRootLabel}» уже отсутствует.`)

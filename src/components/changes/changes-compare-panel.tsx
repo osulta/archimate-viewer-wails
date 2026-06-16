@@ -11,6 +11,7 @@ import {
   fetchSingleFileModelAtRef,
   fetchSplitCompareBundleAtRef,
 } from '../../lib/archimate/compare-model-load'
+import { resolveDefaultCompareBranch } from '../../lib/git/resolve-default-compare-branch'
 import { CompareCanvasSyncProvider } from './compare-canvas-sync'
 import type {
   ParsedModel,
@@ -37,7 +38,7 @@ function resolveModelManifestPath(modelPath: string | undefined | null, model: P
 interface GitIntegration {
   gitApiReady: boolean
   gitRepoProbe: { hasDotGit: boolean; currentBranch?: string }
-  gitBranches: { list: Array<{ name: string }>; loading: boolean }
+  gitBranches: { list: Array<{ name: string }>; loading: boolean; defaultBranch?: string }
   loadGitBranches: (path?: string, options?: { fetch?: boolean }) => Promise<void>
   [key: string]: unknown
 }
@@ -120,11 +121,15 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
   }, [gitBranches.list])
 
   useEffect(() => {
-    if (!compareBranch && branchOptions.length > 0) {
-      const other = branchOptions.find((name) => name !== currentBranch) ?? branchOptions[0]
-      setCompareBranch(other)
+    if (compareBranch || branchOptions.length === 0) {
+      return
     }
-  }, [branchOptions, compareBranch, currentBranch])
+    setCompareBranch(
+      resolveDefaultCompareBranch(branchOptions, {
+        defaultBranch: gitBranches.defaultBranch,
+      }),
+    )
+  }, [branchOptions, compareBranch, gitBranches.defaultBranch])
 
   const loadCompareBranch = useCallback(async () => {
     const pathForLoad = isSplitModel ? manifestPath : modelPath
