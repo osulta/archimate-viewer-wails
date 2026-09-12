@@ -42,7 +42,24 @@ function getDiagramObjectElementRef(diagramObjectNode: Element): string {
 }
 
 function getDiagramObjectReferencedDiagramId(diagramObjectNode: Element): string {
+  // Archi EMF maps referencedModel → XML attribute "model"
+  const modelAttr =
+    diagramObjectNode.getAttribute('model')?.trim() ||
+    diagramObjectNode.getAttribute('referencedModel')?.trim() ||
+    ''
+  if (modelAttr) {
+    return modelAttr
+  }
   return idFromArchimateChildHref(diagramObjectNode, 'referencedModel')
+}
+
+function getExchangeViewRefId(node: Element): string {
+  const viewRef = getDirectChildByTag(node, 'viewRef')
+  const ref = viewRef?.getAttribute('ref')?.trim()
+  if (ref) {
+    return ref
+  }
+  return node.getAttribute('viewRef')?.trim() || ''
 }
 
 function getConnectionRelationshipRef(connectionNode: Element): string {
@@ -159,12 +176,18 @@ export function parseExchangeDiagramFromXmlNode(viewNode: Element): ParsedDiagra
     const { x, y, width, height } = parseDiagramBounds(boundsNode)
     const children = getDirectChildrenByTag(node, 'node').map(parseNodeTree)
     const colors = parseDiagramObjectColors(node)
+    const nodeType = getType(node, 'Node')
+    const viewRefId = getExchangeViewRefId(node)
+    const isViewRef =
+      Boolean(viewRefId) ||
+      (nodeType.includes('Label') && Boolean(getDirectChildByTag(node, 'viewRef')))
 
     return {
       id: getId(node),
       elementRef: node.getAttribute('elementRef') ?? '',
-      type: getType(node, 'Node'),
+      type: isViewRef ? 'archimate:DiagramModelReference' : nodeType,
       label: getDiagramObjectLabel(node),
+      ...(viewRefId ? { referencedDiagramId: viewRefId } : {}),
       x,
       y,
       width,

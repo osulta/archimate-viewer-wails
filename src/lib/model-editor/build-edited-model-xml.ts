@@ -19,6 +19,7 @@ import {
   applyDiagramMetadataToXml,
   ensureCreatedDiagramsInXml,
   ensureDiagramFoldersInXml,
+  ensureDiagramReferencesInXml,
   findArchiDiagramElement,
   findViewDiagramElement,
 } from '../archimate/serialize/diagram-xml'
@@ -62,6 +63,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
 
     ensureDiagramFoldersInXml(documentNode, params.model, params.model.diagramFolderPaths ?? [])
     ensureCreatedDiagramsInXml(documentNode, params.model, params.createdDiagramIds)
+    ensureDiagramReferencesInXml(documentNode, params.model)
 
     applyDiagramMetadataToXml(documentNode, params.model)
     applyDiagramLayoutToXml(documentNode, params.model, params.diagramOverrides)

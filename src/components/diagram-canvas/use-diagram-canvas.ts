@@ -3,6 +3,7 @@ import type { MenuProps } from 'antd'
 import { useThemeModeContext } from '../theme-provider'
 import {
   getNodeAtPosition,
+  isDiagramReferenceNode,
   roundDiagramCoord,
   snapPointToGrid,
 } from '../../lib/archimate/diagram-model'
@@ -112,6 +113,17 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     startClientY: number
     startScrollLeft: number
     startScrollTop: number
+  } | null>(null)
+  const pendingNodeDragRef = useRef<{
+    pointerId: number
+    nodeId: string
+    nodeIds: string[]
+    startClientX: number
+    startClientY: number
+    startLogicalX: number
+    startLogicalY: number
+    startNodeX: number
+    startNodeY: number
   } | null>(null)
   const renderedConnectionsRef = useRef<RenderedConnection[]>([])
   const dragPreviewRef = useRef<DragPreview | null>(null)
@@ -345,6 +357,12 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     }
   }
 
+  function clearPendingNodeDrag(pointerId: number): void {
+    if (pendingNodeDragRef.current?.pointerId === pointerId) {
+      pendingNodeDragRef.current = null
+    }
+  }
+
   function startPendingBendpointDrag(
     canvas: HTMLCanvasElement,
     pending: NonNullable<typeof pendingBendpointRef.current>,
@@ -370,6 +388,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     if (!inter || inter.pointerId !== pointerId) {
       clearPendingBendpoint(pointerId)
       clearPendingPan(pointerId)
+      clearPendingNodeDrag(pointerId)
       return
     }
     interactionRef.current = null
@@ -661,6 +680,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     interactionRef.current = null
     setIsDragging(false)
     pendingPanRef.current = null
+    pendingNodeDragRef.current = null
 
     if (!readOnly && linkCreateMode) {
       const hitForLink = getNodeAtPosition(diagram.nodes, logicalX, logicalY)
@@ -777,6 +797,23 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     syncNodeSelection(hitNodeForDrag, event.shiftKey, dragNodeIds)
+
+    // Defer drag for diagram references so double-click can open the target diagram.
+    if (isDiagramReferenceNode(hitNodeForDrag)) {
+      pendingNodeDragRef.current = {
+        pointerId: event.pointerId,
+        nodeId: hitNodeForDrag.id,
+        nodeIds: dragNodeIds,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startLogicalX: logicalX,
+        startLogicalY: logicalY,
+        startNodeX: hitNodeForDrag.x,
+        startNodeY: hitNodeForDrag.y,
+      }
+      return
+    }
+
     dragPreviewRef.current = null
     beginInteraction(canvas, {
       type: 'move',
@@ -806,6 +843,34 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
           beginPanInteraction(canvas, pendingPan)
         }
         pendingPanRef.current = null
+      }
+    }
+
+    const pendingNodeDrag = pendingNodeDragRef.current
+    if (!interactionRef.current && pendingNodeDrag?.pointerId === event.pointerId) {
+      const moved = Math.hypot(
+        event.clientX - pendingNodeDrag.startClientX,
+        event.clientY - pendingNodeDrag.startClientY,
+      )
+      if (moved >= PAN_DRAG_SLOP) {
+        const canvas = canvasRef.current
+        if (canvas) {
+          dragPreviewRef.current = null
+          beginInteraction(canvas, {
+            type: 'move',
+            pointerId: pendingNodeDrag.pointerId,
+            nodeId: pendingNodeDrag.nodeId,
+            nodeIds: pendingNodeDrag.nodeIds,
+            startLogicalX: pendingNodeDrag.startLogicalX,
+            startLogicalY: pendingNodeDrag.startLogicalY,
+            startNodeX: pendingNodeDrag.startNodeX,
+            startNodeY: pendingNodeDrag.startNodeY,
+            lastLogicalX: pendingNodeDrag.startLogicalX,
+            lastLogicalY: pendingNodeDrag.startLogicalY,
+          })
+          event.preventDefault()
+        }
+        pendingNodeDragRef.current = null
       }
     }
 
@@ -878,11 +943,13 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
 
   function handlePointerUp(event: React.PointerEvent) {
     clearPendingPan(event.pointerId)
+    clearPendingNodeDrag(event.pointerId)
     releaseInteraction(event.pointerId)
   }
 
   function handlePointerCancel(event: React.PointerEvent) {
     clearPendingPan(event.pointerId)
+    clearPendingNodeDrag(event.pointerId)
     releaseInteraction(event.pointerId)
   }
 
@@ -974,7 +1041,9 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       return
     }
     const hitNode = getNodeAtPosition(diagram.nodes, ptr.logicalX, ptr.logicalY)
-    if (hitNode?.referencedDiagramId) {
+    if (isDiagramReferenceNode(hitNode) && hitNode?.referencedDiagramId) {
+      event.preventDefault()
+      event.stopPropagation()
       onOpenDiagramReference?.(hitNode.referencedDiagramId)
       return
     }

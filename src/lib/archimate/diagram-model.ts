@@ -114,6 +114,18 @@ export function getDiagramNodeDisplayTitle(
   linkedElement: ParsedElement | null | undefined,
   referencedDiagramName?: string,
 ): string {
+  if (isDiagramReferenceNode(node)) {
+    const refName = referencedDiagramName?.trim()
+    if (refName) {
+      return refName
+    }
+    const diagramLabel = node?.label?.trim()
+    if (diagramLabel) {
+      return diagramLabel
+    }
+    return node?.referencedDiagramId || node?.id || 'Diagram reference'
+  }
+
   const diagramLabel = node?.label?.trim()
   if (diagramLabel) {
     return diagramLabel
@@ -122,11 +134,6 @@ export function getDiagramNodeDisplayTitle(
   const noteContent = resolveNoteContentFromElement(linkedElement)
   if (noteContent) {
     return noteContent
-  }
-
-  const refName = referencedDiagramName?.trim()
-  if (refName) {
-    return refName
   }
 
   const elementName = linkedElement?.name?.trim()

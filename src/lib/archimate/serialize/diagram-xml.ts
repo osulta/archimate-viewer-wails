@@ -17,7 +17,9 @@ import {
 } from '../xml-utils'
 import {
   applyOverridesToNodes,
+  flattenNodes,
   formatDiagramCoord,
+  isDiagramReferenceNode,
 } from '../diagram-model'
 
 export function findArchiDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
@@ -366,6 +368,79 @@ export function applyDiagramLayoutToXml(
       syncViewDiagramNodesToXml(viewEl, viewEl, nodes, 0, 0)
     }
   })
+}
+
+/** Writes missing Archi DiagramModelReference children (`model` attr) from the in-memory model. */
+export function ensureDiagramReferencesInXml(documentNode: Document, model: ParsedModel): void {
+  if (!model?.diagrams?.length) {
+    return
+  }
+  const allElements = Array.from(documentNode.getElementsByTagName('*'))
+
+  for (const diagram of model.diagrams) {
+    const refs = flattenNodes(diagram.nodes).filter(
+      (node) => isDiagramReferenceNode(node) && Boolean(node.referencedDiagramId),
+    )
+    if (!refs.length) {
+      continue
+    }
+
+    const diagramEl = findArchiDiagramElement(allElements, diagram.id)
+    if (diagramEl) {
+      for (const node of refs) {
+        if (findDiagramObjectByIdInXml(diagramEl, node.id, 'child')) {
+          continue
+        }
+        const childNode = documentNode.createElement(
+          diagramEl.prefix ? `${diagramEl.prefix}:child` : 'child',
+        )
+        childNode.setAttribute('xsi:type', 'archimate:DiagramModelReference')
+        childNode.setAttribute('id', node.id)
+        childNode.setAttribute('model', node.referencedDiagramId!)
+        if (node.label?.trim()) {
+          childNode.setAttribute('name', node.label.trim())
+        }
+        const bounds = documentNode.createElement(
+          diagramEl.prefix ? `${diagramEl.prefix}:bounds` : 'bounds',
+        )
+        bounds.setAttribute('x', formatDiagramCoord(node.x))
+        bounds.setAttribute('y', formatDiagramCoord(node.y))
+        bounds.setAttribute('width', formatDiagramCoord(node.width))
+        bounds.setAttribute('height', formatDiagramCoord(node.height))
+        childNode.appendChild(bounds)
+        diagramEl.appendChild(childNode)
+      }
+      continue
+    }
+
+    const viewEl = findViewDiagramElement(allElements, diagram.id)
+    if (!viewEl) {
+      continue
+    }
+    for (const node of refs) {
+      if (findDiagramObjectByIdInXml(viewEl, node.id, 'node')) {
+        continue
+      }
+      const nodeEl = documentNode.createElement(viewEl.prefix ? `${viewEl.prefix}:node` : 'node')
+      nodeEl.setAttribute('identifier', node.id)
+      nodeEl.setAttribute('xsi:type', 'Label')
+      if (node.label?.trim()) {
+        const nameNode = documentNode.createElement(viewEl.prefix ? `${viewEl.prefix}:label` : 'label')
+        nameNode.textContent = node.label.trim()
+        nodeEl.appendChild(nameNode)
+      }
+      const viewRef = documentNode.createElement(viewEl.prefix ? `${viewEl.prefix}:viewRef` : 'viewRef')
+      viewRef.setAttribute('ref', node.referencedDiagramId!)
+      nodeEl.appendChild(viewRef)
+      const bounds = documentNode.createElement(viewEl.prefix ? `${viewEl.prefix}:bounds` : 'bounds')
+      bounds.setAttribute('x', formatDiagramCoord(node.x))
+      bounds.setAttribute('y', formatDiagramCoord(node.y))
+      bounds.setAttribute('w', formatDiagramCoord(node.width))
+      bounds.setAttribute('h', formatDiagramCoord(node.height))
+      nodeEl.appendChild(bounds)
+      viewEl.appendChild(nodeEl)
+    }
+  }
 }
 
 export function serializeXml(documentNode: Document): string {
