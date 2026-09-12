@@ -217,14 +217,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("/api/git/branches", s.handleBranches)
 	mux.HandleFunc("/api/git/checkout", s.handleCheckout)
 	mux.HandleFunc("/api/git/delete-repository", s.handleDeleteRepository)
-	mux.HandleFunc("/api/git/read-split-index", s.handleGitReadSplitIndex)
-	mux.HandleFunc("/api/git/read-split-compare-bundle", s.handleGitReadSplitCompareBundle)
 	mux.HandleFunc("/api/model/read", s.handleModelRead)
 	mux.HandleFunc("/api/model/write", s.handleModelWrite)
-	mux.HandleFunc("/api/model/delete", s.handleModelDelete)
-	mux.HandleFunc("/api/model/read-split-index", s.handleModelReadSplitIndex)
-	mux.HandleFunc("/api/model/read-split-file", s.handleModelReadSplitFile)
-	mux.HandleFunc("/api/model/read-split", s.handleModelReadSplit)
 
 	var root http.Handler = mux
 	if s.serveStatic && s.staticDir != "" {

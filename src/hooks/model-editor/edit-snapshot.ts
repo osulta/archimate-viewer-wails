@@ -1,5 +1,5 @@
 import { findNodeById } from '../../lib/archimate/diagram-model'
-import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
+import type { Dispatch, SetStateAction } from 'react'
 import type {
   ParsedModel,
   DiagramNode,
@@ -24,9 +24,6 @@ export interface CanvasEditSnapshot {
   deletedElementIds: Set<string>
   deletedRelationshipIds: Set<string>
   deletedConnectionIds: Set<string>
-  deletedSplitModelFiles: Set<string>
-  dirtySplitDiagramIds: Set<string>
-  dirtySplitRelationshipIds: Set<string>
   linkCreateSourceId: string | null
   selectedDiagramId: string
   selectedNodeId: string | null
@@ -118,9 +115,6 @@ export function cloneCanvasEditSnapshot(snapshot: CanvasEditSnapshot): CanvasEdi
     deletedElementIds: new Set(snapshot.deletedElementIds),
     deletedRelationshipIds: new Set(snapshot.deletedRelationshipIds),
     deletedConnectionIds: new Set(snapshot.deletedConnectionIds),
-    deletedSplitModelFiles: new Set(snapshot.deletedSplitModelFiles),
-    dirtySplitDiagramIds: new Set(snapshot.dirtySplitDiagramIds),
-    dirtySplitRelationshipIds: new Set(snapshot.dirtySplitRelationshipIds),
     linkCreateSourceId: snapshot.linkCreateSourceId,
     selectedDiagramId: snapshot.selectedDiagramId,
     selectedNodeId: snapshot.selectedNodeId,
@@ -143,9 +137,6 @@ export interface CaptureCanvasEditSnapshotParams {
   deletedElementIds: Set<string>
   deletedRelationshipIds: Set<string>
   deletedConnectionIds: Set<string>
-  deletedSplitModelFiles: Set<string>
-  dirtySplitDiagramIds: Set<string>
-  dirtySplitRelationshipIds: Set<string>
   linkCreateSourceId: string | null
   selectedNodeId: string | null
   selectedElementId: string | null
@@ -171,8 +162,6 @@ export function captureCanvasEditSnapshot(
     deletedElementIds: new Set(params.deletedElementIds),
     deletedRelationshipIds: new Set(params.deletedRelationshipIds),
     deletedConnectionIds: new Set(params.deletedConnectionIds),
-    deletedSplitModelFiles: new Set(params.deletedSplitModelFiles),
-    dirtySplitDiagramIds: new Set(params.dirtySplitDiagramIds),
     linkCreateSourceId: params.linkCreateSourceId,
     selectedDiagramId: params.selectedDiagramId,
     selectedNodeId: params.selectedNodeId,
@@ -210,9 +199,6 @@ export interface RestoreCanvasEditSnapshotHandlers {
   setDeletedElementIds: Dispatch<SetStateAction<Set<string>>>
   setDeletedRelationshipIds: Dispatch<SetStateAction<Set<string>>>
   setDeletedConnectionIds: Dispatch<SetStateAction<Set<string>>>
-  deletedSplitModelFilesRef: MutableRefObject<Set<string>>
-  dirtySplitDiagramIdsRef: MutableRefObject<Set<string>>
-  dirtySplitRelationshipIdsRef: MutableRefObject<Set<string>>
   setLinkCreateSourceId: Dispatch<SetStateAction<string | null>>
   setSelectedNode: Dispatch<SetStateAction<DiagramNode | null>>
   setSelectedElementId: Dispatch<SetStateAction<string | null>>
@@ -236,9 +222,6 @@ export function restoreCanvasEditSnapshot(
   handlers.setDeletedElementIds(new Set(cloned.deletedElementIds))
   handlers.setDeletedRelationshipIds(new Set(cloned.deletedRelationshipIds))
   handlers.setDeletedConnectionIds(new Set(cloned.deletedConnectionIds))
-  handlers.deletedSplitModelFilesRef.current = new Set(cloned.deletedSplitModelFiles)
-  handlers.dirtySplitDiagramIdsRef.current = new Set(cloned.dirtySplitDiagramIds)
-  handlers.dirtySplitRelationshipIdsRef.current = new Set(cloned.dirtySplitRelationshipIds)
   handlers.setLinkCreateSourceId(cloned.linkCreateSourceId)
 
   const diagram = cloned.model.diagrams.find((item) => item.id === cloned.selectedDiagramId)

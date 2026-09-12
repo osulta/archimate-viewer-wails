@@ -7,7 +7,6 @@ import { ModelingGitPanel } from '../workspace/modeling-git-panel'
 import { ModelingInspectorPanel } from '../workspace/modeling-inspector-panel'
 import { ModelingPalettesPanel } from '../workspace/modeling-palettes-panel'
 import type { useGitIntegration } from '../../hooks/use-git-integration'
-import type { useSplitModelRuntime } from '../../hooks/use-split-model-runtime'
 import type { ModelEditState } from '../../hooks/model-editor/use-model-edit-state'
 import type { ModelSelectionState } from '../../hooks/model-editor/use-model-selection'
 import type { ModelMutations } from '../../hooks/model-editor/use-model-mutations'
@@ -16,14 +15,12 @@ import type { Point } from '../../types/model'
 import { resolveSelectedDiagramFolderInfo } from '../../lib/archimate/model-folder-tree'
 
 type GitIntegration = ReturnType<typeof useGitIntegration>
-type SplitModelRuntime = ReturnType<typeof useSplitModelRuntime>
 
 export interface ModelingWorkspaceProps {
   git: GitIntegration
   editState: ModelEditState
   selection: ModelSelectionState
   mutations: ModelMutations
-  splitRuntime: SplitModelRuntime
   workspaceLayout: WorkspaceLayoutState
 }
 
@@ -32,7 +29,6 @@ export function ModelingWorkspace({
   editState,
   selection,
   mutations,
-  splitRuntime,
   workspaceLayout,
 }: ModelingWorkspaceProps) {
   const {
@@ -116,14 +112,8 @@ export function ModelingWorkspace({
       canSaveModel={Boolean(model)}
       saveStatusMessage={saveStatusMessage}
       modelActionLoading={git.gitCommandLoading}
-      modelLoading={git.modelLoading || splitRuntime.isDiagramLoading}
+      modelLoading={git.modelLoading}
       modelSaving={modelSaving}
-      focusElementInDiagram={
-        model?.format === 'split-files' ? splitRuntime.focusElementInDiagram : undefined
-      }
-      focusRelationshipInDiagram={
-        model?.format === 'split-files' ? splitRuntime.focusRelationshipInDiagram : undefined
-      }
       onCreateDiagram={mutations.createNewDiagram}
       onCreateFolder={mutations.createNewDiagramFolder}
       onSelectDiagram={handleSelectDiagram}
@@ -161,14 +151,15 @@ export function ModelingWorkspace({
       diagramTitle={selectedDiagram?.name ?? 'Диаграмма не выбрана'}
       diagramMeta={selectedDiagram?.type ?? 'Canvas preview'}
       loader={
-        splitRuntime.diagramLoadingId &&
-        splitRuntime.diagramLoadingId === selectedDiagramId ? (
-          <p className="content-diagram-loader" role="status" aria-live="polite">
+        modelSaving ? (
+          <div className="content-diagram-loader" role="status" aria-live="polite" aria-busy="true">
             <Spin size="small" />
-            Загрузка диаграммы…
-          </p>
+            <span>Сохранение модели…</span>
+          </div>
         ) : null
       }
+      canvasBusy={modelSaving}
+      canvasBusyLabel="Сохранение модели…"
       gitPanel={<ModelingGitPanel git={git} gitOutput={git.gitOutput} />}
       gitTitle="Git"
       gitBranchLabel={
@@ -176,7 +167,7 @@ export function ModelingWorkspace({
       }
       canvas={
         <DiagramCanvas
-          diagram={selectedDiagram?.loaded === false ? null : selectedDiagram}
+          diagram={selectedDiagram}
           diagramExportName={selectedDiagram?.name}
           elementById={elementByIdForCanvas}
           relationshipById={relationshipByIdForUi}
@@ -272,7 +263,6 @@ export function ModelingWorkspace({
               mutations.updateNodeFillColor(selectedDiagramId, nodeId, fillColor)
             }
           }}
-          elementLoadingId={splitRuntime.elementLoadingId}
         />
       }
       inspectorTitle="Свойства"

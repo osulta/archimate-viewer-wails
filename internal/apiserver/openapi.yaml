@@ -32,7 +32,7 @@ tags:
   - name: Git
     description: Repository operations (clone, commit, push, branches, etc.)
   - name: Model
-    description: ArchiMate model file read/write (single-file and split layouts)
+    description: ArchiMate model file read/write (single-file .archimate / exchange XML)
 
 paths:
   /api/health:
@@ -113,7 +113,7 @@ paths:
       summary: Inspect work folder state
       description: |
         Reports whether a `.git` directory exists under the work folder, the
-        configured remote URL, current branch, and detected model path/layout.
+        configured remote URL, current branch, and detected `.archimate` model path.
       operationId: getRepoState
       requestBody:
         content:
@@ -161,7 +161,7 @@ paths:
       summary: Git status
       description: |
         Runs `git status --porcelain=v1 -u`. When `path` is set, scopes status
-        to the model file (or split-model directory) resolved from that path.
+        to the model file resolved from that path.
       operationId: gitStatus
       requestBody:
         content:
@@ -207,8 +207,7 @@ paths:
       tags: [Git]
       summary: Stage model files
       description: |
-        Stages the model file or entire split-model directory (`git add`) for the
-        path resolved from `path`.
+        Stages the model file (`git add`) for the path resolved from `path`.
       operationId: gitAdd
       requestBody:
         required: true
@@ -256,8 +255,7 @@ paths:
       tags: [Git]
       summary: Commit model changes
       description: |
-        Stages model paths then runs `git commit -m`. For split models the
-        entire model directory is staged.
+        Stages the model file then runs `git commit -m`.
       operationId: gitCommit
       requestBody:
         required: true
@@ -393,54 +391,6 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
-  /api/git/read-split-index:
-    post:
-      tags: [Git]
-      summary: Split-model index at ref
-      description: |
-        Builds a lightweight parsed-model index from a split model (`folder.xml`
-        manifest) as it exists at a git ref. Used for branch comparison.
-      operationId: gitReadSplitIndex
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GitSplitRefRequest'
-      responses:
-        '200':
-          description: Parsed split-model index at ref
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SplitIndexResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
-  /api/git/read-split-compare-bundle:
-    post:
-      tags: [Git]
-      summary: Split-model compare bundle at ref
-      description: |
-        Loads one diagram and its referenced elements/relationships from a split
-        model at a git ref. Used for visual diff against the working tree.
-      operationId: gitReadSplitCompareBundle
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/GitSplitCompareBundleRequest'
-      responses:
-        '200':
-          description: Diagram compare bundle
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SplitCompareBundleResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-
   /api/model/read:
     post:
       tags: [Model]
@@ -490,94 +440,6 @@ paths:
                 $ref: '#/components/schemas/ModelWriteResponse'
         '400':
           $ref: '#/components/responses/BadRequest'
-
-  /api/model/read-split-index:
-    post:
-      tags: [Model]
-      summary: Read split-model index
-      description: |
-        Builds a lightweight parsed-model index from a split model on disk
-        (manifest at `path`, typically `.../model/folder.xml`).
-      operationId: modelReadSplitIndex
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ModelPathRequest'
-      responses:
-        '200':
-          description: Parsed split-model index
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SplitIndexResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          description: Manifest or model directory not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/model/read-split-file:
-    post:
-      tags: [Model]
-      summary: Read one split-model XML file
-      description: Reads a single XML fragment inside a split model by relative path.
-      operationId: modelReadSplitFile
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SplitFileReadRequest'
-      responses:
-        '200':
-          description: File content
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SplitFileReadResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          description: File not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-
-  /api/model/read-split:
-    post:
-      tags: [Model]
-      summary: Read and fully parse split model
-      description: |
-        Fully parses all XML files in a split model on disk (heavier than
-        `read-split-index`; includes diagram nodes and connections).
-      operationId: modelReadSplit
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ModelPathRequest'
-      responses:
-        '200':
-          description: Fully parsed split model
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SplitFullParseResponse'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '404':
-          description: Manifest or model directory not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
 
 components:
   responses:
@@ -677,10 +539,7 @@ components:
           type: string
         modelPath:
           type: string
-          description: Detected model path relative to GIT_REPO_ROOT
-        modelLayout:
-          type: string
-          enum: [single-file, split-files]
+          description: Detected .archimate path relative to GIT_REPO_ROOT
 
     GitSettingsRequest:
       type: object
@@ -824,10 +683,6 @@ components:
           description: PAT removed from origin URL after clone
         modelPath:
           type: string
-          nullable: true
-        modelLayout:
-          type: string
-          enum: [single-file, split-files]
           nullable: true
 
     GitCommitRequest:
@@ -1023,31 +878,9 @@ components:
         message:
           type: string
 
-    GitSplitRefRequest:
-      type: object
-      required: [path, ref]
-      properties:
-        path:
-          type: string
-          description: Path to split-model manifest (folder.xml)
-        ref:
-          type: string
-
-    GitSplitCompareBundleRequest:
-      type: object
-      required: [path, ref, diagramSourceFile]
-      properties:
-        path:
-          type: string
-        ref:
-          type: string
-        diagramSourceFile:
-          type: string
-          description: Diagram XML path relative to model root
-
     ModelReadResponse:
       type: object
-      required: [ok, path, content, layout]
+      required: [ok, path, content]
       properties:
         ok:
           type: boolean
@@ -1056,9 +889,6 @@ components:
         content:
           type: string
           description: Raw XML
-        layout:
-          type: string
-          enum: [single-file]
 
     ModelWriteRequest:
       type: object
@@ -1078,262 +908,3 @@ components:
           type: boolean
         path:
           type: string
-
-    SplitFileReadRequest:
-      type: object
-      required: [modelRoot, relativePath]
-      properties:
-        modelRoot:
-          type: string
-          description: Split model root relative to GIT_REPO_ROOT
-        relativePath:
-          type: string
-          description: XML file path relative to modelRoot
-
-    SplitFileReadResponse:
-      type: object
-      required: [ok, modelRoot, relativePath, content]
-      properties:
-        ok:
-          type: boolean
-        modelRoot:
-          type: string
-        relativePath:
-          type: string
-        content:
-          type: string
-
-    ParsedModelIndexes:
-      type: object
-      properties:
-        elementRefToDiagramIds:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-        relationshipRefToDiagramIds:
-          type: object
-          additionalProperties:
-            type: array
-            items:
-              type: string
-
-    ParsedElement:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-        documentation:
-          type: string
-        folderPath:
-          type: string
-        sourceFile:
-          type: string
-        lite:
-          type: boolean
-        properties:
-          type: array
-          items:
-            $ref: '#/components/schemas/ElementProperty'
-
-    ElementProperty:
-      type: object
-      properties:
-        key:
-          type: string
-        value:
-          type: string
-
-    ParsedRelationship:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-        source:
-          type: string
-        target:
-          type: string
-        documentation:
-          type: string
-        folderPath:
-          type: string
-        sourceFile:
-          type: string
-        properties:
-          type: array
-          items:
-            $ref: '#/components/schemas/ElementProperty'
-
-    DiagramNode:
-      type: object
-      properties:
-        id:
-          type: string
-        elementRef:
-          type: string
-        type:
-          type: string
-        label:
-          type: string
-        x:
-          type: number
-        y:
-          type: number
-        width:
-          type: number
-        height:
-          type: number
-        children:
-          type: array
-          items:
-            $ref: '#/components/schemas/DiagramNode'
-
-    DiagramConnection:
-      type: object
-      properties:
-        id:
-          type: string
-        relationshipRef:
-          type: string
-        source:
-          type: string
-        target:
-          type: string
-        bendpoints:
-          type: array
-          items:
-            type: object
-
-    ParsedDiagram:
-      type: object
-      properties:
-        id:
-          type: string
-        name:
-          type: string
-        type:
-          type: string
-        folderPath:
-          type: string
-        sourceFile:
-          type: string
-        loaded:
-          type: boolean
-        nodes:
-          type: array
-          items:
-            $ref: '#/components/schemas/DiagramNode'
-        connections:
-          type: array
-          items:
-            $ref: '#/components/schemas/DiagramConnection'
-
-    ParsedModelData:
-      type: object
-      description: Serialized parsed model (index or full parse)
-      properties:
-        modelName:
-          type: string
-        format:
-          type: string
-          enum: [archi-tool, exchange, split-files]
-        elements:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParsedElement'
-        relationships:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParsedRelationship'
-        diagrams:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParsedDiagram'
-        modelRoot:
-          type: string
-        manifestPath:
-          type: string
-        indexes:
-          $ref: '#/components/schemas/ParsedModelIndexes'
-
-    SplitIndexResponse:
-      type: object
-      required: [ok, layout, path, manifestPath, modelRoot, parsedModel]
-      properties:
-        ok:
-          type: boolean
-        layout:
-          type: string
-          enum: [split-files]
-        path:
-          type: string
-        manifestPath:
-          type: string
-        modelRoot:
-          type: string
-        elementCount:
-          type: integer
-        diagramCount:
-          type: integer
-        ref:
-          type: string
-          description: Present for git/read-split-index
-        parsedModel:
-          $ref: '#/components/schemas/ParsedModelData'
-
-    SplitFullParseResponse:
-      type: object
-      required: [ok, layout, path, manifestPath, modelRoot, fileCount, parsedModel]
-      properties:
-        ok:
-          type: boolean
-        layout:
-          type: string
-          enum: [split-files]
-        path:
-          type: string
-        manifestPath:
-          type: string
-        modelRoot:
-          type: string
-        fileCount:
-          type: integer
-        parsedModel:
-          $ref: '#/components/schemas/ParsedModelData'
-
-    SplitCompareBundleResponse:
-      type: object
-      required: [ok, layout, ref, path, manifestPath, modelRoot]
-      properties:
-        ok:
-          type: boolean
-        layout:
-          type: string
-          enum: [split-files]
-        ref:
-          type: string
-        path:
-          type: string
-        manifestPath:
-          type: string
-        modelRoot:
-          type: string
-        diagram:
-          $ref: '#/components/schemas/ParsedDiagram'
-        elements:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParsedElement'
-        relationships:
-          type: array
-          items:
-            $ref: '#/components/schemas/ParsedRelationship'

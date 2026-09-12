@@ -7,7 +7,6 @@ import {
   setViewModeDiagramInUrl,
 } from '../../lib/view-mode-url'
 import { useGitIntegration } from '../use-git-integration'
-import { useSplitModelRuntime } from '../use-split-model-runtime'
 import type { ModelLoadPayload } from '../../types/model'
 import { useModelEditState } from './use-model-edit-state'
 import { useModelSelection } from './use-model-selection'
@@ -54,14 +53,19 @@ export function useArchimateApp() {
   )
 
   const applyParsedModelFromPayload = useCallback(
-    (payload: ModelLoadPayload) => {
+    (payload: ModelLoadPayload, options?: { preserveDiagramId?: string }) => {
       const derived = deriveModelLoadState(payload)
       editState.setModel(derived.parsedModel)
       editState.setError('')
       editState.setSaveStatusMessage('')
+      const preferredDiagramId =
+        options?.preserveDiagramId &&
+        derived.parsedModel.diagrams.some((diagram) => diagram.id === options.preserveDiagramId)
+          ? options.preserveDiagramId
+          : derived.selectedDiagramId
       const selectedDiagramId = applyViewModeDiagramFromUrl(
         derived.parsedModel,
-        derived.selectedDiagramId,
+        preferredDiagramId,
       )
       if (selectedDiagramId) {
         selection.handleSelectDiagram(selectedDiagramId)
@@ -73,7 +77,7 @@ export function useArchimateApp() {
       }
       selection.setSelectedElementId(null)
       selection.setSelectedRelationshipRef(null)
-      editState.resetSplitEditState()
+      editState.resetEditOverrides()
       editState.setCreatedObjects([])
       editState.setCreatedRelationships([])
       editState.setCreatedDiagramIds(new Set())
@@ -108,7 +112,9 @@ export function useArchimateApp() {
     },
     onModelSaved: (payload: ModelLoadPayload) => {
       try {
-        applyParsedModelFromPayload(payload)
+        applyParsedModelFromPayload(payload, {
+          preserveDiagramId: selection.selectedDiagramId,
+        })
       } catch (parseErr) {
         const msg =
           parseErr instanceof Error ? parseErr.message : String(parseErr)
@@ -123,29 +129,7 @@ export function useArchimateApp() {
     },
   })
 
-  const splitRuntime = useSplitModelRuntime({
-    model: editState.model,
-    setModel: editState.setModel,
-    selectedDiagramId: selection.selectedDiagramId,
-    selectedElementId: selection.selectedElementId,
-  })
-
   const save = useModelSave({ editState, git })
-
-  useEffect(() => {
-    const elementId = editState.pendingElementFocusRef.current
-    if (!elementId || !editState.model || editState.model.format !== 'split-files' || !selection.selectedDiagramId) {
-      return
-    }
-    const node = splitRuntime.resolveElementOnDiagram(elementId, selection.selectedDiagramId)
-    if (!node) {
-      return
-    }
-    selection.setSelectedElementId(elementId)
-    selection.setSelectedNode(node)
-    selection.setSelectedRelationshipRef(null)
-    editState.pendingElementFocusRef.current = null
-  }, [editState, selection, splitRuntime])
 
   const handleOpenCompareChanges = useCallback(() => {
     if (!selection.selectedDiagramId) {
@@ -328,7 +312,6 @@ export function useArchimateApp() {
     mutations,
     save,
     git,
-    splitRuntime,
     handleOpenCompareChanges,
   }
 }

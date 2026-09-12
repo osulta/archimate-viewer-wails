@@ -181,13 +181,21 @@ export function Sidebar({
 
       <div
         className={
-          modelLoading && model ? 'sidebar-tree-section is-loading' : 'sidebar-tree-section'
+          (modelLoading || modelSaving) && model
+            ? 'sidebar-tree-section is-loading'
+            : 'sidebar-tree-section'
         }
       >
-        {modelLoading ? (
+        {modelLoading || modelSaving ? (
           <div className="sidebar-model-loader" role="status" aria-live="polite" aria-busy="true">
             <Spin size="small" />
-            <span>{model ? 'Обновление модели…' : 'Загрузка модели…'}</span>
+            <span>
+              {modelSaving
+                ? 'Сохранение модели…'
+                : model
+                  ? 'Обновление модели…'
+                  : 'Загрузка модели…'}
+            </span>
           </div>
         ) : null}
         {!(modelLoading && !model) ? (

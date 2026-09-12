@@ -21,10 +21,6 @@ interface CreateParsedModelInput {
   relationships: ParsedRelationship[]
   diagrams: ParsedDiagram[]
   diagramFolderPaths?: string[]
-  diagramFolderIds?: Record<string, string>
-  diagramFolderSourceFiles?: Record<string, string>
-  modelRoot?: string
-  manifestPath?: string
   indexes?: {
     elementRefToDiagramIds?: Record<string, string[]>
     relationshipRefToDiagramIds?: Record<string, string[]>
@@ -38,10 +34,6 @@ export function createParsedModel({
   relationships,
   diagrams,
   diagramFolderPaths,
-  diagramFolderIds,
-  diagramFolderSourceFiles,
-  modelRoot,
-  manifestPath,
   indexes,
 }: CreateParsedModelInput): ParsedModel {
   return {
@@ -51,12 +43,8 @@ export function createParsedModel({
     relationships,
     diagrams,
     diagramFolderPaths: diagramFolderPaths?.length ? [...diagramFolderPaths] : undefined,
-    diagramFolderIds: diagramFolderIds ? { ...diagramFolderIds } : undefined,
-    diagramFolderSourceFiles: diagramFolderSourceFiles ? { ...diagramFolderSourceFiles } : undefined,
     elementById: new Map(elements.map((item) => [item.id, item])),
     relationshipById: new Map(relationships.map((item) => [item.id, item])),
-    modelRoot,
-    manifestPath,
     diagramIndexByElementRef: new Map(
       Object.entries(indexes?.elementRefToDiagramIds ?? {}),
     ),
@@ -81,10 +69,6 @@ export function hydrateParsedModel(
     relationships: data.relationships,
     diagrams: data.diagrams,
     diagramFolderPaths: data.diagramFolderPaths,
-    diagramFolderIds: data.diagramFolderIds,
-    diagramFolderSourceFiles: data.diagramFolderSourceFiles,
-    modelRoot: data.modelRoot,
-    manifestPath: data.manifestPath,
     indexes: data.indexes,
   })
 }

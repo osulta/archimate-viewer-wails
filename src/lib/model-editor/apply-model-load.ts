@@ -1,6 +1,21 @@
 import { parseModelFromLoadPayload } from '../archimate/parsing/index'
-import { collectLoadedDiagramNodeIds } from '../archimate/split-model-client'
-import type { ModelLoadPayload, ParsedModel } from '../../types/model'
+import type { ModelLoadPayload, ParsedDiagram, ParsedModel } from '../../types/model'
+
+function collectAllDiagramNodeIds(diagrams: ParsedDiagram[]): Set<string> {
+  const ids = new Set<string>()
+  const walk = (nodes: ParsedDiagram['nodes']) => {
+    for (const node of nodes) {
+      ids.add(node.id)
+      if (node.children?.length) {
+        walk(node.children)
+      }
+    }
+  }
+  for (const diagram of diagrams) {
+    walk(diagram.nodes)
+  }
+  return ids
+}
 
 export interface ModelLoadDerivedState {
   parsedModel: ParsedModel
@@ -18,27 +33,18 @@ export function deriveModelLoadState(payload: ModelLoadPayload): ModelLoadDerive
 
   const connectionIds = new Set<string>()
   parsedModel.diagrams.forEach((d) => {
-    if (d.loaded) {
-      d.connections.forEach((c) => connectionIds.add(c.id))
-    }
+    d.connections.forEach((c) => connectionIds.add(c.id))
   })
 
   return {
     parsedModel,
     selectedDiagramId: '',
-    originalDiagramNodeIds: collectLoadedDiagramNodeIds(parsedModel.diagrams),
+    originalDiagramNodeIds: collectAllDiagramNodeIds(parsedModel.diagrams),
     originalElementIds: new Set(parsedModel.elements.map((e) => e.id)),
     originalRelationshipIds: new Set(parsedModel.relationships.map((r) => r.id)),
     originalConnectionIds: connectionIds,
-    loadedXml:
-      payload.layout === 'split-files'
-        ? ''
-        : typeof payload.content === 'string'
-          ? payload.content
-          : '',
-    loadedFilename:
-      payload.filename ||
-      (payload.layout === 'split-files' ? 'model' : 'model.archimate'),
+    loadedXml: typeof payload.content === 'string' ? payload.content : '',
+    loadedFilename: payload.filename || 'model.archimate',
   }
 }
 

@@ -139,7 +139,7 @@ export function applyDocumentationToElementXml(el: Element, documentNode: Docume
   docNode.textContent = text
 }
 
-/** Archi split-model format: `<properties key="…" value="…"/>` (not archimate:property). */
+/** Archi element properties: `<properties key="…" value="…"/>` (not archimate:property). */
 export function applyPropertiesToElementXml(
   el: Element,
   documentNode: Document,

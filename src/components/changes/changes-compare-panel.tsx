@@ -7,10 +7,7 @@ import {
 } from '../../lib/archimate/diagram-model'
 import { buildDiagramTreeSelectData } from '../../lib/archimate/model-folder-tree'
 import { computeDiagramCompareDiff } from '../../lib/archimate/diagram-compare'
-import {
-  fetchSingleFileModelAtRef,
-  fetchSplitCompareBundleAtRef,
-} from '../../lib/archimate/compare-model-load'
+import { fetchSingleFileModelAtRef } from '../../lib/archimate/compare-model-load'
 import { resolveDefaultCompareBranch } from '../../lib/git/resolve-default-compare-branch'
 import { CompareCanvasSyncProvider } from './compare-canvas-sync'
 import type {
@@ -25,14 +22,6 @@ function filterDiagramTreeNode(input: string, treeNode: { title?: unknown }): bo
     return true
   }
   return String(treeNode.title ?? '').toLowerCase().includes(needle)
-}
-
-function resolveModelManifestPath(modelPath: string | undefined | null, model: ParsedModel | null): string {
-  const tracked = String(modelPath ?? '').trim()
-  if (tracked) {
-    return tracked
-  }
-  return model?.manifestPath ?? ''
 }
 
 interface GitIntegration {
@@ -51,7 +40,6 @@ interface ChangesComparePanelProps {
   relationshipOverrides: RelationshipOverridesMap
   git: GitIntegration
   modelPath: string | null
-  ensureDiagramLoaded?: (diagramId: string) => Promise<unknown>
 }
 
 export function ChangesComparePanel(props: ChangesComparePanelProps) {
@@ -63,25 +51,17 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
     relationshipOverrides,
     git,
     modelPath,
-    ensureDiagramLoaded,
   } = props
 
   const { gitApiReady, gitRepoProbe, gitBranches, loadGitBranches } = git
   const isWailsDesktopRuntime =
     typeof window !== 'undefined' && window.location.protocol === 'wails:'
   const currentBranch = gitRepoProbe.currentBranch?.trim() || ''
-  const isSplitModel = model?.format === 'split-files'
 
   const [compareBranch, setCompareBranch] = useState('')
   const [compareModel, setCompareModel] = useState<ParsedModel | null>(null)
   const [compareLoadState, setCompareLoadState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [compareError, setCompareError] = useState('')
-  const [leftDiagramLoading, setLeftDiagramLoading] = useState(false)
-
-  const manifestPath = useMemo(
-    () => resolveModelManifestPath(modelPath, model),
-    [modelPath, model],
-  )
 
   const diagramOptions = useMemo(() => model?.diagrams ?? [], [model])
 
@@ -112,8 +92,8 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
     if (!gitApiReady || !gitRepoProbe.hasDotGit) {
       return
     }
-    void loadGitBranches(manifestPath || modelPath || undefined, { fetch: false })
-  }, [gitApiReady, gitRepoProbe.hasDotGit, manifestPath, modelPath, loadGitBranches])
+    void loadGitBranches(modelPath || undefined, { fetch: false })
+  }, [gitApiReady, gitRepoProbe.hasDotGit, modelPath, loadGitBranches])
 
   const branchOptions = useMemo(() => {
     const names = gitBranches.list.map((b) => b.name).filter(Boolean)
@@ -132,14 +112,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
   }, [branchOptions, compareBranch, gitBranches.defaultBranch])
 
   const loadCompareBranch = useCallback(async () => {
-    const pathForLoad = isSplitModel ? manifestPath : modelPath
-    if (!pathForLoad || !compareBranch.trim()) {
-      setCompareModel(null)
-      setCompareLoadState('idle')
-      setCompareError('')
-      return
-    }
-    if (isSplitModel && !selectedDiagramStub?.sourceFile) {
+    if (!modelPath || !compareBranch.trim()) {
       setCompareModel(null)
       setCompareLoadState('idle')
       setCompareError('')
@@ -149,14 +122,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
     setCompareLoadState('loading')
     setCompareError('')
     try {
-      const parsed = isSplitModel
-        ? await fetchSplitCompareBundleAtRef(
-            pathForLoad,
-            compareBranch.trim(),
-            selectedDiagramStub!.sourceFile!,
-            selectedDiagramStub!.folderPath ?? '',
-          )
-        : await fetchSingleFileModelAtRef(pathForLoad, compareBranch.trim())
+      const parsed = await fetchSingleFileModelAtRef(modelPath, compareBranch.trim())
       setCompareModel(parsed)
       setCompareLoadState('done')
     } catch (err) {
@@ -164,37 +130,11 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
       setCompareLoadState('error')
       setCompareError(err instanceof Error ? err.message : String(err))
     }
-  }, [
-    compareBranch,
-    isSplitModel,
-    manifestPath,
-    modelPath,
-    selectedDiagramStub,
-  ])
+  }, [compareBranch, modelPath])
 
   useEffect(() => {
     void loadCompareBranch()
   }, [loadCompareBranch])
-
-  useEffect(() => {
-    if (!isSplitModel || !selectedDiagramId || !ensureDiagramLoaded) {
-      return
-    }
-    const stub = model?.diagrams.find((d) => d.id === selectedDiagramId)
-    if (stub?.loaded) {
-      return
-    }
-    let cancelled = false
-    setLeftDiagramLoading(true)
-    void ensureDiagramLoaded(selectedDiagramId).finally(() => {
-      if (!cancelled) {
-        setLeftDiagramLoading(false)
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [isSplitModel, selectedDiagramId, model?.diagrams, ensureDiagramLoaded])
 
   const leftDiagram = useMemo(() => {
     if (!model || !selectedDiagramId) {
@@ -204,22 +144,15 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
     if (!base) {
       return null
     }
-    if (isSplitModel && !base.loaded) {
-      return null
-    }
     return resolveDiagramWithOverrides(base, diagramOverrides, relationshipOverrides, selectedDiagramId)
-  }, [model, selectedDiagramId, diagramOverrides, relationshipOverrides, isSplitModel])
+  }, [model, selectedDiagramId, diagramOverrides, relationshipOverrides])
 
   const rightDiagram = useMemo(() => {
     if (!compareModel || !selectedDiagramStub) {
       return null
     }
-    if (isSplitModel) {
-      const diagram = compareModel.diagrams.find((d) => d.id === selectedDiagramId) ?? null
-      return diagram?.loaded ? diagram : null
-    }
     return findDiagramInModel(compareModel, selectedDiagramId, selectedDiagramStub.name)
-  }, [compareModel, selectedDiagramId, selectedDiagramStub, isSplitModel])
+  }, [compareModel, selectedDiagramId, selectedDiagramStub])
 
   const leftTitle = currentBranch
     ? `Текущая ветка: ${currentBranch}`
@@ -241,22 +174,12 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
     }
   }, [leftDiagram, rightDiagram, model, compareModel])
 
-  const pathForCompare = isSplitModel ? manifestPath : modelPath
-  const pathMissingMessage = isSplitModel
-    ? 'Путь к model/folder.xml в репозитории не определён.'
-    : 'Путь к файлу модели в репозитории не определён.'
-
-  const compareLoadingMessage = isSplitModel
-    ? 'Загрузка диаграммы из ветки…'
-    : 'Загрузка модели из ветки…'
-
   return (
     <main className="tab-page compare-page" role="tabpanel" aria-label="Сравнение изменений">
       <div className="tab-page-head">
         <Typography.Title level={3}>Сравнение изменений</Typography.Title>
         <Typography.Paragraph type="secondary">
-          Сравнение диаграммы в текущей модели с версией из другой ветки
-          {isSplitModel ? ' (split XML).' : '.'}
+          Сравнение диаграммы в текущей модели с версией из другой ветки.
         </Typography.Paragraph>
       </div>
 
@@ -310,8 +233,11 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
           className="compare-empty"
           description="Репозиторий не найден. Настройте Git в «Администрирование» → Git."
         />
-      ) : !pathForCompare ? (
-        <Empty className="compare-empty" description={pathMissingMessage} />
+      ) : !modelPath ? (
+        <Empty
+          className="compare-empty"
+          description="Путь к файлу модели в репозитории не определён."
+        />
       ) : (
         <CompareCanvasSyncProvider resetKey={selectedDiagramId}>
           <div className="compare-columns">
@@ -319,11 +245,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
               <Typography.Title level={5} className="compare-column-title">
                 {leftTitle}
               </Typography.Title>
-              {leftDiagramLoading ? (
-                <p className="compare-empty">
-                  <Spin size="small" /> Загрузка диаграммы…
-                </p>
-              ) : !leftDiagram ? (
+              {!leftDiagram ? (
                 <Empty className="compare-empty" description="Диаграмма не найдена в текущей модели." />
               ) : (
                 <DiagramCanvas
@@ -347,7 +269,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
                 <Alert type="error" showIcon message={compareError} />
               ) : compareLoadState === 'loading' ? (
                 <p className="compare-empty">
-                  <Spin size="small" /> {compareLoadingMessage}
+                  <Spin size="small" /> Загрузка модели из ветки…
                 </p>
               ) : !compareBranch ? (
                 <Empty className="compare-empty" description="Выберите ветку для сравнения." />

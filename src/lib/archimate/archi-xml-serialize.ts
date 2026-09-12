@@ -114,7 +114,7 @@ function serializeArchimateElement(el: Element, depth: number): string {
   return result
 }
 
-/** Serialize DOM using Archi / Grafico split-file formatting conventions. */
+/** Serialize DOM using Archi XML formatting conventions. */
 export function serializeArchimateXml(documentNode: Document): string {
   const root = documentNode.documentElement
   if (!root) {

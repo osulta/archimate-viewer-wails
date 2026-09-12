@@ -112,7 +112,8 @@ function GitRepoRootBlock({
     <Card size="small" title="Каталог данных (GIT_REPO_ROOT)" aria-label="Каталог GIT_REPO_ROOT">
       <Space className="git-settings-fields" direction="vertical" size={10}>
         <Typography.Paragraph className="git-hint" style={{ marginBottom: 0 }}>
-          Каталог, в котором хранится git-репозиторий (внутри него появится <code>.git</code> после clone).
+          Каталог данных: внутри него clone создаёт подкаталог <code>git</code> (там появится{' '}
+          <code>.git</code>).
         </Typography.Paragraph>
         {gitRepoRoot ? (
           <Alert

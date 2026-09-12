@@ -4,6 +4,9 @@ import { confirmDialog } from '../lib/ui/confirm-dialog'
 import { SelectDirectory, isWailsRuntime } from '../../wailsjs/go/main/App'
 import type { ModelLoadPayload } from '../types/model'
 
+/** Default clone / work-tree folder under GIT_REPO_ROOT (same as Node API). */
+const DEFAULT_GIT_WORK_FOLDER = 'git'
+
 function localBranchNameFromRef(ref: string | null | undefined): string {
   const trimmed = String(ref ?? '').trim()
   if (!trimmed) {
@@ -98,7 +101,6 @@ interface GitRepoProbe {
   workFolder: string
   remoteUrl: string
   currentBranch: string
-  modelLayout: string
 }
 
 interface GitBranchesState {
@@ -113,13 +115,11 @@ interface ReadModelResult {
   error?: string
   path?: string
   filename?: string
-  layout?: string
 }
 
 interface RefreshRepoResult {
   ok: boolean
   modelPath: string
-  modelLayout?: string
   hasDotGit: boolean
 }
 
@@ -204,7 +204,6 @@ export function useGitIntegration({
     workFolder: '.',
     remoteUrl: '',
     currentBranch: '',
-    modelLayout: '',
   })
   const [gitBranches, setGitBranches] = useState<GitBranchesState>({
     loading: false,
@@ -217,19 +216,12 @@ export function useGitIntegration({
   const [gitCommandLabel, setGitCommandLabel] = useState('')
   const [gitApiReady, setGitApiReady] = useState(false)
   const [modelLoading, setModelLoading] = useState(false)
-  const [modelLayout, setModelLayout] = useState(() =>
-    typeof sessionStorage !== 'undefined'
-      ? sessionStorage.getItem('archimate-model-layout') ?? 'single-file'
-      : 'single-file',
-  )
 
   const gitRepoPathRef = useRef('')
-  const modelLayoutRef = useRef('single-file')
   const gitConfigPatRef = useRef('')
   const branchesRequestSeqRef = useRef(0)
   gitRepoPathRef.current = gitRepoPath.trim()
   gitConfigPatRef.current = gitConfigPat
-  modelLayoutRef.current = modelLayout
 
   const onModelLoadedRef = useRef(onModelLoaded)
   const onModelSavedRef = useRef(onModelSaved)
@@ -264,50 +256,9 @@ export function useGitIntegration({
     }
   }, [gitRepoPath])
 
-  useEffect(() => {
-    sessionStorage.setItem('archimate-model-layout', modelLayout)
-  }, [modelLayout])
-
-  const readAndApplyModel = useCallback(async (relPath: string, options: { layout?: string } = {}): Promise<ReadModelResult> => {
+  const readAndApplyModel = useCallback(async (relPath: string): Promise<ReadModelResult> => {
     setModelLoading(true)
     try {
-    const layout =
-      options.layout ??
-      modelLayoutRef.current ??
-      (relPath.replace(/\\/g, '/').endsWith('model/folder.xml') ? 'split-files' : 'single-file')
-
-    if (layout === 'split-files') {
-      const readRes = await fetch(apiUrl('/api/model/read-split-index'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: relPath }),
-      })
-      const readData = await readRes.json()
-      if (!readData.ok || !readData.parsedModel) {
-        return {
-          ok: false,
-          error: readData.error || String(readRes.status),
-          path: relPath,
-        }
-      }
-      const manifestPath = readData.manifestPath ?? readData.path ?? relPath
-      try {
-        onModelLoadedRef.current({
-          layout: 'split-files',
-          parsedModel: readData.parsedModel,
-          filename: 'model',
-          repoPath: manifestPath,
-        })
-        setGitRepoPath(manifestPath)
-        setModelLayout('split-files')
-        return { ok: true, path: manifestPath, filename: 'model', layout: 'split-files' }
-      } catch (parseErr) {
-        const msg = parseErr instanceof Error ? parseErr.message : String(parseErr)
-        onModelParseErrorRef.current(msg)
-        return { ok: false, error: msg, path: manifestPath }
-      }
-    }
-
     const readRes = await fetch(apiUrl('/api/model/read'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -325,14 +276,12 @@ export function useGitIntegration({
       readData.path.split('/').pop() || relPath.split('/').pop() || 'model.archimate'
     try {
       onModelLoadedRef.current({
-        layout: 'single-file',
         content: readData.content,
         filename: baseName,
         repoPath: readData.path,
       })
       setGitRepoPath(readData.path)
-      setModelLayout('single-file')
-      return { ok: true, path: readData.path, filename: baseName, layout: 'single-file' }
+      return { ok: true, path: readData.path, filename: baseName }
     } catch (parseErr) {
       const msg = parseErr instanceof Error ? parseErr.message : String(parseErr)
       onModelParseErrorRef.current(msg)
@@ -366,7 +315,7 @@ export function useGitIntegration({
       const r = await fetch(apiUrl('/api/git/repo-state'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: '' }),
+        body: JSON.stringify({ workFolder: DEFAULT_GIT_WORK_FOLDER }),
       })
       const data = await r.json()
       if (data.ok) {
@@ -379,10 +328,6 @@ export function useGitIntegration({
           workFolder: data.workFolder ?? '.',
           remoteUrl,
           currentBranch: probeBranch === 'HEAD' ? '' : probeBranch,
-          modelLayout:
-            data.modelLayout === 'split-files' || data.modelLayout === 'single-file'
-              ? data.modelLayout
-              : '',
         })
         if (options.syncRemoteUrl) {
           setGitCloneUrl(remoteUrl)
@@ -394,16 +339,9 @@ export function useGitIntegration({
         } else {
           setGitRepoPath('')
         }
-        if (data.modelLayout === 'split-files' || data.modelLayout === 'single-file') {
-          setModelLayout(data.modelLayout)
-        }
         return {
           ok: true,
           modelPath: typeof data.modelPath === 'string' ? data.modelPath : '',
-          modelLayout:
-            data.modelLayout === 'split-files' || data.modelLayout === 'single-file'
-              ? data.modelLayout
-              : '',
           hasDotGit: Boolean(data.hasDotGit),
         }
       }
@@ -428,7 +366,7 @@ export function useGitIntegration({
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              workFolder: '',
+              workFolder: DEFAULT_GIT_WORK_FOLDER,
               ...(rel ? { path: rel } : {}),
               ...(fetchRemote ? { fetch: true } : {}),
               ...(pat ? { pat } : {}),
@@ -603,18 +541,12 @@ export function useGitIntegration({
     let cancelled = false
     ;(async () => {
       try {
-        const layoutHint =
-          gitRepoProbe.modelLayout === 'split-files' || gitRepoProbe.modelLayout === 'single-file'
-            ? gitRepoProbe.modelLayout
-            : undefined
-        const result = await readAndApplyModel(relPath, { layout: layoutHint })
+        const result = await readAndApplyModel(relPath)
         if (cancelled) {
           return
         }
         if (result.ok) {
-          const layoutNote =
-            result.layout === 'split-files' ? ' (split XML)' : ''
-          setGitOutput(`Модель загружена из репозитория: ${result.path}${layoutNote}`)
+          setGitOutput(`Модель загружена из репозитория: ${result.path}`)
         } else if (result.error) {
           setGitOutput(
             result.path
@@ -639,7 +571,6 @@ export function useGitIntegration({
     gitRepoProbe.loaded,
     gitRepoProbe.loading,
     gitRepoProbe.hasDotGit,
-    gitRepoProbe.modelLayout,
     gitRepoPath,
     hasModel,
     readAndApplyModel,
@@ -653,14 +584,9 @@ export function useGitIntegration({
     if (
       tracked &&
       !tracked.split('/').some((segment) => segment === '..' || segment === '.') &&
-      (/\.(archimate|xml)$/i.test(tracked) ||
-        (modelLayoutRef.current === 'split-files' && /\/folder\.xml$/i.test(tracked)))
+      /\.(archimate|xml)$/i.test(tracked)
     ) {
       return tracked
-    }
-
-    if (modelLayoutRef.current === 'split-files') {
-      return 'model/folder.xml'
     }
 
     let base =
@@ -744,7 +670,6 @@ export function useGitIntegration({
         const msg = `Модель сохранена: ${savedPath}`
         setGitOutput(msg)
         onModelSavedRef.current?.({
-          layout: 'single-file',
           content: nextXml,
           filename: baseName,
           repoPath: savedPath,
@@ -770,7 +695,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          workFolder: '',
+          workFolder: DEFAULT_GIT_WORK_FOLDER,
           ...(remoteUrl ? { remoteUrl } : {}),
           ...(pat ? { pat } : {}),
         }),
@@ -893,7 +818,7 @@ export function useGitIntegration({
       const response = await fetch(apiUrl('/api/git/delete-repository'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: '' }),
+        body: JSON.stringify({ workFolder: DEFAULT_GIT_WORK_FOLDER }),
       })
       const data = await response.json()
       if (data.ok) {
@@ -930,7 +855,7 @@ export function useGitIntegration({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           url,
-          workFolder: '',
+          workFolder: DEFAULT_GIT_WORK_FOLDER,
           ...(gitCloneShallow ? { depth: 1 } : {}),
           ...(pat ? { pat } : {}),
         }),
@@ -949,12 +874,7 @@ export function useGitIntegration({
             ? `Клон создан: ${data.path}\n${tail}`
             : `Клон создан в каталоге относительно корня репо: ${data.path}`) + originNote
         if (data.modelPath) {
-          const result = await readAndApplyModel(data.modelPath, {
-            layout:
-              data.modelLayout === 'split-files' || data.modelLayout === 'single-file'
-                ? data.modelLayout
-                : undefined,
-          })
+          const result = await readAndApplyModel(data.modelPath)
           if (result.ok) {
             out += `\nМодель загружена: ${result.path}`
           } else if (result.path) {
@@ -964,7 +884,7 @@ export function useGitIntegration({
           }
         } else {
           out +=
-            '\nВ клоне не найден .archimate или split-модель model/folder.xml (поиск по дереву).'
+            '\nВ клоне не найден файл модели .archimate (поиск по дереву). Split-модели (model/folder.xml) больше не поддерживаются.'
         }
         setGitOutput(out)
         await refreshGitRepoState()
@@ -990,7 +910,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: '' }),
+          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
           branch,
         }),
       })
@@ -1056,7 +976,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: '' }),
+          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
           remote,
           branch,
           ...(gitPushUpstream ? { setUpstream: true } : {}),
@@ -1110,7 +1030,7 @@ export function useGitIntegration({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: '' }),
+          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
           remote: 'origin',
           ...(pat ? { pat } : {}),
         }),
@@ -1187,7 +1107,6 @@ export function useGitIntegration({
         body: JSON.stringify({
           path: rel,
           message,
-          ...(modelLayoutRef.current === 'split-files' ? { layout: 'split-files' } : {}),
         }),
       })
       const data = await response.json()
@@ -1248,7 +1167,6 @@ export function useGitIntegration({
     handleResetRepoRoot,
     handleBrowseRepoRoot,
     gitRepoProbe,
-    modelLayout,
     modelLoading,
     gitBranches,
     gitOutput,

@@ -1,4 +1,4 @@
-export type ModelFormat = 'archi-tool' | 'exchange' | 'split-files'
+export type ModelFormat = 'archi-tool' | 'exchange'
 
 export interface ParsedElement {
   id: string
@@ -7,8 +7,6 @@ export interface ParsedElement {
   documentation?: string
   properties?: ElementProperty[]
   folderPath?: string
-  sourceFile?: string
-  lite?: boolean
 }
 
 export interface ElementProperty {
@@ -26,7 +24,6 @@ export interface ParsedRelationship {
   documentation?: string
   properties?: ElementProperty[]
   folderPath?: string
-  sourceFile?: string
 }
 
 export interface DiagramNode {
@@ -72,8 +69,6 @@ export interface ParsedDiagram {
   name: string
   type: string
   folderPath?: string
-  sourceFile?: string
-  loaded?: boolean
   nodes: DiagramNode[]
   connections: DiagramConnection[]
 }
@@ -86,16 +81,10 @@ export interface ParsedModel {
   diagrams: ParsedDiagram[]
   elementById: Map<string, ParsedElement>
   relationshipById: Map<string, ParsedRelationship>
-  modelRoot?: string
-  manifestPath?: string
   diagramIndexByElementRef?: Map<string, string[]>
   diagramIndexByRelationshipRef?: Map<string, string[]>
   /** Explicit diagram folder paths (Views / …), including empty folders. */
   diagramFolderPaths?: string[]
-  /** Logical folder path → folder id from folder.xml (split-files). */
-  diagramFolderIds?: Record<string, string>
-  /** Logical folder path → folder.xml relative path (split-files). */
-  diagramFolderSourceFiles?: Record<string, string>
 }
 
 export interface NodeOverride {
@@ -135,9 +124,7 @@ export type DiagramOverridesMap = Map<string, Map<string, NodeOverride>>
 export type RelationshipOverridesMap = Map<string, Map<string, Bendpoint[]>>
 
 export interface ModelLoadPayload {
-  layout: 'single-file' | 'split-files'
-  content?: string
-  parsedModel?: Omit<ParsedModel, 'elementById' | 'relationshipById'>
+  content: string
   filename: string
   repoPath?: string
 }

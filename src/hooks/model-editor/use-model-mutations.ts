@@ -21,7 +21,6 @@ import {
   snapToGrid,
   isDiagramReferenceNode,
 } from '../../lib/archimate/diagram-model'
-import { isSplitFilesModel } from '../../lib/model-editor/is-split-files-model'
 import {
   diagramFolderKeyFromPathParts,
   getDiagramTreePathParts,
@@ -31,10 +30,6 @@ import {
   remapDiagramFolderFullPath,
   normalizeDiagramFolderFullPath,
 } from '../../lib/archimate/model-folder-tree'
-import {
-  resolveSplitElementFilePath,
-  resolveSplitRelationshipFilePath,
-} from '../../lib/archimate/split-model-save'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type { ConnectionEndpointKind } from '../../lib/diagram-canvas/types'
 import {
@@ -273,33 +268,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     setDeletedDiagramNodeIds, setDeletedElementIds, setDeletedRelationshipIds, setDeletedConnectionIds,
     pendingLinkType, linkCreateSourceId, setLinkCreateSourceId, setPendingLinkType,
     commitDiagramOverrides, commitRelationshipOverrides, commitElementOverrides,
-    commitRelationshipMetaOverrides, markSplitDiagramDirty, markSplitRelationshipDirty, clearLinkCreation,
-    deletedSplitModelFilesRef, dirtySplitDiagramIdsRef, dirtySplitRelationshipIdsRef,
+    commitRelationshipMetaOverrides, clearLinkCreation,
   } = editState
-
-  function trackDeletedSplitModelFile(relativePath: string): void {
-    const normalized = relativePath.replace(/^\/+/, '')
-    if (!normalized) {
-      return
-    }
-    deletedSplitModelFilesRef.current = new Set(deletedSplitModelFilesRef.current).add(normalized)
-  }
-
-  function markDiagramsUsingRelationship(relationshipRef: string): void {
-    if (!model || !isSplitFilesModel(model)) {
-      return
-    }
-    const diagramIds = new Set<string>()
-    model.diagramIndexByRelationshipRef?.get(relationshipRef)?.forEach((diagramId) => {
-      diagramIds.add(diagramId)
-    })
-    model.diagrams.forEach((diagram) => {
-      if (diagram.connections.some((connection) => connection.relationshipRef === relationshipRef)) {
-        diagramIds.add(diagram.id)
-      }
-    })
-    diagramIds.forEach((diagramId) => markSplitDiagramDirty(diagramId))
-  }
 
   const {
     selectedDiagramId, setSelectedDiagramId,
@@ -336,9 +306,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       deletedElementIds,
       deletedRelationshipIds,
       deletedConnectionIds,
-      deletedSplitModelFiles: deletedSplitModelFilesRef.current,
-      dirtySplitDiagramIds: dirtySplitDiagramIdsRef.current,
-      dirtySplitRelationshipIds: dirtySplitRelationshipIdsRef.current,
       linkCreateSourceId,
       selectedNodeId: selectedNodeLive?.id ?? null,
       selectedElementId,
@@ -360,9 +327,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       setDeletedElementIds,
       setDeletedRelationshipIds,
       setDeletedConnectionIds,
-      deletedSplitModelFilesRef,
-      dirtySplitDiagramIdsRef,
-      dirtySplitRelationshipIdsRef,
       setLinkCreateSourceId,
       setSelectedNode,
       setSelectedElementId,
@@ -532,10 +496,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         setCreatedRelationships((prev) => [...prev, createdRelationship!])
       }
     }
-    if (isSplitFilesModel(model)) {
-      markSplitDiagramDirty(diagramId)
-    }
-
     const afterDiagramNodes = nextDiagramNodes
     const afterConnections = nextConnections
     const afterRelationships = nextRelationships
@@ -640,9 +600,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (relChanged) {
       commitRelationshipOverrides(nextRelOverrides)
     }
-    if (isSplitFilesModel(model)) {
-      markSplitDiagramDirty(diagramId)
-    }
     pushSnapshotCommand(
       'Изменение размера объекта',
       () => {
@@ -679,16 +636,13 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       const nextAll = new Map(diagramOverrides)
       nextAll.set(diagramId, nextOverrides)
       commitDiagramOverrides(nextAll)
-      if (isSplitFilesModel(model)) {
-        markSplitDiagramDirty(diagramId)
-      }
       pushSnapshotCommand(
         'Изменение фона объекта',
         () => commitDiagramOverrides(cloneNodeOverrideMap(beforeAll)),
         () => commitDiagramOverrides(cloneNodeOverrideMap(nextAll)),
       )
     },
-    [diagramOverrides, commitDiagramOverrides, markSplitDiagramDirty, model, pushSnapshotCommand],
+    [diagramOverrides, commitDiagramOverrides, pushSnapshotCommand],
   )
 
   const updateDiagramFolderMetadata = useCallback(
@@ -720,20 +674,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         nextFolderPaths.push(newPath)
       }
 
-      const nextFolderIds = { ...(model.diagramFolderIds ?? {}) }
-      const folderId = nextFolderIds[oldPath]
-      if (folderId) {
-        delete nextFolderIds[oldPath]
-        nextFolderIds[newPath] = folderId
-      }
-
-      const nextSourceFiles = { ...(model.diagramFolderSourceFiles ?? {}) }
-      const sourceFile = nextSourceFiles[oldPath]
-      if (sourceFile) {
-        delete nextSourceFiles[oldPath]
-        nextSourceFiles[newPath] = sourceFile
-      }
-
       const nextDiagrams = model.diagrams.map((diagram) => {
         const folderPath = diagram.folderPath?.trim()
         if (!folderPath) {
@@ -750,8 +690,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       setModel({
         ...model,
         diagramFolderPaths: nextFolderPaths,
-        diagramFolderIds: nextFolderIds,
-        diagramFolderSourceFiles: nextSourceFiles,
         diagrams: nextDiagrams,
       })
 
@@ -775,18 +713,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       const wasOriginal = [...originalDiagramFolderPaths].some(
         (path) => normalizeDiagramFolderFullPath(path, branchName) === oldPath,
       )
-      if (wasOriginal && !wasCreated && sourceFile) {
+      if (wasOriginal && !wasCreated) {
         setDirtyDiagramFolderPaths((prev) => new Set([...prev, newPath]))
-      }
-
-      for (const diagram of nextDiagrams) {
-        const folderPath = diagram.folderPath?.trim()
-        if (
-          folderPath &&
-          (folderPath === newPath || folderPath.startsWith(`${newPath} / `))
-        ) {
-          markSplitDiagramDirty(diagram.id)
-        }
       }
 
       const nextFolderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
@@ -797,7 +725,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       model,
       originalDiagramFolderPaths,
       createdDiagramFolderPaths,
-      markSplitDiagramDirty,
       setSelectedDiagramFolderKey,
       setDiagramTreeSelectedKey,
       setDirtyDiagramFolderPaths,
@@ -827,9 +754,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
           diagram.id === diagramId ? { ...diagram, ...patch } : diagram,
         ),
       })
-      markSplitDiagramDirty(diagramId)
     },
-    [model, markSplitDiagramDirty],
+    [model],
   )
 
   const updateRelationshipMetaOverride = useCallback((relationshipId: string, patch: Partial<RelationshipMetaOverride>) => {
@@ -968,7 +894,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       relationships: finalRelationships,
       relationshipById: finalRelationshipById,
     })
-    markSplitDiagramDirty(selectedDiagramId)
     setCreatedObjects((prev) => [
       ...prev,
       { diagramId: selectedDiagramId, element: newElement, node: newNode, format: model.format },
@@ -1066,7 +991,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       relationships: finalRelationships,
       relationshipById: finalRelationshipById,
     })
-    markSplitDiagramDirty(selectedDiagramId)
     setCreatedObjects((prev) => [
       ...prev,
       {
@@ -1151,7 +1075,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       ...model,
       diagrams: nextDiagrams,
     })
-    markSplitDiagramDirty(selectedDiagramId)
     setSelectedNode(newNode)
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
@@ -1179,15 +1102,9 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (existing.has(newPath)) {
       return
     }
-    const folderId = generateArchimateModelId()
-
     setModel({
       ...model,
       diagramFolderPaths: [...existing, newPath],
-      diagramFolderIds: {
-        ...(model.diagramFolderIds ?? {}),
-        [newPath]: folderId,
-      },
     })
     setCreatedDiagramFolderPaths((prev) => new Set([...prev, newPath]))
     const folderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
@@ -1219,7 +1136,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       folderPath:
         model.format === 'exchange'
           ? undefined
-          : model.format === 'archi-tool' || model.format === 'split-files'
+          : model.format === 'archi-tool'
             ? targetFolderPath
             : undefined,
       nodes: [],
@@ -1311,8 +1228,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         relationshipById: nextRelationshipById,
         diagrams: nextDiagrams,
       })
-      markSplitDiagramDirty(selectedDiagramId)
-      setCreatedRelationships((prev) => [
+        setCreatedRelationships((prev) => [
         ...prev,
         {
           diagramId: selectedDiagramId,
@@ -1471,9 +1387,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target)),
     )
 
-    const nextDirtySplitDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
-    nextDirtySplitDiagramIds.add(selectedDiagramId)
-
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
       model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
@@ -1483,7 +1396,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
       deletedDiagramNodeIds: nextDeletedDiagramNodeIds,
       deletedConnectionIds: nextDeletedConnectionIds,
-      dirtySplitDiagramIds: nextDirtySplitDiagramIds,
       selectedNodeId: null,
       selectedElementId: null,
       selectedRelationshipRef: null,
@@ -1562,18 +1474,12 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       (cr) => !removedConnIds.includes(cr.connection.id),
     )
 
-    const nextDirtySplitDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
-    if (isSplitFilesModel(model)) {
-      nextDirtySplitDiagramIds.add(selectedDiagramId)
-    }
-
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
       model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
       relationshipOverrides: cloneBendpointMap(nextRelOverrides),
       createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
       deletedConnectionIds: nextDeletedConnectionIds,
-      dirtySplitDiagramIds: nextDirtySplitDiagramIds,
       selectedNodeId: null,
       selectedElementId: null,
       selectedRelationshipRef: null,
@@ -1650,12 +1556,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
         next.add(ref)
         return next
       })
-      if (relationship && isSplitFilesModel(model)) {
-        trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
-      }
     }
-
-    markDiagramsUsingRelationship(ref)
 
     setCreatedRelationships((prev) => prev.filter((cr) => cr.relationship.id !== ref))
 
@@ -1760,30 +1661,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     const nextRelMetaOverrides = new Map(relationshipMetaOverrides)
     removedRelIds.forEach((id) => nextRelMetaOverrides.delete(id))
 
-    const element = model.elementById.get(elementId)
-    if (isSplitFilesModel(model)) {
-      if (element && originalElementIds.has(elementId)) {
-        trackDeletedSplitModelFile(resolveSplitElementFilePath(element))
-      }
-      relsToRemove.forEach((relationship) => {
-        if (originalRelationshipIds.has(relationship.id)) {
-          trackDeletedSplitModelFile(resolveSplitRelationshipFilePath(relationship))
-        }
-      })
-      model.diagrams.forEach((diagram) => {
-        const hadConnectionRemoval = diagram.connections.some(
-          (connection) =>
-            removedRelIds.has(connection.relationshipRef) ||
-            removedNodeIds.has(connection.source) ||
-            removedNodeIds.has(connection.target),
-        )
-        const hadNodeRemoval = collectNodeIdsRemovedForElement(diagram.nodes, elementId).length > 0
-        if (hadConnectionRemoval || hadNodeRemoval) {
-          markSplitDiagramDirty(diagram.id)
-        }
-      })
-    }
-
     setDeletedDiagramNodeIds((prev) => {
       const next = new Set(prev)
       removedNodeIds.forEach((id) => {
@@ -1861,7 +1738,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     originalElementIds,
     originalRelationshipIds,
     originalConnectionIds,
-    markSplitDiagramDirty,
   ])
 
   function updateRelationshipBendpoint(relationshipRef: string, bendpointIndex: number, bendpoint: Bendpoint) {
@@ -2041,19 +1917,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }
     })
 
-    const nextDirtyDiagramIds = new Set(dirtySplitDiagramIdsRef.current)
-    const nextDirtyRelationshipIds = new Set(dirtySplitRelationshipIdsRef.current)
-    if (isSplitFilesModel(model)) {
-      model.diagrams.forEach((d) => {
-        if (d.connections.some((c) => c.relationshipRef === relationshipRef)) {
-          nextDirtyDiagramIds.add(d.id)
-        }
-      })
-      if (relationship.sourceFile || originalRelationshipIds.has(relationshipRef)) {
-        nextDirtyRelationshipIds.add(relationshipRef)
-      }
-    }
-
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
       model: cloneModelSnapshot({
@@ -2064,8 +1927,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       }),
       relationshipOverrides: cloneBendpointMap(nextRelOverrides),
       createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
-      dirtySplitDiagramIds: nextDirtyDiagramIds,
-      dirtySplitRelationshipIds: nextDirtyRelationshipIds,
       selectedBendpointIndex: null,
     }
 

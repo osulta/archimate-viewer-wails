@@ -14,11 +14,11 @@ import {
   applyDiagramLayoutToXml,
   applyDiagramMetadataToXml,
   ensureCreatedDiagramsInXml,
+  ensureDiagramFoldersInXml,
   normalizeRelationshipType,
   formatDiagramCoord,
 } from '../archimate/diagram-model'
 import { isRelationshipModelElement } from '../archimate/relationship-meta'
-import { isSplitFilesModel } from './is-split-files-model'
 import type {
   ParsedModel,
   NodeOverride,
@@ -47,7 +47,7 @@ export interface BuildEditedModelXmlParams {
 
 export function buildEditedModelXml(params: BuildEditedModelXmlParams): string | null {
 
-    if (!params.model || isSplitFilesModel(params.model)) {
+    if (!params.model) {
       return null
     }
     if (!params.loadedXml) {

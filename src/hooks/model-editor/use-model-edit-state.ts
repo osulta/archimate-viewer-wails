@@ -67,9 +67,6 @@ export interface ModelEditState {
   relationshipOverridesRef: React.MutableRefObject<Map<string, Map<string, Bendpoint[]>>>
   elementOverridesRef: React.MutableRefObject<Map<string, ElementOverride>>
   relationshipMetaOverridesRef: React.MutableRefObject<Map<string, RelationshipMetaOverride>>
-  dirtySplitDiagramIdsRef: React.MutableRefObject<Set<string>>
-  dirtySplitRelationshipIdsRef: React.MutableRefObject<Set<string>>
-  deletedSplitModelFilesRef: React.MutableRefObject<Set<string>>
   commitDiagramOverrides: (
     updater:
       | Map<string, Map<string, NodeOverride>>
@@ -90,9 +87,7 @@ export interface ModelEditState {
       | Map<string, RelationshipMetaOverride>
       | ((prev: Map<string, RelationshipMetaOverride>) => Map<string, RelationshipMetaOverride>),
   ) => void
-  markSplitDiagramDirty: (diagramId: string) => void
-  markSplitRelationshipDirty: (relationshipId: string) => void
-  resetSplitEditState: () => void
+  resetEditOverrides: () => void
   resetModelAfterRepoDelete: () => void
   clearLinkCreation: () => void
   resetAfterFailedModelFile: (caughtError: unknown) => void
@@ -144,9 +139,6 @@ export function useModelEditState(): ModelEditState {
   const relationshipOverridesRef = useRef<Map<string, Map<string, Bendpoint[]>>>(new Map())
   const elementOverridesRef = useRef<Map<string, ElementOverride>>(new Map())
   const relationshipMetaOverridesRef = useRef<Map<string, RelationshipMetaOverride>>(new Map())
-  const dirtySplitDiagramIdsRef = useRef<Set<string>>(new Set())
-  const dirtySplitRelationshipIdsRef = useRef<Set<string>>(new Set())
-  const deletedSplitModelFilesRef = useRef<Set<string>>(new Set())
   const [saveStatusMessage, setSaveStatusMessage] = useState('')
   const [modelSaving, setModelSaving] = useState(false)
 
@@ -210,34 +202,12 @@ export function useModelEditState(): ModelEditState {
     [],
   )
 
-  const markSplitDiagramDirty = useCallback((diagramId: string) => {
-    if (!diagramId) {
-      return
-    }
-    const next = new Set(dirtySplitDiagramIdsRef.current)
-    next.add(diagramId)
-    dirtySplitDiagramIdsRef.current = next
-  }, [])
-
-  const markSplitRelationshipDirty = useCallback((relationshipId: string) => {
-    if (!relationshipId) {
-      return
-    }
-    const next = new Set(dirtySplitRelationshipIdsRef.current)
-    next.add(relationshipId)
-    dirtySplitRelationshipIdsRef.current = next
-  }, [])
-
-  const resetSplitEditState = useCallback(() => {
+  const resetEditOverrides = useCallback(() => {
     const emptyMap = new Map()
-    const emptySet = new Set<string>()
     diagramOverridesRef.current = emptyMap
     relationshipOverridesRef.current = emptyMap
     elementOverridesRef.current = emptyMap
     relationshipMetaOverridesRef.current = emptyMap
-    dirtySplitDiagramIdsRef.current = emptySet
-    dirtySplitRelationshipIdsRef.current = emptySet
-    deletedSplitModelFilesRef.current = new Set()
     setDiagramOverrides(emptyMap)
     setRelationshipOverrides(emptyMap)
     setElementOverrides(emptyMap)
@@ -254,7 +224,6 @@ export function useModelEditState(): ModelEditState {
     setDeletedElementIds(new Set())
     setDeletedRelationshipIds(new Set())
     setDeletedConnectionIds(new Set())
-    deletedSplitModelFilesRef.current = new Set()
   }, [])
 
   const clearLinkCreation = useCallback(() => {
@@ -264,7 +233,7 @@ export function useModelEditState(): ModelEditState {
 
   const resetModelAfterRepoDelete = useCallback(() => {
     setModel(null)
-    resetSplitEditState()
+    resetEditOverrides()
     setCreatedObjects([])
     setCreatedRelationships([])
     setCreatedDiagramIds(new Set())
@@ -279,16 +248,15 @@ export function useModelEditState(): ModelEditState {
     setDeletedRelationshipIds(new Set())
     setDeletedConnectionIds(new Set())
     setOriginalConnectionIds(new Set())
-    deletedSplitModelFilesRef.current = new Set()
     setLoadedXml('')
     setLoadedFilename('model.archimate')
     setError('')
-  }, [resetSplitEditState])
+  }, [resetEditOverrides])
 
   const resetAfterFailedModelFile = useCallback(
     (caughtError: unknown) => {
       setModel(null)
-      resetSplitEditState()
+      resetEditOverrides()
       setCreatedObjects([])
       setCreatedRelationships([])
       setCreatedDiagramIds(new Set())
@@ -303,11 +271,10 @@ export function useModelEditState(): ModelEditState {
       setDeletedRelationshipIds(new Set())
       setDeletedConnectionIds(new Set())
       setOriginalConnectionIds(new Set())
-      deletedSplitModelFilesRef.current = new Set()
       setLoadedXml('')
       setError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать файл.')
     },
-    [resetSplitEditState],
+    [resetEditOverrides],
   )
 
   return {
@@ -368,16 +335,11 @@ export function useModelEditState(): ModelEditState {
     relationshipOverridesRef,
     elementOverridesRef,
     relationshipMetaOverridesRef,
-    dirtySplitDiagramIdsRef,
-    dirtySplitRelationshipIdsRef,
-    deletedSplitModelFilesRef,
     commitDiagramOverrides,
     commitRelationshipOverrides,
     commitElementOverrides,
     commitRelationshipMetaOverrides,
-    markSplitDiagramDirty,
-    markSplitRelationshipDirty,
-    resetSplitEditState,
+    resetEditOverrides,
     resetModelAfterRepoDelete,
     clearLinkCreation,
     resetAfterFailedModelFile,

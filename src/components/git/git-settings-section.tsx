@@ -69,8 +69,8 @@ export function GitSettingsSection({
         />
       </label>
       <Typography.Paragraph className="git-hint">
-        <code>git clone</code> создаёт репозиторий в каталоге из поля «Путь к каталогу (абсолютный)»
-        выше (URL и PAT отсюда же).
+        <code>git clone</code> создаёт репозиторий в подкаталоге <code>git</code> внутри пути из поля
+        «Путь к каталогу (абсолютный)» выше (URL и PAT отсюда же).
       </Typography.Paragraph>
       <Checkbox
         checked={gitCloneShallow}
@@ -98,7 +98,7 @@ export function GitSettingsSection({
           gitRepoProbe.loading ||
           !gitRepoProbe.hasDotGit
         }
-        title={`Удалить репозиторий из «${repoRootLabel}» (только если в каталоге есть .git)`}
+        title={`Удалить репозиторий «${repoRootLabel}/git» (только если в каталоге есть .git)`}
         onClick={() => void onDeleteRepository()}
       >
         {gitCommandLoading && gitCommandLabel === 'Удаление репозитория…'
@@ -106,8 +106,8 @@ export function GitSettingsSection({
           : 'Удалить репозиторий с диска'}
       </Button>
       <Typography.Paragraph className="git-hint">
-        Удаляется содержимое каталога «Путь к каталогу (абсолютный)»; модель в памяти сбрасывается. Для снова
-        работы выполните <code>git clone</code>.
+        Удаляется каталог <code>git</code> внутри «Путь к каталогу (абсолютный)»; модель в памяти
+        сбрасывается. Для снова работы выполните <code>git clone</code>.
       </Typography.Paragraph>
     </Space>
   )

@@ -1,5 +1,5 @@
 /**
- * Archi / split-export id: `id-` + 32 hex chars (e.g. id-e0a5ad453a344edfacff05726568246f).
+ * Archi model id: `id-` + 32 hex chars (e.g. id-e0a5ad453a344edfacff05726568246f).
  */
 export function generateArchimateModelId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {

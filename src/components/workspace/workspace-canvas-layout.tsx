@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { Button, Space } from 'antd'
+import { Button, Space, Spin } from 'antd'
 import { AppstoreOutlined, BranchesOutlined, ProfileOutlined } from '@ant-design/icons'
 import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
 import { WorkspaceSidePanel } from './workspace-side-panel'
@@ -13,6 +13,8 @@ export interface WorkspaceCanvasLayoutProps {
   toolbarExtra?: ReactNode
   loader?: ReactNode
   canvas: ReactNode
+  canvasBusy?: boolean
+  canvasBusyLabel?: string
   gitPanel?: ReactNode
   gitTitle?: string
   gitBranchLabel?: string
@@ -30,6 +32,8 @@ export function WorkspaceCanvasLayout({
   toolbarExtra,
   loader,
   canvas,
+  canvasBusy = false,
+  canvasBusyLabel = 'Загрузка…',
   gitPanel,
   gitTitle = 'Git',
   gitBranchLabel,
@@ -142,7 +146,17 @@ export function WorkspaceCanvasLayout({
               : 'workspace-body workspace-body-split workspace-body-panels-collapsed'
           }
         >
-          <div className="workspace-canvas-pane">{canvas}</div>
+          <div className="workspace-canvas-pane">
+            {canvas}
+            {canvasBusy ? (
+              <div className="git-loader-overlay" role="status" aria-live="polite" aria-busy="true">
+                <div className="git-loader-card">
+                  <Spin size="large" />
+                  <p className="git-loader-label">{canvasBusyLabel}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
           {hasOpenPanel ? (
             <div className="workspace-side-panels">
               {showGitPanel ? (

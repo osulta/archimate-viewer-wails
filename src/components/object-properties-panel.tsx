@@ -236,7 +236,6 @@ interface ObjectPropertiesPanelProps {
   selectedDiagramFolder?: SelectedDiagramFolderInfo | null
   diagramTreeSelectedKey?: string
   onUpdateNodeFillColor?: (nodeId: string, fillColor: string | null) => void
-  elementLoadingId?: string
 }
 
 export function ObjectPropertiesPanel({
@@ -267,7 +266,6 @@ export function ObjectPropertiesPanel({
   selectedDiagramFolder = null,
   diagramTreeSelectedKey = '',
   onUpdateNodeFillColor,
-  elementLoadingId = '',
 }: ObjectPropertiesPanelProps): React.JSX.Element | null {
   const [nameDraft, setNameDraft] = useState('')
   const [documentationDraft, setDocumentationDraft] = useState('')
@@ -279,8 +277,6 @@ export function ObjectPropertiesPanel({
   const [folderNameDraft, setFolderNameDraft] = useState('')
 
   const elementId = selectedElement?.id ?? ''
-  const isElementPropertiesLoading =
-    Boolean(elementLoadingId && elementId === elementLoadingId) || Boolean(selectedElement?.lite)
   const diagramNodeCount = useMemo(
     () => (selectedDiagram?.nodes ? flattenNodes(selectedDiagram.nodes).length : 0),
     [selectedDiagram?.nodes],
@@ -313,8 +309,7 @@ export function ObjectPropertiesPanel({
     setPropertiesDraft(
       selectedElement.properties ? selectedElement.properties.map((p) => ({ ...p })) : [],
     )
-    // Resync when selection changes or a split lite stub loads its full XML (properties, docs).
-  }, [elementId, selectedElement?.lite])
+  }, [elementId, selectedElement])
 
   useEffect(() => {
     if (!selectedRelationshipRef) {
@@ -715,7 +710,6 @@ export function ObjectPropertiesPanel({
               <ElementPropertiesEditor
                 elementId={elementId}
                 properties={propertiesDraft}
-                disabled={isElementPropertiesLoading}
                 onChange={setPropertiesDraft}
                 onCommit={(next) =>
                   flushElementOverride(elementId, { properties: next }, onUpdateElementOverride)

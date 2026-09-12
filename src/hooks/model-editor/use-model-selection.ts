@@ -176,21 +176,8 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     if (!model || !selectedElementRefForUsage) {
       return []
     }
-    const diagramIds =
-      model.format === 'split-files'
-        ? (model.diagramIndexByElementRef?.get(selectedElementRefForUsage) ?? [])
-        : null
     const result: Array<{ diagram: ParsedDiagram; nodes: DiagramNode[] }> = []
-    const diagramsToScan = diagramIds
-      ? (diagramIds
-          .map((id) => model.diagrams.find((diagram) => diagram.id === id))
-          .filter(Boolean) as ParsedDiagram[])
-      : model.diagrams
-
-    for (const diagram of diagramsToScan) {
-      if (model.format === 'split-files' && !diagram.loaded) {
-        continue
-      }
+    for (const diagram of model.diagrams) {
       const nodes = flattenNodes(diagram.nodes).filter(
         (n) => n.elementRef === selectedElementRefForUsage,
       )

@@ -81,7 +81,6 @@ export function parseArchiToolFormat(modelNode: Element): ParsedModel {
   const elementById = new Map(elements.map((item) => [item.id, item]))
   const diagramsWithNoteLabels = diagrams.map((diagram) => ({
     ...diagram,
-    loaded: true,
     nodes: syncNoteLabelsFromElements(diagram.nodes, elementById),
   }))
 

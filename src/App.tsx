@@ -29,17 +29,13 @@ function App() {
     mutations,
     save,
     git,
-    splitRuntime,
     handleOpenCompareChanges,
   } = app
 
   const { model, error, elementOverrides, relationshipMetaOverrides, pendingElementFocusRef, modelSaving } =
     editState
 
-  const saveTargetPath =
-    git.modelLayout === 'split-files'
-      ? (git.gitRepoPath ?? undefined)
-      : (git.buildRepoModelWriteRelativePath() ?? undefined)
+  const saveTargetPath = git.buildRepoModelWriteRelativePath() ?? undefined
 
   const headerExtraActions = useMemo(() => {
     if (appTab !== 'modeling') {
@@ -49,7 +45,7 @@ function App() {
       <ModelingHeaderActions
         saveTargetPath={saveTargetPath}
         modelSaving={modelSaving}
-        modelLoading={git.modelLoading || splitRuntime.isDiagramLoading}
+        modelLoading={git.modelLoading}
         gitCommandLoading={git.gitCommandLoading}
         canSaveModel={Boolean(model)}
         canCompare={Boolean(selection.selectedDiagramId && model)}
@@ -66,7 +62,6 @@ function App() {
     modelSaving,
     git.modelLoading,
     git.gitCommandLoading,
-    splitRuntime.isDiagramLoading,
     model,
     selection.selectedDiagramId,
     workspaceLayout.canvasFocusMode,
@@ -96,7 +91,6 @@ function App() {
             editState={editState}
             selection={selection}
             mutations={mutations}
-            splitRuntime={splitRuntime}
             workspaceLayout={workspaceLayout}
           />
         ) : null}
@@ -109,9 +103,6 @@ function App() {
             relationshipOverrides={editState.relationshipOverrides}
             git={git}
             modelPath={git.buildRepoModelWriteRelativePath()}
-            ensureDiagramLoaded={
-              model?.format === 'split-files' ? splitRuntime.ensureDiagramLoaded : undefined
-            }
           />
         ) : null}
         {appTab === 'linters' ? <LintersPanel model={model} /> : null}
@@ -121,13 +112,7 @@ function App() {
         {appTab === 'viewMode' ? (
           <ViewModePanel
             model={model}
-            modelLoading={git.modelLoading || splitRuntime.isDiagramLoading}
-            focusElementInDiagram={
-              model?.format === 'split-files' ? splitRuntime.focusElementInDiagram : undefined
-            }
-            focusRelationshipInDiagram={
-              model?.format === 'split-files' ? splitRuntime.focusRelationshipInDiagram : undefined
-            }
+            modelLoading={git.modelLoading}
             error={error}
             elementOverrides={elementOverrides}
             relationshipMetaOverrides={relationshipMetaOverrides}

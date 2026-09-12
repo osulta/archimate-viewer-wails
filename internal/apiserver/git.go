@@ -416,8 +416,21 @@ func safeCheckoutTarget(ref string) (string, error) {
 	return s, nil
 }
 
+// defaultGitWorkFolder is the relative clone/work-tree directory under GIT_REPO_ROOT
+// when the client omits workFolder (matches the historical Node API default).
+const defaultGitWorkFolder = "git"
+
+func normalizeGitWorkFolder(input string) string {
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return defaultGitWorkFolder
+	}
+	return trimmed
+}
+
 // resolveWorkTreeDir resolves a work tree directory under GIT_REPO_ROOT.
-// An empty or "." input refers to GIT_REPO_ROOT itself.
+// An empty or "." input refers to GIT_REPO_ROOT itself; callers that want the
+// default clone folder should pass normalizeGitWorkFolder(input) first.
 func (s *Server) resolveWorkTreeDir(dirInput string) (abs, rel string, err error) {
 	trimmed := strings.TrimSpace(dirInput)
 	if trimmed == "" || trimmed == "." {
@@ -519,24 +532,11 @@ func (s *Server) resolveModelGitContext(relPathFromClient string) (modelGitConte
 	return modelGitContext{workTree: workTree, abs: abs, relToRepoRoot: rel, relInWorkTree: normalized}, nil
 }
 
-// resolveGitStagePaths mirrors resolveGitStagePaths.
+// resolveGitStagePaths returns the path to stage for git add (the model file).
 func resolveGitStagePaths(relInWorkTree string) []string {
 	normalized := strings.TrimLeft(strings.ReplaceAll(strings.TrimSpace(relInWorkTree), "\\", "/"), "/")
 	if normalized == "" {
 		return []string{}
-	}
-	base := normalized
-	if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
-		base = normalized[idx+1:]
-	}
-	if base == "folder.xml" {
-		dir := ""
-		if idx := strings.LastIndex(normalized, "/"); idx >= 0 {
-			dir = normalized[:idx]
-		}
-		if dir != "" && dir != "." {
-			return []string{dir}
-		}
 	}
 	return []string{normalized}
 }
@@ -547,9 +547,9 @@ func (s *Server) resolveConfiguredWorkTree(modelPath, workFolderInput string) st
 	if mp != "" {
 		return s.resolveGitWorkTreeFromOptionalModelPath(mp)
 	}
-	rel := "."
+	rel := defaultGitWorkFolder
 	if strings.TrimSpace(workFolderInput) != "" {
-		if _, r, err := s.resolveWorkTreeDir(strings.TrimSpace(workFolderInput)); err == nil {
+		if _, r, err := s.resolveWorkTreeDir(normalizeGitWorkFolder(workFolderInput)); err == nil {
 			rel = r
 		}
 	}
@@ -559,84 +559,6 @@ func (s *Server) resolveConfiguredWorkTree(modelPath, workFolderInput string) st
 		return abs
 	}
 	return repoRoot
-}
-
-type splitModelRoot struct {
-	modelRootAbs string
-	modelRoot    string
-	manifestAbs  string
-	manifestRel  string
-}
-
-// resolveSplitModelRootFromManifestPath mirrors resolveSplitModelRootFromManifestPath.
-func (s *Server) resolveSplitModelRootFromManifestPath(manifestRel string) (splitModelRoot, error) {
-	abs, _, err := s.resolveAllowedModelPath(manifestRel)
-	if err != nil {
-		return splitModelRoot{}, err
-	}
-	modelRootAbs := filepath.Dir(abs)
-	modelRoot, err := filepath.Rel(s.RepoRoot(), modelRootAbs)
-	if err != nil {
-		return splitModelRoot{}, err
-	}
-	modelRoot = filepath.ToSlash(modelRoot)
-	if strings.HasPrefix(modelRoot, "..") || filepath.IsAbs(modelRoot) {
-		return splitModelRoot{}, errors.New("Путь выходит за пределы GIT_REPO_ROOT")
-	}
-	return splitModelRoot{modelRootAbs: modelRootAbs, modelRoot: modelRoot, manifestAbs: abs, manifestRel: manifestRel}, nil
-}
-
-// resolveSplitModelFilePath mirrors resolveSplitModelFilePath.
-func (s *Server) resolveSplitModelFilePath(modelRoot, relativePath string) (abs, rel string, err error) {
-	root := strings.ReplaceAll(strings.TrimLeft(strings.TrimSpace(modelRoot), "\\/"), "\\", "/")
-	relInput := strings.ReplaceAll(strings.TrimLeft(strings.TrimSpace(relativePath), "\\/"), "\\", "/")
-	if root == "" || relInput == "" || strings.Contains(relInput, "..") || strings.Contains(root, "..") {
-		return "", "", errors.New("Некорректный путь к файлу модели")
-	}
-	repoRoot := s.RepoRoot()
-	abs = filepath.Join(repoRoot, filepath.FromSlash(root), filepath.FromSlash(relInput))
-	modelRootAbs := filepath.Join(repoRoot, filepath.FromSlash(root))
-	relToModel, e := filepath.Rel(modelRootAbs, abs)
-	if e != nil || strings.HasPrefix(relToModel, "..") || filepath.IsAbs(relToModel) {
-		return "", "", errors.New("Путь выходит за пределы каталога модели")
-	}
-	return abs, filepath.ToSlash(relToModel), nil
-}
-
-// listSplitModelXmlPathsAtRef mirrors listSplitModelXmlPathsAtRef.
-func listSplitModelXmlPathsAtRef(workTree, ref, modelRootRel string) ([]string, error) {
-	root := strings.TrimRight(strings.ReplaceAll(strings.TrimLeft(strings.TrimSpace(modelRootRel), "\\/"), "\\", "/"), "/")
-	if root == "" {
-		return nil, errors.New("Не указан каталог модели")
-	}
-	spec := fmt.Sprintf("%s:%s", ref, root)
-	result := runGitInWorkTree(workTree, []string{"ls-tree", "-r", "--name-only", spec})
-	if result.Code != 0 {
-		msg := strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout, "git ls-tree"))
-		return nil, errors.New(msg)
-	}
-	var out []string
-	for _, line := range strings.Split(result.Stdout, "\n") {
-		line = strings.ReplaceAll(strings.TrimSpace(line), "\\", "/")
-		if strings.HasSuffix(strings.ToLower(line), ".xml") {
-			out = append(out, line)
-		}
-	}
-	return out, nil
-}
-
-// readRepoFileAtRef mirrors readRepoFileAtRef.
-func readRepoFileAtRef(workTree, ref, repoRelativePath string) (string, error) {
-	rel := strings.ReplaceAll(strings.TrimLeft(strings.TrimSpace(repoRelativePath), "\\/"), "\\", "/")
-	if rel == "" || strings.Contains(rel, "..") {
-		return "", errors.New("Некорректный путь к файлу")
-	}
-	result := runGitInWorkTree(workTree, []string{"show", fmt.Sprintf("%s:%s", ref, rel)})
-	if result.Code != 0 {
-		msg := strings.TrimSpace(firstNonEmpty(result.Stderr, result.Stdout, "git show"))
-		return "", errors.New(msg)
-	}
-	return result.Stdout, nil
 }
 
 func firstNonEmpty(values ...string) string {

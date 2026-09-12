@@ -54,17 +54,6 @@ func bodyTrue(m map[string]any, key string) bool {
 	return false
 }
 
-func dirnamePosix(p string) string {
-	p = strings.ReplaceAll(p, "\\", "/")
-	if idx := strings.LastIndex(p, "/"); idx >= 0 {
-		if idx == 0 {
-			return "/"
-		}
-		return p[:idx]
-	}
-	return "."
-}
-
 func mergeGitResult(m map[string]any, r gitResult) {
 	m["code"] = r.Code
 	m["stdout"] = r.Stdout
@@ -114,7 +103,7 @@ func (s *Server) handleRepoRoot(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
-	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
+	workFolderIn := normalizeGitWorkFolder(bodyStr(body, "workFolder"))
 	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
@@ -131,10 +120,9 @@ func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 		if branch := gitCurrentLocalBranchName(abs); branch != "" {
 			resp["currentBranch"] = branch
 		}
-		if entry := findModelEntryUnder(abs); entry != nil {
-			if mp, e := filepath.Rel(s.RepoRoot(), entry.absPath); e == nil {
+		if modelAbs := findModelEntryUnder(abs); modelAbs != "" {
+			if mp, e := filepath.Rel(s.RepoRoot(), modelAbs); e == nil {
 				resp["modelPath"] = filepath.ToSlash(mp)
-				resp["modelLayout"] = string(entry.layout)
 			}
 		}
 	}
@@ -143,7 +131,7 @@ func (s *Server) handleRepoState(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
-	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
+	workFolderIn := normalizeGitWorkFolder(bodyStr(body, "workFolder"))
 	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
@@ -324,6 +312,7 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 	if dirName == "" {
 		dirName = strings.TrimSpace(bodyStr(body, "workFolder"))
 	}
+	dirName = normalizeGitWorkFolder(dirName)
 	abs, rel, err := s.resolveWorkTreeDir(dirName)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
@@ -369,13 +358,11 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var modelPath any
-	var modelLayout any
 	if exitCode == 0 {
 		clonedRoot := filepath.Join(repoRoot, filepath.FromSlash(rel))
-		if entry := findModelEntryUnder(clonedRoot); entry != nil {
-			if mp, relErr := filepath.Rel(repoRoot, entry.absPath); relErr == nil {
+		if modelAbs := findModelEntryUnder(clonedRoot); modelAbs != "" {
+			if mp, relErr := filepath.Rel(repoRoot, modelAbs); relErr == nil {
 				modelPath = filepath.ToSlash(mp)
-				modelLayout = string(entry.layout)
 			}
 		}
 	}
@@ -388,7 +375,6 @@ func (s *Server) handleClone(w http.ResponseWriter, r *http.Request) {
 		"code":            exitCode,
 		"originSanitized": originSanitized,
 		"modelPath":       modelPath,
-		"modelLayout":     modelLayout,
 	})
 }
 
@@ -423,7 +409,7 @@ func (s *Server) handleCommit(w http.ResponseWriter, r *http.Request) {
 		stderr := firstNonEmpty(strings.TrimSpace(commitResult.Stderr), strings.TrimSpace(commitResult.Stdout))
 		hint := ""
 		if reNothingToCommit.MatchString(stderr) {
-			hint = " Сначала нажмите «Сохранить модель», затем коммит. Для split-модели в коммит попадает весь каталог model/."
+			hint = " Сначала нажмите «Сохранить модель», затем коммит."
 		}
 		errText := "git commit failed" + hint
 		if stderr != "" {
@@ -681,7 +667,7 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteRepository(w http.ResponseWriter, r *http.Request) {
 	body := readBody(r)
-	workFolderIn := strings.TrimSpace(bodyStr(body, "workFolder"))
+	workFolderIn := normalizeGitWorkFolder(bodyStr(body, "workFolder"))
 	abs, rel, err := s.resolveWorkTreeDir(workFolderIn)
 	if err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
@@ -743,25 +729,7 @@ func (s *Server) handleModelRead(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusBadRequest, readErr.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "content": string(content), "layout": "single-file"})
-}
-
-func (s *Server) handleModelDelete(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	abs, rel, err := s.resolveAllowedModelPath(bodyStr(body, "path"))
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := os.Remove(abs); err != nil {
-		if os.IsNotExist(err) {
-			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "deleted": false})
-			return
-		}
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "deleted": true})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel, "content": string(content)})
 }
 
 func (s *Server) handleModelWrite(w http.ResponseWriter, r *http.Request) {
@@ -786,268 +754,4 @@ func (s *Server) handleModelWrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "path": rel})
-}
-
-func (s *Server) handleModelReadSplitIndex(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	pathInput := strings.TrimSpace(bodyStr(body, "path"))
-	if pathInput == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите путь к model/folder.xml")
-		return
-	}
-	abs, rel, err := s.resolveAllowedModelPath(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	manifestBytes, readErr := os.ReadFile(abs)
-	if readErr != nil {
-		if os.IsNotExist(readErr) {
-			errJSON(w, http.StatusNotFound, "Файл или каталог модели не найден")
-			return
-		}
-		errJSON(w, http.StatusBadRequest, readErr.Error())
-		return
-	}
-	if !isSplitModelManifestContent(string(manifestBytes)) {
-		errJSON(w, http.StatusBadRequest, "Указанный файл не является корнем split-модели (ArchimateModel).")
-		return
-	}
-	smr, err := s.resolveSplitModelRootFromManifestPath(rel)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	indexModel, err := buildSplitModelIndex(smr.modelRootAbs)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	parsedModel := indexModel.serialize(smr.modelRoot, rel)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"layout":       "split-files",
-		"path":         rel,
-		"manifestPath": rel,
-		"modelRoot":    smr.modelRoot,
-		"elementCount": len(indexModel.Elements),
-		"diagramCount": len(indexModel.Diagrams),
-		"parsedModel":  parsedModel,
-	})
-}
-
-func (s *Server) handleModelReadSplitFile(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	modelRoot := strings.TrimSpace(bodyStr(body, "modelRoot"))
-	relativePath := strings.TrimSpace(bodyStr(body, "relativePath"))
-	if modelRoot == "" || relativePath == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите modelRoot и relativePath")
-		return
-	}
-	abs, rel, err := s.resolveSplitModelFilePath(modelRoot, relativePath)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	content, readErr := os.ReadFile(abs)
-	if readErr != nil {
-		if os.IsNotExist(readErr) {
-			errJSON(w, http.StatusNotFound, "Файл не найден")
-			return
-		}
-		errJSON(w, http.StatusBadRequest, readErr.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "modelRoot": modelRoot, "relativePath": rel, "content": string(content)})
-}
-
-func (s *Server) handleModelReadSplit(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	pathInput := strings.TrimSpace(bodyStr(body, "path"))
-	if pathInput == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите путь к model/folder.xml")
-		return
-	}
-	abs, rel, err := s.resolveAllowedModelPath(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	manifestBytes, readErr := os.ReadFile(abs)
-	if readErr != nil {
-		if os.IsNotExist(readErr) {
-			errJSON(w, http.StatusNotFound, "Файл или каталог модели не найден")
-			return
-		}
-		errJSON(w, http.StatusBadRequest, readErr.Error())
-		return
-	}
-	manifest := string(manifestBytes)
-	if !isSplitModelManifestContent(manifest) {
-		errJSON(w, http.StatusBadRequest, "Указанный файл не является корнем split-модели (ArchimateModel).")
-		return
-	}
-	modelRootAbs := filepath.Dir(abs)
-	modelRoot, relErr := filepath.Rel(s.RepoRoot(), modelRootAbs)
-	if relErr != nil {
-		errJSON(w, http.StatusBadRequest, relErr.Error())
-		return
-	}
-	modelRoot = filepath.ToSlash(modelRoot)
-	if strings.HasPrefix(modelRoot, "..") || filepath.IsAbs(modelRoot) {
-		errJSON(w, http.StatusBadRequest, "Путь выходит за пределы GIT_REPO_ROOT")
-		return
-	}
-	files, _ := collectSplitModelXmlFiles(modelRootAbs)
-	parsedModel, parseErr := parseSplitModel(modelRoot, rel, manifest, files)
-	if parseErr != nil {
-		errJSON(w, http.StatusBadRequest, parseErr.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"layout":       "split-files",
-		"path":         rel,
-		"manifestPath": rel,
-		"modelRoot":    modelRoot,
-		"fileCount":    len(files),
-		"parsedModel":  parsedModel,
-	})
-}
-
-func (s *Server) handleGitReadSplitIndex(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	pathInput := strings.TrimSpace(bodyStr(body, "path"))
-	ref, err := safeBranchRef(bodyStr(body, "ref"))
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if pathInput == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите путь к model/folder.xml")
-		return
-	}
-	if ref == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите ref (ветку) для сравнения")
-		return
-	}
-	ctx, err := s.resolveModelGitContext(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	manifest, err := readRepoFileAtRef(ctx.workTree, ref, ctx.relInWorkTree)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if !isSplitModelManifestContent(manifest) {
-		errJSON(w, http.StatusBadRequest, "Указанный файл не является корнем split-модели (ArchimateModel).")
-		return
-	}
-	_, manifestRel, err := s.resolveAllowedModelPath(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	smr, err := s.resolveSplitModelRootFromManifestPath(manifestRel)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	modelRootInWorkTree := dirnamePosix(ctx.relInWorkTree)
-	relativePaths, err := listSplitModelXmlPathsAtRef(ctx.workTree, ref, modelRootInWorkTree)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	indexModel, err := buildSplitModelIndexFromRelativePaths(relativePaths, func(rp string) (string, error) {
-		gitPath := strings.ReplaceAll(modelRootInWorkTree+"/"+rp, "\\", "/")
-		return readRepoFileAtRef(ctx.workTree, ref, gitPath)
-	})
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	parsedModel := indexModel.serialize(smr.modelRoot, manifestRel)
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"layout":       "split-files",
-		"ref":          ref,
-		"path":         manifestRel,
-		"manifestPath": manifestRel,
-		"modelRoot":    smr.modelRoot,
-		"parsedModel":  parsedModel,
-	})
-}
-
-func (s *Server) handleGitReadSplitCompareBundle(w http.ResponseWriter, r *http.Request) {
-	body := readBody(r)
-	pathInput := strings.TrimSpace(bodyStr(body, "path"))
-	ref, err := safeBranchRef(bodyStr(body, "ref"))
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	diagramSourceFile := strings.ReplaceAll(strings.TrimLeft(strings.TrimSpace(bodyStr(body, "diagramSourceFile")), "\\/"), "\\", "/")
-	if pathInput == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите путь к model/folder.xml")
-		return
-	}
-	if ref == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите ref (ветку) для сравнения")
-		return
-	}
-	if diagramSourceFile == "" {
-		errJSON(w, http.StatusBadRequest, "Укажите diagramSourceFile")
-		return
-	}
-	ctx, err := s.resolveModelGitContext(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	manifest, err := readRepoFileAtRef(ctx.workTree, ref, ctx.relInWorkTree)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if !isSplitModelManifestContent(manifest) {
-		errJSON(w, http.StatusBadRequest, "Указанный файл не является корнем split-модели (ArchimateModel).")
-		return
-	}
-	_, manifestRel, err := s.resolveAllowedModelPath(pathInput)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	smr, err := s.resolveSplitModelRootFromManifestPath(manifestRel)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	modelRootInWorkTree := dirnamePosix(ctx.relInWorkTree)
-	modelRelativePaths, err := listSplitModelXmlPathsAtRef(ctx.workTree, ref, modelRootInWorkTree)
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	bundle, err := buildSplitCompareBundle(modelRootInWorkTree, diagramSourceFile, modelRelativePaths, func(gitPath string) (string, error) {
-		return readRepoFileAtRef(ctx.workTree, ref, gitPath)
-	})
-	if err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":            true,
-		"layout":        "split-files",
-		"ref":           ref,
-		"path":          manifestRel,
-		"manifestPath":  manifestRel,
-		"modelRoot":     smr.modelRoot,
-		"diagram":       bundle.Diagram,
-		"elements":      bundle.Elements,
-		"relationships": bundle.Relationships,
-	})
 }
