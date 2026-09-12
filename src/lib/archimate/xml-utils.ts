@@ -139,7 +139,7 @@ export function applyDocumentationToElementXml(el: Element, documentNode: Docume
   docNode.textContent = text
 }
 
-/** Archi element properties: `<properties key="…" value="…"/>` (not archimate:property). */
+/** Archi element properties: `<property key="…" value="…"/>` (ecore feature `properties`). */
 export function applyPropertiesToElementXml(
   el: Element,
   documentNode: Document,
@@ -147,8 +147,9 @@ export function applyPropertiesToElementXml(
 ): void {
   getDirectChildrenByTag(el, 'property').forEach((node) => el.removeChild(node))
   getDirectChildrenByTag(el, 'properties').forEach((node) => el.removeChild(node))
+  const tagName = el.prefix ? `${el.prefix}:property` : 'property'
   properties.forEach((prop) => {
-    const propNode = documentNode.createElement('properties')
+    const propNode = documentNode.createElement(tagName)
     propNode.setAttribute('key', prop.key)
     propNode.setAttribute('value', prop.value ?? '')
     el.appendChild(propNode)
@@ -256,7 +257,7 @@ export function applyDiagramObjectVisualToXml(xmlEl: Element, node: DiagramNode)
   }
 }
 
-const CONNECTION_BENDPOINT_TAGS = ['bendpoints', 'bendpoint']
+const CONNECTION_BENDPOINT_TAGS = ['bendpoint', 'bendpoints']
 
 export function parseConnectionBendpoints(connectionNode: Element): Bendpoint[] {
   const out: Bendpoint[] = []
@@ -279,13 +280,21 @@ export function clearConnectionBendpoints(connectionEl: Element): void {
   }
 }
 
-export function appendConnectionBendpoints(connectionEl: Element, documentNode: Document, bendpoints: Bendpoint[]): void {
+/**
+ * Archi EMF maps the `bendpoints` feature to XML element name `bendpoint`
+ * (see archimate.ecore ExtendedMetaData). Plural `bendpoints` breaks Archi load.
+ */
+export function appendConnectionBendpoints(
+  connectionEl: Element,
+  documentNode: Document,
+  bendpoints: Bendpoint[],
+): void {
   if (!bendpoints?.length) {
     return
   }
   const tagName = connectionEl.prefix
-    ? `${connectionEl.prefix}:bendpoints`
-    : 'bendpoints'
+    ? `${connectionEl.prefix}:bendpoint`
+    : 'bendpoint'
   bendpoints.forEach((bp) => {
     const bpNode = documentNode.createElement(tagName)
     bpNode.setAttribute('startX', String(Math.round(bp.startX ?? 0)))

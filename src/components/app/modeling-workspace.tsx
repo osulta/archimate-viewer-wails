@@ -140,6 +140,12 @@ export function ModelingWorkspace({
     />
   )
 
+  const gitBusy = git.gitCommandLoading
+  const workspaceBusy = modelSaving || gitBusy
+  const workspaceBusyLabel = modelSaving
+    ? 'Сохранение модели…'
+    : git.gitCommandLabel.trim() || 'Выполнение Git…'
+
   return (
     <WorkspaceCanvasLayout
       layout={workspaceLayout}
@@ -147,15 +153,15 @@ export function ModelingWorkspace({
       diagramTitle={selectedDiagram?.name ?? 'Диаграмма не выбрана'}
       diagramMeta={selectedDiagram?.type ?? 'Canvas preview'}
       loader={
-        modelSaving ? (
+        workspaceBusy ? (
           <div className="content-diagram-loader" role="status" aria-live="polite" aria-busy="true">
             <Spin size="small" />
-            <span>Сохранение модели…</span>
+            <span>{workspaceBusyLabel}</span>
           </div>
         ) : null
       }
-      canvasBusy={modelSaving}
-      canvasBusyLabel="Сохранение модели…"
+      canvasBusy={workspaceBusy}
+      canvasBusyLabel={workspaceBusyLabel}
       gitPanel={<ModelingGitPanel git={git} gitOutput={git.gitOutput} />}
       gitTitle="Git"
       gitBranchLabel={

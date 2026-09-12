@@ -19,6 +19,8 @@ import {
   applyDiagramMetadataToXml,
   ensureCreatedDiagramsInXml,
   ensureDiagramFoldersInXml,
+  findArchiDiagramElement,
+  findViewDiagramElement,
 } from '../archimate/serialize/diagram-xml'
 import { isRelationshipModelElement } from '../archimate/relationship-meta'
 import type {
@@ -65,22 +67,6 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
     applyDiagramLayoutToXml(documentNode, params.model, params.diagramOverrides)
 
     const allElements = Array.from(documentNode.getElementsByTagName('*'))
-    params.relationshipOverrides.forEach((relMap) => {
-      relMap.forEach((bendpoints, relationshipRef) => {
-        const connectionElements = allElements.filter((el) => {
-          const relAttr =
-            el.getAttribute('archimateRelationship') ??
-            el.getAttribute('relationshipRef') ??
-            ''
-          return relAttr === relationshipRef
-        })
-        connectionElements.forEach((el) => {
-          clearConnectionBendpoints(el)
-          appendConnectionBendpoints(el, documentNode, bendpoints)
-        })
-      })
-    })
-
     params.relationshipMetaOverrides.forEach((override, relationshipId) => {
       const targets = allElements.filter((el) => {
         const id = el.getAttribute('id') ?? el.getAttribute('identifier') ?? ''
@@ -317,6 +303,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
           connNode.setAttribute('source', connection.source)
           connNode.setAttribute('target', connection.target)
           connNode.setAttribute('archimateRelationship', connection.relationshipRef)
+          appendConnectionBendpoints(connNode, documentNode, connection.bendpoints ?? [])
           sourceObj.appendChild(connNode)
         }
       } else {
@@ -354,6 +341,36 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
           viewNode.appendChild(connEl)
         }
       }
+    })
+
+    // After created connections exist so new links can receive bendpoints in the same save.
+    const elementsAfterCreates = Array.from(documentNode.getElementsByTagName('*'))
+    params.relationshipOverrides.forEach((relMap, diagramId) => {
+      if (!relMap?.size) {
+        return
+      }
+      const diagramRoot =
+        findArchiDiagramElement(elementsAfterCreates, diagramId) ??
+        findViewDiagramElement(elementsAfterCreates, diagramId)
+      if (!diagramRoot) {
+        return
+      }
+      const connectionElements = Array.from(diagramRoot.getElementsByTagName('*')).filter(
+        (el) => el.localName === 'sourceConnection' || el.localName === 'connection',
+      )
+      relMap.forEach((bendpoints, relationshipRef) => {
+        connectionElements.forEach((el) => {
+          const relAttr =
+            el.getAttribute('archimateRelationship') ??
+            el.getAttribute('relationshipRef') ??
+            ''
+          if (relAttr !== relationshipRef) {
+            return
+          }
+          clearConnectionBendpoints(el)
+          appendConnectionBendpoints(el, documentNode, bendpoints)
+        })
+      })
     })
 
     removeDeletedFromXml(

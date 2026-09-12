@@ -314,10 +314,19 @@
 }
 
 .workspace-git-stack {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
   min-width: 0;
+}
+
+.workspace-git-stack.is-busy {
+  pointer-events: none;
+}
+
+.workspace-git-stack.is-busy .git-command-loader {
+  pointer-events: auto;
 }
 
 .git-panel-workflow {
@@ -2596,6 +2605,12 @@
   align-items: center;
   gap: 10px;
   margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-color-border-strong);
+  border-radius: 8px;
+  background: var(--app-color-surface-elevated);
+  color: var(--app-color-text-muted);
+  font-size: 13px;
 }
 
 .git-label {

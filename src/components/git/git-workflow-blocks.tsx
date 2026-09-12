@@ -119,6 +119,8 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps): JSX.Elemen
 
   const branchOptions = gitBranches.list
   const hasBranches = branchOptions.length > 0
+  const isCommitting = gitCommandLoading && gitCommandLabel.startsWith('Создание коммита')
+  const isPushing = gitCommandLoading && gitCommandLabel.startsWith('Отправка')
   const commitDisabled = gitCommandLoading || !gitCommitMessage.trim()
   const displayedBranch = displayedGitBranch?.trim() || gitRepoProbe.currentBranch?.trim()
   const currentBranch = displayedBranch
@@ -198,6 +200,7 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps): JSX.Elemen
             rows={2}
             size="small"
             spellCheck={false}
+            disabled={gitCommandLoading}
           />
         </label>
         <Button
@@ -205,18 +208,28 @@ export function GitSidebarWorkflow({ git }: GitSidebarWorkflowProps): JSX.Elemen
           size="small"
           block
           disabled={commitDisabled}
+          loading={isCommitting}
           onClick={() => void handleGitCommit()}
+          aria-label={isCommitting ? 'Создание коммита' : 'git commit'}
         >
           git commit
         </Button>
         <Checkbox
           className="git-panel-upstream"
           checked={gitPushUpstream}
+          disabled={gitCommandLoading}
           onChange={(e) => setGitPushUpstream(e.target.checked)}
         >
           upstream (--set-upstream)
         </Checkbox>
-        <Button size="small" block disabled={gitCommandLoading} onClick={() => void handleGitPush()}>
+        <Button
+          size="small"
+          block
+          disabled={gitCommandLoading}
+          loading={isPushing}
+          onClick={() => void handleGitPush()}
+          aria-label={isPushing ? 'Отправка в origin' : 'git push'}
+        >
           git push
         </Button>
       </div>

@@ -5,4 +5,6 @@ export {
   applyDiagramLayoutToXml,
   serializeXml,
   removeDeletedFromXml,
+  findArchiDiagramElement,
+  findViewDiagramElement,
 } from './diagram-xml'

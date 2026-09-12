@@ -20,7 +20,7 @@ import {
   formatDiagramCoord,
 } from '../diagram-model'
 
-function findArchiDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
+export function findArchiDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
   return allElements.find(
     (el) =>
       el.localName === 'element' &&
@@ -33,7 +33,7 @@ function findArchiDiagramElement(allElements: Element[], diagramId: string): Ele
   )
 }
 
-function findViewDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
+export function findViewDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
   return allElements.find((el) => el.localName === 'view' && getId(el) === diagramId)
 }
 
