@@ -70,6 +70,7 @@ export function ModelingWorkspace({
     handleSelectDiagramFolder,
     diagramTreeSelectedKey,
     handleSelectRelationshipType,
+    handleCanvasRelationshipSelect,
     handleSelectRelationshipFromProperties,
     handleSelectElementFromProperties,
   } = selection
@@ -135,12 +136,7 @@ export function ModelingWorkspace({
           setSelectedNode(found.node)
         }
       }}
-      onSelectRelationship={(relationshipId) => {
-        setSelectedNode(null)
-        setSelectedElementId(null)
-        setSelectedRelationshipRef(relationshipId)
-        setSelectedBendpointIndex(null)
-      }}
+      onSelectRelationship={handleSelectRelationshipFromProperties}
     />
   )
 
@@ -181,14 +177,7 @@ export function ModelingWorkspace({
           onNodeMove={(nodeId, dx, dy) => mutations.moveNode(selectedDiagramId, nodeId, dx, dy)}
           onNodesMove={(nodeIds, dx, dy) => mutations.moveNodes(selectedDiagramId, nodeIds, dx, dy)}
           onNodeResize={(nodeId, dw, dh) => mutations.resizeNode(selectedDiagramId, nodeId, dw, dh)}
-          onRelationshipSelect={(ref) => {
-            setSelectedRelationshipRef(ref)
-            setSelectedBendpointIndex(null)
-            if (ref) {
-              setSelectedNode(null)
-              setSelectedElementId(null)
-            }
-          }}
+          onRelationshipSelect={handleCanvasRelationshipSelect}
           selectedBendpointIndex={selectedBendpointIndex}
           onBendpointSelect={setSelectedBendpointIndex}
           onRelationshipBendpointChange={mutations.updateRelationshipBendpoint}

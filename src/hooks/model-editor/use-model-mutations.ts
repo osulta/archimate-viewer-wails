@@ -1,37 +1,31 @@
 import { useCallback } from 'react'
-import { adjustBendpointsForNodeResize } from '../../lib/archimate/connection-geometry'
-import { generateArchimateModelId } from '../../lib/archimate/model-id'
-import {
-  flattenNodes,
-  applyOverridesToNodes,
-  findInnermostContainingNode,
-  findInnermostContainingNodeExcluding,
-  findDirectParentNodeId,
-  reparentNodeInTree,
-  insertNodeUnderParent,
-  findNodeById,
-  findNodeByElementRefInDiagram,
-  collectSubtreeIds,
-  removeNodeFromTree,
-  getSelectionOverrideRoots,
-  removeDiagramObjectsByElementRef,
-  collectNodeIdsRemovedForElement,
-  filterConnectionsToExistingRelationships,
-  roundDiagramCoord,
-  snapToGrid,
-  isDiagramReferenceNode,
-} from '../../lib/archimate/diagram-model'
-import {
-  diagramFolderKeyFromPathParts,
-  getDiagramTreePathParts,
-  inferDiagramsBranchName,
-  resolveDiagramFolderPathFromKey,
-  buildRenamedDiagramFolderFullPath,
-  remapDiagramFolderFullPath,
-  normalizeDiagramFolderFullPath,
-} from '../../lib/archimate/model-folder-tree'
+import { findNodeById } from '../../lib/archimate/diagram-model'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type { ConnectionEndpointKind } from '../../lib/diagram-canvas/types'
+import {
+  cloneBendpointMap,
+  cloneNodeOverrideMap,
+  computeAddRelationshipBendpoint,
+  computeCreateDiagramFolder,
+  computeCreateNewDiagram,
+  computeCreateNewObject,
+  computeCreateRelationshipBetweenNodes,
+  computeDeleteElementFromModel,
+  computeDeleteRelationshipFromModel,
+  computeDeleteSelectedConnectionFromDiagram,
+  computeDeleteSelectedFromDiagram,
+  computeMoveNodesUpdate,
+  computeNodeFillColorUpdate,
+  computePlaceDiagramReferenceOnDiagram,
+  computePlaceElementOnDiagram,
+  computeReassignRelationshipEndpoint,
+  computeRemoveRelationshipBendpoint,
+  computeRenameDiagramFolder,
+  computeResizeNodeUpdate,
+  computeUpdateDiagramMetadata,
+  computeUpdateRelationshipBendpoint,
+  remapCreatedDiagramFolderPaths,
+} from '../../lib/model-editor/mutations'
 import {
   captureCanvasEditSnapshot,
   cloneCanvasEditSnapshot,
@@ -43,17 +37,11 @@ import {
 } from './edit-snapshot'
 import type {
   ParsedDiagram,
-  ParsedElement,
-  ParsedRelationship,
   DiagramNode,
-  DiagramConnection,
   Bendpoint,
-  NodeOverride,
   ElementOverride,
   RelationshipMetaOverride,
   Point,
-  CreatedRelationship,
-  ParsedModel,
 } from '../../types/model'
 import type { ModelEditState } from './use-model-edit-state'
 import type { ModelSelectionState } from './use-model-selection'
@@ -103,156 +91,6 @@ interface UseModelMutationsOptions {
   selection: ModelSelectionState
 }
 
-const AGGREGATION_RELATIONSHIP_TYPE = 'archimate:AggregationRelationship'
-
-function cloneDiagramNodes(nodes: DiagramNode[]): DiagramNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    children: cloneDiagramNodes(node.children ?? []),
-  }))
-}
-
-interface NestAggregationUpdate {
-  relationships: ParsedRelationship[]
-  relationshipById: Map<string, ParsedRelationship>
-  connections: DiagramConnection[]
-  createdRelationship?: CreatedRelationship
-}
-
-function buildNestAggregationUpdate(
-  model: ParsedModel,
-  diagramId: string,
-  diagram: ParsedDiagram,
-  containerNodeId: string,
-  childNodeId: string,
-): NestAggregationUpdate | null {
-  if (containerNodeId === childNodeId) {
-    return null
-  }
-
-  const containerNode = findNodeById(diagram.nodes, containerNodeId)
-  const childNode = findNodeById(diagram.nodes, childNodeId)
-  if (!containerNode?.elementRef || !childNode?.elementRef) {
-    return null
-  }
-  if (containerNode.elementRef === childNode.elementRef) {
-    return null
-  }
-  if (isDiagramReferenceNode(containerNode) || isDiagramReferenceNode(childNode)) {
-    return null
-  }
-
-  const hasConnection = diagram.connections.some(
-    (connection) =>
-      (connection.source === containerNodeId && connection.target === childNodeId) ||
-      (connection.source === childNodeId && connection.target === containerNodeId),
-  )
-  if (hasConnection) {
-    return null
-  }
-
-  const existingAggregation = model.relationships.find(
-    (relationship) =>
-      relationship.type.includes('AggregationRelationship') &&
-      ((relationship.source === containerNode.elementRef &&
-        relationship.target === childNode.elementRef) ||
-        (relationship.source === childNode.elementRef &&
-          relationship.target === containerNode.elementRef)),
-  )
-
-  if (existingAggregation) {
-    if (diagram.connections.some((connection) => connection.relationshipRef === existingAggregation.id)) {
-      return null
-    }
-    const connId = generateArchimateModelId()
-    const sourceIsContainer = existingAggregation.source === containerNode.elementRef
-    const newConn: DiagramConnection = {
-      id: connId,
-      relationshipRef: existingAggregation.id,
-      source: sourceIsContainer ? containerNodeId : childNodeId,
-      target: sourceIsContainer ? childNodeId : containerNodeId,
-      bendpoints: [],
-    }
-    return {
-      relationships: model.relationships,
-      relationshipById: model.relationshipById,
-      connections: [...diagram.connections, newConn],
-      createdRelationship: {
-        diagramId,
-        relationship: existingAggregation,
-        connection: newConn,
-        format: model.format,
-      },
-    }
-  }
-
-  const relId = generateArchimateModelId()
-  const connId = generateArchimateModelId()
-  const newRel: ParsedRelationship = {
-    id: relId,
-    name: '',
-    type: AGGREGATION_RELATIONSHIP_TYPE,
-    source: containerNode.elementRef,
-    target: childNode.elementRef,
-  }
-  const newConn: DiagramConnection = {
-    id: connId,
-    relationshipRef: relId,
-    source: containerNodeId,
-    target: childNodeId,
-    bendpoints: [],
-  }
-  const nextRelationshipById = new Map(model.relationshipById)
-  nextRelationshipById.set(relId, newRel)
-  return {
-    relationships: [...model.relationships, newRel],
-    relationshipById: nextRelationshipById,
-    connections: [...diagram.connections, newConn],
-    createdRelationship: {
-      diagramId,
-      relationship: newRel,
-      connection: newConn,
-      format: model.format,
-    },
-  }
-}
-
-function applyNestAggregationToDiagrams(
-  model: ParsedModel,
-  diagramId: string,
-  diagrams: ParsedDiagram[],
-  containerNodeId: string,
-  childNodeId: string,
-): {
-  diagrams: ParsedDiagram[]
-  relationships: ParsedRelationship[]
-  relationshipById: Map<string, ParsedRelationship>
-  createdRelationship?: CreatedRelationship
-} | null {
-  const diagram = diagrams.find((item) => item.id === diagramId)
-  if (!diagram) {
-    return null
-  }
-  const aggregationUpdate = buildNestAggregationUpdate(
-    model,
-    diagramId,
-    diagram,
-    containerNodeId,
-    childNodeId,
-  )
-  if (!aggregationUpdate) {
-    return null
-  }
-  return {
-    diagrams: diagrams.map((item) =>
-      item.id === diagramId ? { ...item, connections: aggregationUpdate.connections } : item,
-    ),
-    relationships: aggregationUpdate.relationships,
-    relationshipById: aggregationUpdate.relationshipById,
-    createdRelationship: aggregationUpdate.createdRelationship,
-  }
-}
-
 export function useModelMutations({ editState, selection }: UseModelMutationsOptions): ModelMutations {
   const commandHistory = useCommandHistory()
   const {
@@ -281,16 +119,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     setDiagramTreeSelectedKey,
     selectedDiagram, selectedElement, selectedNodeLive,
   } = selection
-
-  const cloneNodeOverrideMap = (source: Map<string, Map<string, NodeOverride>>) =>
-    new Map(Array.from(source.entries(), ([diagramId, nodeMap]) => [diagramId, new Map(nodeMap)]))
-  const cloneBendpointMap = (source: Map<string, Map<string, Bendpoint[]>>) =>
-    new Map(
-      Array.from(source.entries(), ([diagramId, relMap]) => [
-        diagramId,
-        new Map(Array.from(relMap.entries(), ([ref, points]) => [ref, [...points]])),
-      ]),
-    )
 
   function captureCurrentCanvasSnapshot(): CanvasEditSnapshot | null {
     return captureCanvasEditSnapshot({
@@ -357,32 +185,26 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       if (!selectedDiagramId || !selectedDiagram) {
         return
       }
-      const currentConnection = selectedDiagram.connections.find(
-        (c) => c.relationshipRef === relationshipRef,
+      const update = computeRemoveRelationshipBendpoint(
+        selectedDiagram,
+        selectedDiagramId,
+        relationshipRef,
+        bendpointIndex,
+        relationshipOverrides,
       )
-      if (!currentConnection) {
+      if (!update) {
         return
       }
-      const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
-      if (bendpointIndex < 0 || bendpointIndex >= nextBendpoints.length) {
-        return
-      }
-      nextBendpoints.splice(bendpointIndex, 1)
-      const beforeAll = cloneBendpointMap(relationshipOverrides)
-      const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
-      diagramMap.set(relationshipRef, nextBendpoints)
-      const nextAll = new Map(relationshipOverrides)
-      nextAll.set(selectedDiagramId, diagramMap)
-      commitRelationshipOverrides(nextAll)
+      commitRelationshipOverrides(update.nextOverrides)
       setSelectedBendpointIndex(null)
       pushSnapshotCommand(
         'Удаление точки перегиба',
         () => {
-          commitRelationshipOverrides(cloneBendpointMap(beforeAll))
+          commitRelationshipOverrides(cloneBendpointMap(update.beforeOverrides))
           setSelectedBendpointIndex(bendpointIndex)
         },
         () => {
-          commitRelationshipOverrides(cloneBendpointMap(nextAll))
+          commitRelationshipOverrides(cloneBendpointMap(update.nextOverrides))
           setSelectedBendpointIndex(null)
         },
       )
@@ -397,137 +219,66 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
   )
 
   function moveNodes(diagramId: string, nodeIds: string[], dx: number, dy: number) {
-    if (!diagramId || !nodeIds.length || (dx === 0 && dy === 0) || !model) {
+    if (!model) {
       return
     }
-    const diagram = model.diagrams.find((item) => item.id === diagramId)
-    if (!diagram) {
-      return
-    }
-
-    const roots = getSelectionOverrideRoots(new Set(nodeIds), diagram.nodes)
-    if (!roots.length) {
+    const update = computeMoveNodesUpdate(model, diagramId, nodeIds, dx, dy, diagramOverrides)
+    if (!update) {
       return
     }
 
-    const beforeAll = cloneNodeOverrideMap(diagramOverrides)
-    const overrides = diagramOverrides.get(diagramId) ?? new Map()
-    const nextOverrides = new Map(overrides)
-    for (const nodeId of roots) {
-      const prev = nextOverrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-      nextOverrides.set(nodeId, {
-        ...prev,
-        dx: roundDiagramCoord((prev.dx ?? 0) + dx),
-        dy: roundDiagramCoord((prev.dy ?? 0) + dy),
-      })
-    }
-    const nextAll = new Map(diagramOverrides)
-    nextAll.set(diagramId, nextOverrides)
-
-    const layoutNodes = applyOverridesToNodes(diagram.nodes, nextOverrides)
-    const primaryNodeId = roots[0]
-    const movedNode = findNodeById(layoutNodes, primaryNodeId)
-
-    let nextDiagramNodes = diagram.nodes
-    let nextRelationships = model.relationships
-    let nextRelationshipById = model.relationshipById
-    let nextConnections = diagram.connections
-    let createdRelationship: CreatedRelationship | undefined
-    let nestingChanged = false
-
-    const canReparentOnMove = roots.length === 1 && movedNode &&
-      (Boolean(movedNode.elementRef) || isDiagramReferenceNode(movedNode))
-    if (canReparentOnMove && movedNode) {
-      const excludeIds = new Set(collectSubtreeIds(movedNode))
-      const containerNode = findInnermostContainingNodeExcluding(layoutNodes, movedNode, excludeIds)
-      if (
-        containerNode?.elementRef &&
-        !isDiagramReferenceNode(containerNode) &&
-        containerNode.id !== primaryNodeId
-      ) {
-        const currentParentId = findDirectParentNodeId(diagram.nodes, primaryNodeId)
-        if (containerNode.id !== currentParentId) {
-          nextDiagramNodes = reparentNodeInTree(diagram.nodes, primaryNodeId, containerNode.id)
-          nestingChanged = true
-        }
-        if (!isDiagramReferenceNode(movedNode)) {
-          const aggregationResult = applyNestAggregationToDiagrams(
-            model,
-            diagramId,
-            model.diagrams.map((item) =>
-              item.id === diagramId ? { ...item, nodes: nextDiagramNodes } : item,
-            ),
-            containerNode.id,
-            primaryNodeId,
-          )
-          if (aggregationResult) {
-            nextDiagramNodes =
-              aggregationResult.diagrams.find((item) => item.id === diagramId)?.nodes ?? nextDiagramNodes
-            nextConnections =
-              aggregationResult.diagrams.find((item) => item.id === diagramId)?.connections ??
-              nextConnections
-            nextRelationships = aggregationResult.relationships
-            nextRelationshipById = aggregationResult.relationshipById
-            createdRelationship = aggregationResult.createdRelationship
-            nestingChanged = true
-          }
-        }
-      }
-    }
-
-    const beforeDiagramNodes = cloneDiagramNodes(diagram.nodes)
-    const beforeConnections = [...diagram.connections]
-    const beforeRelationships = model.relationships
-    const beforeRelationshipById = new Map(model.relationshipById)
-
-    commitDiagramOverrides(nextAll)
-    if (nestingChanged) {
+    commitDiagramOverrides(update.nextDiagramOverrides)
+    if (update.nestingChanged) {
       setModel({
         ...model,
-        relationships: nextRelationships,
-        relationshipById: nextRelationshipById,
+        relationships: update.nextRelationships,
+        relationshipById: update.nextRelationshipById,
         diagrams: model.diagrams.map((item) =>
           item.id === diagramId
-            ? { ...item, nodes: nextDiagramNodes, connections: nextConnections }
+            ? { ...item, nodes: update.nextDiagramNodes, connections: update.nextConnections }
             : item,
         ),
       })
-      if (createdRelationship) {
-        setCreatedRelationships((prev) => [...prev, createdRelationship!])
+      if (update.createdRelationship) {
+        setCreatedRelationships((prev) => [...prev, update.createdRelationship!])
       }
     }
-    const afterDiagramNodes = nextDiagramNodes
-    const afterConnections = nextConnections
-    const afterRelationships = nextRelationships
-    const afterRelationshipById = nextRelationshipById
 
     pushSnapshotCommand(
-      roots.length > 1 ? 'Перемещение объектов' : 'Перемещение объекта',
+      update.roots.length > 1 ? 'Перемещение объектов' : 'Перемещение объекта',
       () => {
-        commitDiagramOverrides(cloneNodeOverrideMap(beforeAll))
-        if (nestingChanged) {
+        commitDiagramOverrides(cloneNodeOverrideMap(update.beforeDiagramOverrides))
+        if (update.nestingChanged) {
           setModel({
             ...model,
-            relationships: beforeRelationships,
-            relationshipById: beforeRelationshipById,
+            relationships: update.beforeRelationships,
+            relationshipById: update.beforeRelationshipById,
             diagrams: model.diagrams.map((item) =>
               item.id === diagramId
-                ? { ...item, nodes: beforeDiagramNodes, connections: beforeConnections }
+                ? {
+                    ...item,
+                    nodes: update.beforeDiagramNodes,
+                    connections: update.beforeConnections,
+                  }
                 : item,
             ),
           })
         }
       },
       () => {
-        commitDiagramOverrides(cloneNodeOverrideMap(nextAll))
-        if (nestingChanged) {
+        commitDiagramOverrides(cloneNodeOverrideMap(update.nextDiagramOverrides))
+        if (update.nestingChanged) {
           setModel({
             ...model,
-            relationships: afterRelationships,
-            relationshipById: afterRelationshipById,
+            relationships: update.nextRelationships,
+            relationshipById: update.nextRelationshipById,
             diagrams: model.diagrams.map((item) =>
               item.id === diagramId
-                ? { ...item, nodes: afterDiagramNodes, connections: afterConnections }
+                ? {
+                    ...item,
+                    nodes: update.nextDiagramNodes,
+                    connections: update.nextConnections,
+                  }
                 : item,
             ),
           })
@@ -541,105 +292,50 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
   }
 
   function resizeNode(diagramId: string, nodeId: string, dw: number, dh: number) {
-    if (!selectedDiagram || !nodeId || (dw === 0 && dh === 0)) {
+    if (!selectedDiagram) {
       return
     }
-    const node = findNodeById(selectedDiagram.nodes, nodeId)
-    if (!node) {
+    const update = computeResizeNodeUpdate(
+      selectedDiagram,
+      diagramId,
+      nodeId,
+      dw,
+      dh,
+      diagramOverrides,
+      relationshipOverrides,
+    )
+    if (!update) {
       return
     }
 
-    const nextWidth = Math.max(30, node.width + dw)
-    const nextHeight = Math.max(24, node.height + dh)
-    const appliedDw = nextWidth - node.width
-    const appliedDh = nextHeight - node.height
-    if (appliedDw === 0 && appliedDh === 0) {
-      return
-    }
-
-    const beforeDiagramOverrides = cloneNodeOverrideMap(diagramOverrides)
-    const beforeRelOverrides = cloneBendpointMap(relationshipOverrides)
-
-    const overrides = diagramOverrides.get(diagramId) ?? new Map()
-    const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-    const nextOverrides = new Map(overrides)
-    nextOverrides.set(nodeId, {
-      ...prev,
-      dw: (prev.dw ?? 0) + appliedDw,
-      dh: (prev.dh ?? 0) + appliedDh,
-    })
-    const nextDiagramOverrides = new Map(diagramOverrides)
-    nextDiagramOverrides.set(diagramId, nextOverrides)
-
-    const relMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
-    let relChanged = false
-    selectedDiagram.connections.forEach((connection) => {
-      if (connection.source !== nodeId && connection.target !== nodeId) {
-        return
-      }
-      if (!connection.bendpoints?.length) {
-        return
-      }
-      const current = relMap.get(connection.relationshipRef) ?? connection.bendpoints
-      const next = adjustBendpointsForNodeResize(
-        current,
-        connection,
-        nodeId,
-        appliedDw,
-        appliedDh,
-      )
-      relMap.set(connection.relationshipRef, next)
-      relChanged = true
-    })
-    const nextRelOverrides = new Map(relationshipOverrides)
-    if (relChanged) {
-      nextRelOverrides.set(diagramId, relMap)
-    }
-
-    commitDiagramOverrides(nextDiagramOverrides)
-    if (relChanged) {
-      commitRelationshipOverrides(nextRelOverrides)
+    commitDiagramOverrides(update.nextDiagramOverrides)
+    if (update.relChanged) {
+      commitRelationshipOverrides(update.nextRelOverrides)
     }
     pushSnapshotCommand(
       'Изменение размера объекта',
       () => {
-        commitDiagramOverrides(cloneNodeOverrideMap(beforeDiagramOverrides))
-        commitRelationshipOverrides(cloneBendpointMap(beforeRelOverrides))
+        commitDiagramOverrides(cloneNodeOverrideMap(update.beforeDiagramOverrides))
+        commitRelationshipOverrides(cloneBendpointMap(update.beforeRelOverrides))
       },
       () => {
-        commitDiagramOverrides(cloneNodeOverrideMap(nextDiagramOverrides))
-        commitRelationshipOverrides(cloneBendpointMap(nextRelOverrides))
+        commitDiagramOverrides(cloneNodeOverrideMap(update.nextDiagramOverrides))
+        commitRelationshipOverrides(cloneBendpointMap(update.nextRelOverrides))
       },
     )
   }
 
   const updateNodeFillColor = useCallback(
     (diagramId: string, nodeId: string, fillColor: string | null) => {
-      if (!diagramId || !nodeId) {
+      const update = computeNodeFillColorUpdate(diagramId, nodeId, fillColor, diagramOverrides)
+      if (!update) {
         return
       }
-      const beforeAll = cloneNodeOverrideMap(diagramOverrides)
-      const overrides = diagramOverrides.get(diagramId) ?? new Map()
-      const prev = overrides.get(nodeId) ?? { dx: 0, dy: 0, dw: 0, dh: 0 }
-      const nextOverrides = new Map(overrides)
-      const nextEntry: NodeOverride = { ...prev, fillColor }
-      const layoutEmpty =
-        (nextEntry.dx ?? 0) === 0 &&
-        (nextEntry.dy ?? 0) === 0 &&
-        (nextEntry.dw ?? 0) === 0 &&
-        (nextEntry.dh ?? 0) === 0
-      if (layoutEmpty && fillColor === undefined) {
-        nextOverrides.delete(nodeId)
-      } else {
-        nextOverrides.set(nodeId, nextEntry)
-      }
-      const nextAll = new Map(diagramOverrides)
-      nextAll.set(diagramId, nextOverrides)
-      commitDiagramOverrides(nextAll)
+      commitDiagramOverrides(update.nextDiagramOverrides)
       pushSnapshotCommand(
         'Изменение фона объекта',
-        () => commitDiagramOverrides(cloneNodeOverrideMap(beforeAll)),
-        () => commitDiagramOverrides(cloneNodeOverrideMap(nextAll)),
+        () => commitDiagramOverrides(cloneNodeOverrideMap(update.beforeDiagramOverrides)),
+        () => commitDiagramOverrides(cloneNodeOverrideMap(update.nextDiagramOverrides)),
       )
     },
     [diagramOverrides, commitDiagramOverrides, pushSnapshotCommand],
@@ -647,79 +343,29 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
   const updateDiagramFolderMetadata = useCallback(
     (folderKey: string, patch: { name: string }) => {
-      if (!model || !folderKey || !patch.name?.trim()) {
+      if (!model) {
         return
       }
-      const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
-      const oldPath = normalizeDiagramFolderFullPath(
-        resolveDiagramFolderPathFromKey(folderKey, branchName),
-        branchName,
+      const result = computeRenameDiagramFolder(
+        model,
+        folderKey,
+        patch.name,
+        createdDiagramFolderPaths,
+        originalDiagramFolderPaths,
       )
-      const newPath = normalizeDiagramFolderFullPath(
-        buildRenamedDiagramFolderFullPath(oldPath, patch.name),
-        branchName,
-      )
-      if (!newPath || newPath === oldPath) {
+      if (!result) {
         return
       }
 
-      const nextFolderPaths = [
-        ...new Set(
-          (model.diagramFolderPaths ?? []).map((path) =>
-            remapDiagramFolderFullPath(oldPath, newPath, normalizeDiagramFolderFullPath(path, branchName)),
-          ),
-        ),
-      ]
-      if (!nextFolderPaths.includes(newPath)) {
-        nextFolderPaths.push(newPath)
-      }
-
-      const nextDiagrams = model.diagrams.map((diagram) => {
-        const folderPath = diagram.folderPath?.trim()
-        if (!folderPath) {
-          return diagram
-        }
-        const normalized = normalizeDiagramFolderFullPath(folderPath, branchName)
-        const remapped = remapDiagramFolderFullPath(oldPath, newPath, normalized)
-        if (remapped === normalized) {
-          return diagram
-        }
-        return { ...diagram, folderPath: remapped }
-      })
-
-      setModel({
-        ...model,
-        diagramFolderPaths: nextFolderPaths,
-        diagrams: nextDiagrams,
-      })
-
-      setCreatedDiagramFolderPaths((prev) => {
-        const next = new Set<string>()
-        for (const path of prev) {
-          next.add(
-            remapDiagramFolderFullPath(
-              oldPath,
-              newPath,
-              normalizeDiagramFolderFullPath(path, branchName),
-            ),
-          )
-        }
-        return next
-      })
-
-      const wasCreated = [...createdDiagramFolderPaths].some(
-        (path) => normalizeDiagramFolderFullPath(path, branchName) === oldPath,
+      setModel(result.nextModel)
+      setCreatedDiagramFolderPaths((prev) =>
+        remapCreatedDiagramFolderPaths(prev, result.oldPath, result.newPath, result.branchName),
       )
-      const wasOriginal = [...originalDiagramFolderPaths].some(
-        (path) => normalizeDiagramFolderFullPath(path, branchName) === oldPath,
-      )
-      if (wasOriginal && !wasCreated) {
-        setDirtyDiagramFolderPaths((prev) => new Set([...prev, newPath]))
+      if (result.wasOriginal && !result.wasCreated) {
+        setDirtyDiagramFolderPaths((prev) => new Set([...prev, result.newPath]))
       }
-
-      const nextFolderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
-      setSelectedDiagramFolderKey(nextFolderKey)
-      setDiagramTreeSelectedKey(nextFolderKey)
+      setSelectedDiagramFolderKey(result.nextFolderKey)
+      setDiagramTreeSelectedKey(result.nextFolderKey)
     },
     [
       model,
@@ -733,27 +379,14 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
   const updateDiagramMetadata = useCallback(
     (diagramId: string, patch: Partial<ParsedDiagram>) => {
-      if (!model || !diagramId) {
+      if (!model) {
         return
       }
-      const hasPatch = patch && Object.keys(patch).length > 0
-      if (!hasPatch) {
+      const nextModel = computeUpdateDiagramMetadata(model, diagramId, patch)
+      if (!nextModel) {
         return
       }
-      const current = model.diagrams.find((diagram) => diagram.id === diagramId)
-      if (!current) {
-        return
-      }
-      const nameChanged = patch.name != null && patch.name !== current.name
-      if (!nameChanged) {
-        return
-      }
-      setModel({
-        ...model,
-        diagrams: model.diagrams.map((diagram) =>
-          diagram.id === diagramId ? { ...diagram, ...patch } : diagram,
-        ),
-      })
+      setModel(nextModel)
     },
     [model],
   )
@@ -787,12 +420,8 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       name: base.name,
       documentation: base.documentation ?? '',
     }
-    const next = {
-      ...prev,
-      ...patch,
-    }
     const all = new Map(elementOverrides)
-    all.set(elementId, next)
+    all.set(elementId, { ...prev, ...patch })
     commitElementOverrides(all)
   }, [model, elementOverrides])
 
@@ -800,109 +429,24 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId) {
       return
     }
-    const type = String(elementType ?? 'BusinessProcess')
-      .trim()
-      .replace(/^archimate:/i, '') || 'BusinessProcess'
-    const name = String(nameOverride ?? '').trim() || `New ${type}`
-    const elementId = generateArchimateModelId()
-    const nodeId = generateArchimateModelId()
-
-    const targetDiagram = model.diagrams.find((d) => d.id === selectedDiagramId)
-    if (!targetDiagram) {
+    const result = computeCreateNewObject(
+      model,
+      selectedDiagramId,
+      elementType,
+      atPoint,
+      nameOverride,
+      diagramOverrides,
+    )
+    if (!result) {
       return
     }
-
-    const flat = flattenNodes(targetDiagram.nodes)
-    const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
-    const maxX = flat.length ? Math.max(...flat.map((n) => n.x)) : 40
-    const targetX = snapToGrid(
-      atPoint && Number.isFinite(atPoint.x)
-        ? Math.max(0, atPoint.x - 85)
-        : Math.max(40, Math.min(260, maxX + 30)),
-    )
-    const targetY = snapToGrid(
-      atPoint && Number.isFinite(atPoint.y) ? Math.max(0, atPoint.y - 35) : maxY + 30,
-    )
-    const newNode: DiagramNode = {
-      id: nodeId,
-      elementRef: elementId,
-      type: 'DiagramObject',
-      label: '',
-      x: targetX,
-      y: targetY,
-      width: 170,
-      height: 70,
-      children: [],
+    setModel(result.nextModel)
+    setCreatedObjects((prev) => [...prev, result.createdObject])
+    if (result.createdRelationship) {
+      setCreatedRelationships((prev) => [...prev, result.createdRelationship!])
     }
-
-    const diagramOverridesForDiagram = diagramOverrides.get(selectedDiagramId)
-    const layoutNodes = diagramOverridesForDiagram?.size
-      ? applyOverridesToNodes(targetDiagram.nodes, diagramOverridesForDiagram)
-      : targetDiagram.nodes
-    const containerNode = findInnermostContainingNode(layoutNodes, newNode)
-
-    const newElement: ParsedElement = {
-      id: elementId,
-      name,
-      type: `archimate:${type}`,
-      documentation: '',
-      properties: [],
-    }
-
-    const nextDiagrams = model.diagrams.map((diagram) => {
-      if (diagram.id !== selectedDiagramId) {
-        return diagram
-      }
-      return {
-        ...diagram,
-        nodes: containerNode
-          ? insertNodeUnderParent(diagram.nodes, containerNode.id, newNode)
-          : [...diagram.nodes, newNode],
-      }
-    })
-
-    const nextElements = [...model.elements, newElement]
-    const nextElementById = new Map(model.elementById)
-    nextElementById.set(elementId, newElement)
-
-    let finalDiagrams = nextDiagrams
-    let finalRelationships = model.relationships
-    let finalRelationshipById = model.relationshipById
-    let createdRelationship: CreatedRelationship | undefined
-
-    if (containerNode) {
-      const aggregationResult = applyNestAggregationToDiagrams(
-        model,
-        selectedDiagramId,
-        nextDiagrams,
-        containerNode.id,
-        nodeId,
-      )
-      if (aggregationResult) {
-        finalDiagrams = aggregationResult.diagrams
-        finalRelationships = aggregationResult.relationships
-        finalRelationshipById = aggregationResult.relationshipById
-        createdRelationship = aggregationResult.createdRelationship
-      }
-    }
-
-    setModel({
-      ...model,
-      elements: nextElements,
-      diagrams: finalDiagrams,
-      elementById: nextElementById,
-      relationships: finalRelationships,
-      relationshipById: finalRelationshipById,
-    })
-    setCreatedObjects((prev) => [
-      ...prev,
-      { diagramId: selectedDiagramId, element: newElement, node: newNode, format: model.format },
-    ])
-    if (createdRelationship) {
-      setCreatedRelationships((prev) => [...prev, createdRelationship!])
-    }
-    setSelectedNode(newNode)
-    setSelectedElementId(elementId)
+    setSelectedNode(result.newNode)
+    setSelectedElementId(result.elementId)
     setSelectedRelationshipRef(null)
     clearLinkCreation()
   }
@@ -911,101 +455,23 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId) {
       return
     }
-    const element = model.elementById.get(elementId)
-    if (!element) {
+    const result = computePlaceElementOnDiagram(
+      model,
+      selectedDiagramId,
+      elementId,
+      atPoint,
+      diagramOverrides,
+    )
+    if (!result) {
       return
     }
-
-    const targetDiagram = model.diagrams.find((d) => d.id === selectedDiagramId)
-    if (!targetDiagram) {
-      return
+    setModel(result.nextModel)
+    setCreatedObjects((prev) => [...prev, result.createdObject])
+    if (result.createdRelationship) {
+      setCreatedRelationships((prev) => [...prev, result.createdRelationship!])
     }
-
-    const nodeId = generateArchimateModelId()
-
-    const flat = flattenNodes(targetDiagram.nodes)
-    const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
-    const maxX = flat.length ? Math.max(...flat.map((n) => n.x)) : 40
-    const targetX = snapToGrid(
-      atPoint && Number.isFinite(atPoint.x)
-        ? Math.max(0, atPoint.x - 85)
-        : Math.max(40, Math.min(260, maxX + 30)),
-    )
-    const targetY = snapToGrid(
-      atPoint && Number.isFinite(atPoint.y) ? Math.max(0, atPoint.y - 35) : maxY + 30,
-    )
-    const newNode: DiagramNode = {
-      id: nodeId,
-      elementRef: elementId,
-      type: 'DiagramObject',
-      label: '',
-      x: targetX,
-      y: targetY,
-      width: 170,
-      height: 70,
-      children: [],
-    }
-
-    const diagramOverridesForDiagram = diagramOverrides.get(selectedDiagramId)
-    const layoutNodes = diagramOverridesForDiagram?.size
-      ? applyOverridesToNodes(targetDiagram.nodes, diagramOverridesForDiagram)
-      : targetDiagram.nodes
-    const containerNode = findInnermostContainingNode(layoutNodes, newNode)
-
-    const nextDiagrams = model.diagrams.map((diagram) => {
-      if (diagram.id !== selectedDiagramId) {
-        return diagram
-      }
-      return {
-        ...diagram,
-        nodes: containerNode
-          ? insertNodeUnderParent(diagram.nodes, containerNode.id, newNode)
-          : [...diagram.nodes, newNode],
-      }
-    })
-
-    let finalDiagrams = nextDiagrams
-    let finalRelationships = model.relationships
-    let finalRelationshipById = model.relationshipById
-    let createdRelationship: CreatedRelationship | undefined
-
-    if (containerNode) {
-      const aggregationResult = applyNestAggregationToDiagrams(
-        model,
-        selectedDiagramId,
-        nextDiagrams,
-        containerNode.id,
-        nodeId,
-      )
-      if (aggregationResult) {
-        finalDiagrams = aggregationResult.diagrams
-        finalRelationships = aggregationResult.relationships
-        finalRelationshipById = aggregationResult.relationshipById
-        createdRelationship = aggregationResult.createdRelationship
-      }
-    }
-
-    setModel({
-      ...model,
-      diagrams: finalDiagrams,
-      relationships: finalRelationships,
-      relationshipById: finalRelationshipById,
-    })
-    setCreatedObjects((prev) => [
-      ...prev,
-      {
-        diagramId: selectedDiagramId,
-        element,
-        node: newNode,
-        format: model.format,
-        existingElement: true,
-      },
-    ])
-    if (createdRelationship) {
-      setCreatedRelationships((prev) => [...prev, createdRelationship!])
-    }
-    setSelectedNode(newNode)
-    setSelectedElementId(elementId)
+    setSelectedNode(result.newNode)
+    setSelectedElementId(result.elementId)
     setSelectedRelationshipRef(null)
     clearLinkCreation()
   }
@@ -1014,68 +480,18 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId) {
       return
     }
-    if (referencedDiagramId === selectedDiagramId) {
-      return
-    }
-    const referencedDiagram = model.diagrams.find((item) => item.id === referencedDiagramId)
-    if (!referencedDiagram) {
-      return
-    }
-
-    const targetDiagram = model.diagrams.find((item) => item.id === selectedDiagramId)
-    if (!targetDiagram) {
-      return
-    }
-
-    const nodeId = generateArchimateModelId()
-
-    const flat = flattenNodes(targetDiagram.nodes)
-    const maxY = flat.length ? Math.max(...flat.map((n) => n.y + n.height)) : 40
-    const maxX = flat.length ? Math.max(...flat.map((n) => n.x)) : 40
-    const targetX = snapToGrid(
-      atPoint && Number.isFinite(atPoint.x)
-        ? Math.max(0, atPoint.x - 78)
-        : Math.max(40, Math.min(260, maxX + 30)),
-    )
-    const targetY = snapToGrid(
-      atPoint && Number.isFinite(atPoint.y) ? Math.max(0, atPoint.y - 12) : maxY + 30,
-    )
-    const newNode: DiagramNode = {
-      id: nodeId,
-      elementRef: '',
-      type: 'archimate:DiagramModelReference',
-      label: referencedDiagram.name,
+    const result = computePlaceDiagramReferenceOnDiagram(
+      model,
+      selectedDiagramId,
       referencedDiagramId,
-      x: targetX,
-      y: targetY,
-      width: 157,
-      height: 25,
-      children: [],
+      atPoint,
+      diagramOverrides,
+    )
+    if (!result) {
+      return
     }
-
-    const diagramOverridesForDiagram = diagramOverrides.get(selectedDiagramId)
-    const layoutNodes = diagramOverridesForDiagram?.size
-      ? applyOverridesToNodes(targetDiagram.nodes, diagramOverridesForDiagram)
-      : targetDiagram.nodes
-    const containerNode = findInnermostContainingNode(layoutNodes, newNode)
-
-    const nextDiagrams = model.diagrams.map((diagram) => {
-      if (diagram.id !== selectedDiagramId) {
-        return diagram
-      }
-      return {
-        ...diagram,
-        nodes: containerNode
-          ? insertNodeUnderParent(diagram.nodes, containerNode.id, newNode)
-          : [...diagram.nodes, newNode],
-      }
-    })
-
-    setModel({
-      ...model,
-      diagrams: nextDiagrams,
-    })
-    setSelectedNode(newNode)
+    setModel(result.nextModel)
+    setSelectedNode(result.newNode)
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
     clearLinkCreation()
@@ -1085,71 +501,30 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model) {
       return
     }
-    const name = String(nameOverride ?? '').trim() || 'New folder'
-    const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
-    const parentPath = selectedDiagramFolderKey
-      ? resolveDiagramFolderPathFromKey(selectedDiagramFolderKey, branchName)
-      : branchName
-    const newPath = normalizeDiagramFolderFullPath(
-      `${parentPath} / ${name}`.replace(/\s+\/\s+/g, ' / ').trim(),
-      branchName,
-    )
-    const existing = new Set(
-      (model.diagramFolderPaths ?? []).map((path) =>
-        normalizeDiagramFolderFullPath(path, branchName),
-      ),
-    )
-    if (existing.has(newPath)) {
+    const result = computeCreateDiagramFolder(model, selectedDiagramFolderKey, nameOverride)
+    if (!result) {
       return
     }
-    setModel({
-      ...model,
-      diagramFolderPaths: [...existing, newPath],
-    })
-    setCreatedDiagramFolderPaths((prev) => new Set([...prev, newPath]))
-    const folderKey = diagramFolderKeyFromPathParts(getDiagramTreePathParts(newPath, branchName))
-    setSelectedDiagramFolderKey(folderKey)
-    setDiagramTreeSelectedKey(folderKey)
+    setModel(result.nextModel)
+    setCreatedDiagramFolderPaths((prev) => new Set([...prev, result.newPath]))
+    setSelectedDiagramFolderKey(result.folderKey)
+    setDiagramTreeSelectedKey(result.folderKey)
   }
 
   function createNewDiagram(nameOverride = '') {
     if (!model) {
       return
     }
-    const name = String(nameOverride ?? '').trim() || 'New view'
-    const id = generateArchimateModelId()
-    const templateDiagram =
-      model.diagrams.find((d) => d.id === selectedDiagramId) ?? model.diagrams[0] ?? null
-    const diagramType =
-      model.format === 'exchange'
-        ? templateDiagram?.type ?? 'archimate:Diagram'
-        : 'archimate:ArchimateDiagramModel'
-    const branchName = inferDiagramsBranchName(model.diagrams, model.diagramFolderPaths ?? [])
-    const targetFolderPath = selectedDiagramFolderKey
-      ? resolveDiagramFolderPathFromKey(selectedDiagramFolderKey, branchName)
-      : templateDiagram?.folderPath ?? branchName
-
-    const newDiagram: ParsedDiagram = {
-      id,
-      name,
-      type: diagramType,
-      folderPath:
-        model.format === 'exchange'
-          ? undefined
-          : model.format === 'archi-tool'
-            ? targetFolderPath
-            : undefined,
-      nodes: [],
-      connections: [],
-    }
-
-    setModel({
-      ...model,
-      diagrams: [...model.diagrams, newDiagram],
-    })
-    setCreatedDiagramIds((prev) => new Set([...prev, id]))
-    setSelectedDiagramId(id)
-    setDiagramTreeSelectedKey(id)
+    const result = computeCreateNewDiagram(
+      model,
+      selectedDiagramId,
+      selectedDiagramFolderKey,
+      nameOverride,
+    )
+    setModel(result.nextModel)
+    setCreatedDiagramIds((prev) => new Set([...prev, result.newDiagram.id]))
+    setSelectedDiagramId(result.newDiagram.id)
+    setDiagramTreeSelectedKey(result.newDiagram.id)
     setSelectedNode(null)
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
@@ -1159,88 +534,31 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
 
   const createRelationshipBetweenNodes = useCallback(
     (relationshipType: string, sourceNodeId: string, targetNodeId: string) => {
-      if (!model || !selectedDiagramId || !relationshipType || !sourceNodeId || !targetNodeId) {
+      if (!model || !selectedDiagramId) {
         return false
       }
-      if (sourceNodeId === targetNodeId) {
-        return false
-      }
-
-      const diagram = model.diagrams.find((d) => d.id === selectedDiagramId)
-      if (!diagram) {
-        return false
-      }
-
-      const sourceNode = findNodeById(diagram.nodes, sourceNodeId)
-      const targetNode = findNodeById(diagram.nodes, targetNodeId)
-      if (!sourceNode?.elementRef || !targetNode?.elementRef) {
-        return false
-      }
-
-      if (sourceNode.elementRef === targetNode.elementRef) {
-        window.alert('Укажите два разных элемента модели.')
-        return false
-      }
-
-      const dup = diagram.connections.some(
-        (c) =>
-          (c.source === sourceNodeId && c.target === targetNodeId) ||
-          (c.source === targetNodeId && c.target === sourceNodeId),
+      const result = computeCreateRelationshipBetweenNodes(
+        model,
+        selectedDiagramId,
+        relationshipType,
+        sourceNodeId,
+        targetNodeId,
       )
-      if (dup) {
-        window.alert('Между этими объектами на диаграмме уже есть связь.')
+      if (!result.ok) {
+        if (result.reason === 'same-element') {
+          window.alert('Укажите два разных элемента модели.')
+        } else if (result.reason === 'duplicate') {
+          window.alert('Между этими объектами на диаграмме уже есть связь.')
+        }
         return false
       }
 
-      const relId = generateArchimateModelId()
-      const connId = generateArchimateModelId()
-      const newRel = {
-        id: relId,
-        name: '',
-        type: relationshipType,
-        source: sourceNode.elementRef,
-        target: targetNode.elementRef,
-      }
-      const newConn = {
-        id: connId,
-        relationshipRef: relId,
-        source: sourceNodeId,
-        target: targetNodeId,
-        bendpoints: [] as Bendpoint[],
-      }
-
-      const nextRelationshipById = new Map(model.relationshipById)
-      nextRelationshipById.set(relId, newRel)
-
-      const nextDiagrams = model.diagrams.map((d) => {
-        if (d.id !== selectedDiagramId) {
-          return d
-        }
-        return {
-          ...d,
-          connections: [...d.connections, newConn],
-        }
-      })
-
-      setModel({
-        ...model,
-        relationships: [...model.relationships, newRel],
-        relationshipById: nextRelationshipById,
-        diagrams: nextDiagrams,
-      })
-        setCreatedRelationships((prev) => [
-        ...prev,
-        {
-          diagramId: selectedDiagramId,
-          relationship: newRel,
-          connection: newConn,
-          format: model.format,
-        },
-      ])
+      setModel(result.nextModel)
+      setCreatedRelationships((prev) => [...prev, result.createdRelationship])
       clearLinkCreation()
-      setSelectedNode(targetNode)
-      setSelectedElementId(targetNode.elementRef)
-      setSelectedRelationshipRef(relId)
+      setSelectedNode(result.targetNode)
+      setSelectedElementId(result.targetNode.elementRef)
+      setSelectedRelationshipRef(result.relationshipId)
       return true
     },
     [model, selectedDiagramId],
@@ -1320,82 +638,29 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const root = selectedNodeLive
-    const subtreeIds = new Set(collectSubtreeIds(root))
-    const diagramBefore = model.diagrams.find((d) => d.id === selectedDiagramId)
-
-    const nextDiagrams = model.diagrams.map((d) => {
-      if (d.id !== selectedDiagramId) {
-        return d
-      }
-      return {
-        ...d,
-        nodes: removeNodeFromTree(d.nodes, root.id),
-        connections: d.connections.filter(
-          (c) => !subtreeIds.has(c.source) && !subtreeIds.has(c.target),
-        ),
-      }
+    const result = computeDeleteSelectedFromDiagram({
+      model,
+      selectedDiagramId,
+      root: selectedNodeLive,
+      diagramOverrides,
+      relationshipOverrides,
+      createdObjects,
+      createdRelationships,
+      deletedDiagramNodeIds,
+      deletedConnectionIds,
+      originalDiagramNodeIds,
+      originalConnectionIds,
     })
-
-    const nextDiagramOverrides = new Map(diagramOverrides)
-    const diagramOv = diagramOverrides.get(selectedDiagramId)
-    if (diagramOv?.size) {
-      const nextOv = new Map(diagramOv)
-      subtreeIds.forEach((id) => nextOv.delete(id))
-      nextDiagramOverrides.set(selectedDiagramId, nextOv)
-    }
-
-    const currentDiagram = nextDiagrams.find((d) => d.id === selectedDiagramId)!
-    const validRefs = new Set(currentDiagram.connections.map((c) => c.relationshipRef))
-    const nextRelOverrides = new Map(relationshipOverrides)
-    const relMap = relationshipOverrides.get(selectedDiagramId)
-    if (relMap?.size) {
-      const nextMap = new Map<string, Bendpoint[]>()
-      relMap.forEach((bendpoints, ref) => {
-        if (validRefs.has(ref)) {
-          nextMap.set(ref, bendpoints)
-        }
-      })
-      nextRelOverrides.set(selectedDiagramId, nextMap)
-    }
-
-    const removedConnIds: string[] = []
-    diagramBefore?.connections.forEach((connection) => {
-      if (subtreeIds.has(connection.source) || subtreeIds.has(connection.target)) {
-        removedConnIds.push(connection.id)
-      }
-    })
-
-    const nextDeletedDiagramNodeIds = new Set(deletedDiagramNodeIds)
-    subtreeIds.forEach((id) => {
-      if (originalDiagramNodeIds.has(id)) {
-        nextDeletedDiagramNodeIds.add(id)
-      }
-    })
-
-    const nextDeletedConnectionIds = new Set(deletedConnectionIds)
-    removedConnIds.forEach((id) => {
-      if (originalConnectionIds.has(id)) {
-        nextDeletedConnectionIds.add(id)
-      }
-    })
-
-    const nextCreatedObjects = createdObjects.filter((item) => !subtreeIds.has(item.node.id))
-    const nextCreatedRelationships = createdRelationships.filter(
-      (cr) =>
-        cr.diagramId !== selectedDiagramId ||
-        (!subtreeIds.has(cr.connection.source) && !subtreeIds.has(cr.connection.target)),
-    )
 
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
-      model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
-      diagramOverrides: cloneNodeOverrideMap(nextDiagramOverrides),
-      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
-      createdObjects: cloneCreatedObjects(nextCreatedObjects),
-      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
-      deletedDiagramNodeIds: nextDeletedDiagramNodeIds,
-      deletedConnectionIds: nextDeletedConnectionIds,
+      model: cloneModelSnapshot({ ...model, diagrams: result.nextDiagrams }),
+      diagramOverrides: result.nextDiagramOverrides,
+      relationshipOverrides: result.nextRelOverrides,
+      createdObjects: cloneCreatedObjects(result.nextCreatedObjects),
+      createdRelationships: cloneCreatedRelationships(result.nextCreatedRelationships),
+      deletedDiagramNodeIds: result.nextDeletedDiagramNodeIds,
+      deletedConnectionIds: result.nextDeletedConnectionIds,
       selectedNodeId: null,
       selectedElementId: null,
       selectedRelationshipRef: null,
@@ -1427,14 +692,19 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId || !selectedRelationshipRef) {
       return
     }
-    const diagram = model.diagrams.find((d) => d.id === selectedDiagramId)
-    if (!diagram) {
-      return
-    }
-    const ref = selectedRelationshipRef
-    const toRemove = diagram.connections.filter((c) => c.relationshipRef === ref)
-    if (!toRemove.length) {
-      window.alert('На текущей диаграмме нет визуализации этой связи.')
+    const result = computeDeleteSelectedConnectionFromDiagram(
+      model,
+      selectedDiagramId,
+      selectedRelationshipRef,
+      relationshipOverrides,
+      createdRelationships,
+      deletedConnectionIds,
+      originalConnectionIds,
+    )
+    if (!result.ok) {
+      if (result.reason === 'no-visualization') {
+        window.alert('На текущей диаграмме нет визуализации этой связи.')
+      }
       return
     }
     if (!window.confirm('Удалить связь с этой диаграммы?')) {
@@ -1446,40 +716,12 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const removedConnIds = toRemove.map((c) => c.id)
-
-    const nextDiagrams = model.diagrams.map((d) => {
-      if (d.id !== selectedDiagramId) {
-        return d
-      }
-      return {
-        ...d,
-        connections: d.connections.filter((c) => c.relationshipRef !== ref),
-      }
-    })
-
-    const relMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
-    relMap.delete(ref)
-    const nextRelOverrides = new Map(relationshipOverrides)
-    nextRelOverrides.set(selectedDiagramId, relMap)
-
-    const nextDeletedConnectionIds = new Set(deletedConnectionIds)
-    removedConnIds.forEach((id) => {
-      if (originalConnectionIds.has(id)) {
-        nextDeletedConnectionIds.add(id)
-      }
-    })
-
-    const nextCreatedRelationships = createdRelationships.filter(
-      (cr) => !removedConnIds.includes(cr.connection.id),
-    )
-
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
-      model: cloneModelSnapshot({ ...model, diagrams: nextDiagrams }),
-      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
-      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
-      deletedConnectionIds: nextDeletedConnectionIds,
+      model: cloneModelSnapshot({ ...model, diagrams: result.nextDiagrams }),
+      relationshipOverrides: result.nextRelOverrides,
+      createdRelationships: cloneCreatedRelationships(result.nextCreatedRelationships),
+      deletedConnectionIds: result.nextDeletedConnectionIds,
       selectedNodeId: null,
       selectedElementId: null,
       selectedRelationshipRef: null,
@@ -1507,72 +749,47 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedRelationshipRef) {
       return
     }
-    const ref = selectedRelationshipRef
-    const relationship = model.relationshipById.get(ref)
     if (!window.confirm('Удалить связь из модели? Она исчезнет на всех диаграммах.')) {
       return
     }
 
-    const removedConnIds: string[] = []
-    model.diagrams.forEach((d) => {
-      d.connections.forEach((c) => {
-        if (c.relationshipRef === ref) {
-          removedConnIds.push(c.id)
-        }
-      })
-    })
-
-    const nextRelationships = model.relationships.filter((r) => r.id !== ref)
-    const nextRelationshipById = new Map(model.relationshipById)
-    nextRelationshipById.delete(ref)
-
-    const nextDiagrams = model.diagrams.map((d) => ({
-      ...d,
-      connections: filterConnectionsToExistingRelationships(d.connections, nextRelationshipById),
-    }))
-
-    const nextDiagramIndexByRelationshipRef = new Map(model.diagramIndexByRelationshipRef ?? [])
-    nextDiagramIndexByRelationshipRef.delete(ref)
-
-    const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
-    relationshipOverrides.forEach((relMap, diagramId) => {
-      const m = new Map(relMap)
-      m.delete(ref)
-      nextRelOverrides.set(diagramId, m)
-    })
+    const result = computeDeleteRelationshipFromModel(
+      model,
+      selectedRelationshipRef,
+      relationshipOverrides,
+    )
+    if (!result) {
+      return
+    }
 
     setDeletedConnectionIds((prev) => {
       const next = new Set(prev)
-      removedConnIds.forEach((id) => {
+      result.removedConnIds.forEach((id) => {
         if (originalConnectionIds.has(id)) {
           next.add(id)
         }
       })
       return next
     })
-    if (originalRelationshipIds.has(ref)) {
+    if (originalRelationshipIds.has(result.relationshipRef)) {
       setDeletedRelationshipIds((prev) => {
         const next = new Set(prev)
-        next.add(ref)
+        next.add(result.relationshipRef)
         return next
       })
     }
 
-    setCreatedRelationships((prev) => prev.filter((cr) => cr.relationship.id !== ref))
+    setCreatedRelationships((prev) =>
+      prev.filter((cr) => cr.relationship.id !== result.relationshipRef),
+    )
 
-    commitRelationshipOverrides(nextRelOverrides)
+    commitRelationshipOverrides(result.nextRelOverrides)
     commitRelationshipMetaOverrides((prev) => {
       const next = new Map(prev)
-      next.delete(ref)
+      next.delete(result.relationshipRef)
       return next
     })
-    setModel({
-      ...model,
-      diagrams: nextDiagrams,
-      relationships: nextRelationships,
-      relationshipById: nextRelationshipById,
-      diagramIndexByRelationshipRef: nextDiagramIndexByRelationshipRef,
-    })
+    setModel(result.nextModel)
     setSelectedRelationshipRef(null)
   }, [
     model,
@@ -1588,9 +805,6 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     }
     const elementId =
       selectedElement?.id ?? selectedNodeLive?.elementRef ?? selectedElementId ?? ''
-    if (!elementId || !model.elementById.has(elementId)) {
-      return
-    }
     if (
       !window.confirm(
         'Удалить элемент из модели? Он будет убран со всех диаграмм; связи с этим элементом тоже удалятся.',
@@ -1599,71 +813,21 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const removedNodeIds = new Set<string>()
-    model.diagrams.forEach((d) => {
-      collectNodeIdsRemovedForElement(d.nodes, elementId).forEach((id) => removedNodeIds.add(id))
-    })
-
-    const relsToRemove = model.relationships.filter(
-      (r) => r.source === elementId || r.target === elementId,
+    const result = computeDeleteElementFromModel(
+      model,
+      elementId,
+      diagramOverrides,
+      relationshipOverrides,
+      elementOverrides,
+      relationshipMetaOverrides,
     )
-    const removedRelIds = new Set(relsToRemove.map((r) => r.id))
-
-    const removedConnIds: string[] = []
-    model.diagrams.forEach((d) => {
-      d.connections.forEach((c) => {
-        if (
-          removedRelIds.has(c.relationshipRef) ||
-          removedNodeIds.has(c.source) ||
-          removedNodeIds.has(c.target)
-        ) {
-          removedConnIds.push(c.id)
-        }
-      })
-    })
-
-    const nextDiagrams = model.diagrams.map((d) => ({
-      ...d,
-      nodes: removeDiagramObjectsByElementRef(d.nodes, elementId),
-      connections: d.connections.filter(
-        (c) =>
-          !removedRelIds.has(c.relationshipRef) &&
-          !removedNodeIds.has(c.source) &&
-          !removedNodeIds.has(c.target),
-      ),
-    }))
-
-    const nextElements = model.elements.filter((e) => e.id !== elementId)
-    const nextElementById = new Map(model.elementById)
-    nextElementById.delete(elementId)
-
-    const nextRelationships = model.relationships.filter((r) => !removedRelIds.has(r.id))
-    const nextRelationshipById = new Map(model.relationshipById)
-    removedRelIds.forEach((id) => nextRelationshipById.delete(id))
-
-    const nextDiagramOverrides = new Map<string, Map<string, NodeOverride>>()
-    diagramOverrides.forEach((ovMap, diagramId) => {
-      const m = new Map(ovMap)
-      removedNodeIds.forEach((nid) => m.delete(nid))
-      nextDiagramOverrides.set(diagramId, m)
-    })
-
-    const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
-    relationshipOverrides.forEach((relMap, diagramId) => {
-      const m = new Map(relMap)
-      removedRelIds.forEach((rid) => m.delete(rid))
-      nextRelOverrides.set(diagramId, m)
-    })
-
-    const nextElemOverrides = new Map(elementOverrides)
-    nextElemOverrides.delete(elementId)
-
-    const nextRelMetaOverrides = new Map(relationshipMetaOverrides)
-    removedRelIds.forEach((id) => nextRelMetaOverrides.delete(id))
+    if (!result) {
+      return
+    }
 
     setDeletedDiagramNodeIds((prev) => {
       const next = new Set(prev)
-      removedNodeIds.forEach((id) => {
+      result.removedNodeIds.forEach((id) => {
         if (originalDiagramNodeIds.has(id)) {
           next.add(id)
         }
@@ -1672,23 +836,23 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     })
     setDeletedElementIds((prev) => {
       const next = new Set(prev)
-      if (originalElementIds.has(elementId)) {
-        next.add(elementId)
+      if (originalElementIds.has(result.elementId)) {
+        next.add(result.elementId)
       }
       return next
     })
     setDeletedRelationshipIds((prev) => {
       const next = new Set(prev)
-      relsToRemove.forEach((r) => {
-        if (originalRelationshipIds.has(r.id)) {
-          next.add(r.id)
+      result.relsToRemoveIds.forEach((id) => {
+        if (originalRelationshipIds.has(id)) {
+          next.add(id)
         }
       })
       return next
     })
     setDeletedConnectionIds((prev) => {
       const next = new Set(prev)
-      removedConnIds.forEach((id) => {
+      result.removedConnIds.forEach((id) => {
         if (originalConnectionIds.has(id)) {
           next.add(id)
         }
@@ -1697,31 +861,26 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     })
 
     setCreatedObjects((prev) =>
-      prev.filter((c) => c.element.id !== elementId && !removedNodeIds.has(c.node.id)),
+      prev.filter(
+        (c) => c.element.id !== result.elementId && !result.removedNodeIds.has(c.node.id),
+      ),
     )
     setCreatedRelationships((prev) =>
       prev.filter(
         (cr) =>
-          !removedRelIds.has(cr.relationship.id) &&
-          !removedNodeIds.has(cr.connection.source) &&
-          !removedNodeIds.has(cr.connection.target),
+          !result.removedRelIds.has(cr.relationship.id) &&
+          !result.removedNodeIds.has(cr.connection.source) &&
+          !result.removedNodeIds.has(cr.connection.target),
       ),
     )
 
-    setLinkCreateSourceId((sid) => (sid && removedNodeIds.has(sid) ? null : sid))
+    setLinkCreateSourceId((sid) => (sid && result.removedNodeIds.has(sid) ? null : sid))
 
-    commitDiagramOverrides(nextDiagramOverrides)
-    commitRelationshipOverrides(nextRelOverrides)
-    commitElementOverrides(nextElemOverrides)
-    commitRelationshipMetaOverrides(nextRelMetaOverrides)
-    setModel({
-      ...model,
-      diagrams: nextDiagrams,
-      elements: nextElements,
-      elementById: nextElementById,
-      relationships: nextRelationships,
-      relationshipById: nextRelationshipById,
-    })
+    commitDiagramOverrides(result.nextDiagramOverrides)
+    commitRelationshipOverrides(result.nextRelOverrides)
+    commitElementOverrides(result.nextElemOverrides)
+    commitRelationshipMetaOverrides(result.nextRelMetaOverrides)
+    setModel(result.nextModel)
     setSelectedNode(null)
     setSelectedElementId(null)
     setSelectedRelationshipRef(null)
@@ -1744,27 +903,22 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!selectedDiagramId || !selectedDiagram) {
       return
     }
-    const currentConnection = selectedDiagram.connections.find(
-      (c) => c.relationshipRef === relationshipRef,
+    const update = computeUpdateRelationshipBendpoint(
+      selectedDiagram,
+      selectedDiagramId,
+      relationshipRef,
+      bendpointIndex,
+      bendpoint,
+      relationshipOverrides,
     )
-    if (!currentConnection) {
+    if (!update) {
       return
     }
-    const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
-    if (!nextBendpoints[bendpointIndex]) {
-      return
-    }
-    nextBendpoints[bendpointIndex] = bendpoint
-    const beforeAll = cloneBendpointMap(relationshipOverrides)
-    const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
-    diagramMap.set(relationshipRef, nextBendpoints)
-    const nextAll = new Map(relationshipOverrides)
-    nextAll.set(selectedDiagramId, diagramMap)
-    commitRelationshipOverrides(nextAll)
+    commitRelationshipOverrides(update.nextOverrides)
     pushSnapshotCommand(
       'Перемещение точки перегиба',
-      () => commitRelationshipOverrides(cloneBendpointMap(beforeAll)),
-      () => commitRelationshipOverrides(cloneBendpointMap(nextAll)),
+      () => commitRelationshipOverrides(cloneBendpointMap(update.beforeOverrides)),
+      () => commitRelationshipOverrides(cloneBendpointMap(update.nextOverrides)),
     )
   }
 
@@ -1772,30 +926,28 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!selectedDiagramId || !selectedDiagram) {
       return
     }
-    const currentConnection = selectedDiagram.connections.find(
-      (c) => c.relationshipRef === relationshipRef,
+    const update = computeAddRelationshipBendpoint(
+      selectedDiagram,
+      selectedDiagramId,
+      relationshipRef,
+      segmentIndex,
+      bendpoint,
+      relationshipOverrides,
     )
-    if (!currentConnection) {
+    if (!update) {
       return
     }
-    const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
-    const insertAt = Math.max(0, Math.min(nextBendpoints.length, segmentIndex))
-    nextBendpoints.splice(insertAt, 0, bendpoint)
-    const beforeAll = cloneBendpointMap(relationshipOverrides)
-    const diagramMap = new Map(relationshipOverrides.get(selectedDiagramId) ?? new Map())
-    diagramMap.set(relationshipRef, nextBendpoints)
-    const nextAll = new Map(relationshipOverrides)
-    nextAll.set(selectedDiagramId, diagramMap)
-    commitRelationshipOverrides(nextAll)
+    const insertAt = update.selectedBendpointIndex ?? 0
+    commitRelationshipOverrides(update.nextOverrides)
     setSelectedBendpointIndex(insertAt)
     pushSnapshotCommand(
       'Добавление точки перегиба',
       () => {
-        commitRelationshipOverrides(cloneBendpointMap(beforeAll))
+        commitRelationshipOverrides(cloneBendpointMap(update.beforeOverrides))
         setSelectedBendpointIndex(null)
       },
       () => {
-        commitRelationshipOverrides(cloneBendpointMap(nextAll))
+        commitRelationshipOverrides(cloneBendpointMap(update.nextOverrides))
         setSelectedBendpointIndex(insertAt)
       },
     )
@@ -1809,41 +961,21 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     if (!model || !selectedDiagramId) {
       return
     }
-    const relationship = model.relationshipById.get(relationshipRef)
-    const diagram = model.diagrams.find((d) => d.id === selectedDiagramId)
-    const connection = diagram?.connections.find((c) => c.relationshipRef === relationshipRef)
-    if (!relationship || !diagram || !connection) {
-      return
-    }
-
-    const newNode = findNodeById(diagram.nodes, newNodeId)
-    if (!newNode?.elementRef || isDiagramReferenceNode(newNode)) {
-      return
-    }
-
-    const otherNodeId = endpoint === 'source' ? connection.target : connection.source
-    const otherNode = findNodeById(diagram.nodes, otherNodeId)
-    if (!otherNode?.elementRef) {
-      return
-    }
-    if (newNodeId === otherNodeId) {
-      return
-    }
-    if (newNode.elementRef === otherNode.elementRef) {
-      window.alert('Укажите два разных элемента модели.')
-      return
-    }
-
-    const nextSourceNodeId = endpoint === 'source' ? newNodeId : connection.source
-    const nextTargetNodeId = endpoint === 'target' ? newNodeId : connection.target
-    const duplicate = diagram.connections.some(
-      (c) =>
-        c.id !== connection.id &&
-        ((c.source === nextSourceNodeId && c.target === nextTargetNodeId) ||
-          (c.source === nextTargetNodeId && c.target === nextSourceNodeId)),
+    const result = computeReassignRelationshipEndpoint(
+      model,
+      selectedDiagramId,
+      relationshipRef,
+      endpoint,
+      newNodeId,
+      relationshipOverrides,
+      createdRelationships,
     )
-    if (duplicate) {
-      window.alert('Между этими объектами на диаграмме уже есть связь.')
+    if (!result.ok) {
+      if (result.reason === 'same-element') {
+        window.alert('Укажите два разных элемента модели.')
+      } else if (result.reason === 'duplicate') {
+        window.alert('Между этими объектами на диаграмме уже есть связь.')
+      }
       return
     }
 
@@ -1852,81 +984,11 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       return
     }
 
-    const nextSourceElement = endpoint === 'source' ? newNode.elementRef : relationship.source
-    const nextTargetElement = endpoint === 'target' ? newNode.elementRef : relationship.target
-    const updatedRelationship: ParsedRelationship = {
-      ...relationship,
-      source: nextSourceElement,
-      target: nextTargetElement,
-    }
-
-    const nextRelationshipById = new Map(model.relationshipById)
-    nextRelationshipById.set(relationshipRef, updatedRelationship)
-    const nextRelationships = model.relationships.map((item) =>
-      item.id === relationshipRef ? updatedRelationship : item,
-    )
-
-    const nextDiagrams = model.diagrams.map((d) => ({
-      ...d,
-      connections: d.connections.map((c) => {
-        if (c.relationshipRef !== relationshipRef) {
-          return c
-        }
-        if (d.id === selectedDiagramId) {
-          return {
-            ...c,
-            source: nextSourceNodeId,
-            target: nextTargetNodeId,
-            bendpoints: [],
-          }
-        }
-        const srcNode = findNodeByElementRefInDiagram(d, nextSourceElement)
-        const tgtNode = findNodeByElementRefInDiagram(d, nextTargetElement)
-        if (srcNode && tgtNode) {
-          return {
-            ...c,
-            source: srcNode.id,
-            target: tgtNode.id,
-            bendpoints: [],
-          }
-        }
-        return c
-      }),
-    }))
-
-    const nextRelOverrides = new Map(relationshipOverrides)
-    nextRelOverrides.forEach((relMap, diagramId) => {
-      if (relMap.has(relationshipRef)) {
-        const nextMap = new Map(relMap)
-        nextMap.delete(relationshipRef)
-        nextRelOverrides.set(diagramId, nextMap)
-      }
-    })
-
-    const nextCreatedRelationships = createdRelationships.map((cr) => {
-      if (cr.relationship.id !== relationshipRef) {
-        return cr
-      }
-      const diagramConn = nextDiagrams
-        .find((d) => d.id === cr.diagramId)
-        ?.connections.find((c) => c.relationshipRef === relationshipRef)
-      return {
-        ...cr,
-        relationship: updatedRelationship,
-        connection: diagramConn ?? cr.connection,
-      }
-    })
-
     const afterSnapshot: CanvasEditSnapshot = {
       ...cloneCanvasEditSnapshot(beforeSnapshot),
-      model: cloneModelSnapshot({
-        ...model,
-        diagrams: nextDiagrams,
-        relationships: nextRelationships,
-        relationshipById: nextRelationshipById,
-      }),
-      relationshipOverrides: cloneBendpointMap(nextRelOverrides),
-      createdRelationships: cloneCreatedRelationships(nextCreatedRelationships),
+      model: cloneModelSnapshot(result.nextModel),
+      relationshipOverrides: result.nextRelOverrides,
+      createdRelationships: cloneCreatedRelationships(result.nextCreatedRelationships),
       selectedBendpointIndex: null,
     }
 

@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
 import type { MenuProps } from 'antd'
+import { useThemeModeContext } from '../theme-provider'
 import {
   getNodeAtPosition,
   roundDiagramCoord,
@@ -43,6 +44,8 @@ import type { Point } from '../../types/model'
 import { useCompareCanvasSync } from '../changes/compare-canvas-sync'
 
 export function useDiagramCanvas(props: DiagramCanvasProps) {
+  const { isDark } = useThemeModeContext()
+  const canvasTheme = isDark ? 'dark' : 'light'
   const {
     diagram,
     diagramExportName,
@@ -200,6 +203,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       linkCreateSourceId,
       dragPreview: dragPreviewRef.current,
       diagramById,
+      theme: canvasTheme,
     })
 
     if (result) {
@@ -221,6 +225,7 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     linkCreateMode,
     linkCreateSourceId,
     diagramById,
+    canvasTheme,
   ])
 
   const scheduleRepaint = useCallback(() => {
@@ -613,7 +618,6 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
     const hitRelationshipRef = pickRelationshipAtScreenPoint(x, y, renderedConnectionsRef.current)
     if (hitRelationshipRef) {
       onRelationshipSelect?.(hitRelationshipRef)
-      onNodeSelect?.(null)
       return
     }
 
@@ -627,10 +631,8 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       }
       return
     }
-    if (readOnly) {
-      onRelationshipSelect?.(null)
-      onNodeSelect?.(null)
-    }
+    onRelationshipSelect?.(null)
+    onNodeSelect?.(null)
   }
 
   function handlePointerDown(event: React.PointerEvent) {
@@ -751,7 +753,6 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
         const d = distancePointToSegment(clickPoint, c.points[i], c.points[i + 1])
         if (d <= 7) {
           onRelationshipSelect?.(c.relationshipRef)
-          onNodeSelect?.(null)
           suppressClickRef.current = true
           event.preventDefault()
           return
@@ -920,7 +921,6 @@ export function useDiagramCanvas(props: DiagramCanvasProps) {
       onBendpointSelect?.(null)
       onNodeSelect?.(target.node)
     } else if (target.kind === 'relationship' && target.relationshipRef) {
-      onNodeSelect?.(null)
       onRelationshipSelect?.(target.relationshipRef)
       onBendpointSelect?.(target.bendpointIndex ?? null)
     }

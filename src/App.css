@@ -789,7 +789,7 @@
   align-items: center;
   justify-content: center;
   border-radius: 8px;
-  background: rgba(251, 252, 255, 0.82);
+  background: color-mix(in srgb, var(--app-color-canvas) 82%, transparent);
 }
 
 .git-loader-card {

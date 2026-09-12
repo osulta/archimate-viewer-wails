@@ -1,6 +1,7 @@
 import type { DiagramConnection } from '../../types/model'
 
 export const DEFAULT_CONNECTION_LINE_COLOR = '#242424'
+export const DEFAULT_CONNECTION_LINE_COLOR_DARK = '#c8c8c8'
 
 export function resolveConnectionLineColor(
   connection: DiagramConnection,

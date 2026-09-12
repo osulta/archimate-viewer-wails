@@ -31,8 +31,10 @@ export {
   BENDPOINT_HIT_RADIUS,
   CONNECTION_ENDPOINT_HIT_RADIUS,
 } from './constants'
-export { resolveConnectionLineColor, DEFAULT_CONNECTION_LINE_COLOR } from './connection-colors'
+export { resolveConnectionLineColor, DEFAULT_CONNECTION_LINE_COLOR, DEFAULT_CONNECTION_LINE_COLOR_DARK } from './connection-colors'
 export { resolveNodeDrawColors } from './node-colors'
+export { getCanvasPaintTheme } from './canvas-theme'
+export type { CanvasThemeMode, CanvasPaintTheme } from './canvas-theme'
 export { getResizeHandleRect, isPointInResizeHandle } from './resize-handle'
 export { applyDragPreviewToDiagram } from './diagram-preview'
 export { getCanvasPointer } from './pointer'

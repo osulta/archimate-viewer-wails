@@ -1,138 +1,10 @@
-import { useRef, useState, useEffect, useCallback, useMemo } from 'react'
-import { apiUrl } from '../lib/api-base'
-import { confirmDialog } from '../lib/ui/confirm-dialog'
-import { SelectDirectory, isWailsRuntime } from '../../wailsjs/go/main/App'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ModelLoadPayload } from '../types/model'
-
-/** Default clone / work-tree folder under GIT_REPO_ROOT (same as Node API). */
-const DEFAULT_GIT_WORK_FOLDER = 'git'
-
-function localBranchNameFromRef(ref: string | null | undefined): string {
-  const trimmed = String(ref ?? '').trim()
-  if (!trimmed) {
-    return ''
-  }
-  const match = trimmed.match(/^origin\/(.+)$/i)
-  return match ? match[1] : trimmed
-}
-
-function normalizeBranchName(ref: string | null | undefined): string {
-  return localBranchNameFromRef(ref)
-}
-
-interface BranchEntry {
-  name: string
-  local?: boolean
-  current?: boolean
-}
-
-function resolveCurrentBranchFromList(
-  branches: BranchEntry[],
-  probeBranch?: string,
-): string {
-  const marked = branches.find((branch) => branch.current)
-  if (marked) {
-    return normalizeBranchName(marked.name)
-  }
-
-  const probe = normalizeBranchName(probeBranch)
-  if (!probe || probe === 'HEAD') {
-    return ''
-  }
-  if (branches.length === 0) {
-    return probe
-  }
-  if (branches.some((branch) => branch.name === probe)) {
-    return probe
-  }
-  return ''
-}
-
-interface GitCommandBlock {
-  stdout?: string
-  stderr?: string
-}
-
-function formatGitCommandOutput(
-  label: string,
-  block: GitCommandBlock | null | undefined,
-  fallback = '',
-): string {
-  const text = [block?.stdout, block?.stderr].filter(Boolean).join('\n').trim()
-  if (text) {
-    return `${label}:\n${text}`
-  }
-  return fallback ? `${label}: ${fallback}` : ''
-}
-
-function joinGitCommandOutput(parts: Array<string | null | undefined>): string {
-  return parts
-    .map((part) => part?.trim())
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-function preferLocalBranchSelection(
-  selected: string | null | undefined,
-  branches: BranchEntry[],
-  currentBranch?: string,
-): string {
-  const list = Array.isArray(branches) ? branches : []
-  const current = normalizeBranchName(currentBranch)
-  if (current && list.some((b) => b.name === current)) {
-    return current
-  }
-
-  const selectedTrim = normalizeBranchName(selected)
-  if (!selectedTrim) {
-    return current || ''
-  }
-
-  if (list.some((b) => b.name === selectedTrim)) {
-    return selectedTrim
-  }
-  return selectedTrim
-}
-
-interface GitRepoProbe {
-  loaded: boolean
-  loading: boolean
-  hasDotGit: boolean
-  workFolder: string
-  remoteUrl: string
-  currentBranch: string
-}
-
-interface GitBranchesState {
-  loading: boolean
-  list: BranchEntry[]
-  error: string | null
-  defaultBranch: string
-}
-
-interface ReadModelResult {
-  ok: boolean
-  error?: string
-  path?: string
-  filename?: string
-}
-
-interface RefreshRepoResult {
-  ok: boolean
-  modelPath: string
-  hasDotGit: boolean
-}
-
-interface RefreshGitRepoOptions {
-  /** When true, overwrite the clone URL field from origin (e.g. after GIT_REPO_ROOT change). */
-  syncRemoteUrl?: boolean
-}
-
-interface GitCommandResult {
-  ok: boolean
-  error?: string
-  path?: string
-}
+import { fetchApiHealth, isWailsDesktopRuntime } from '../lib/git/api-client'
+import type { ReadModelResult } from '../lib/git/git-helpers'
+import { useGitBranches } from './git/use-git-branches'
+import { useGitRepoSettings } from './git/use-git-repo-settings'
+import { useGitWorkflow } from './git/use-git-workflow'
 
 interface UseGitIntegrationOptions {
   hasModel: boolean
@@ -144,29 +16,6 @@ interface UseGitIntegrationOptions {
   onRepositoryDeleted: () => void
 }
 
-const isWailsDesktopRuntime =
-  typeof window !== 'undefined' && window.location.protocol === 'wails:'
-
-const apiUnavailableMessage = isWailsDesktopRuntime
-  ? 'Локальный API недоступен. Перезапустите приложение.'
-  : 'API недоступен. Запустите npm run dev (порт API 5151).'
-
-function formatApiRequestError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err)
-  const normalized = raw.toLowerCase()
-  const looksLikeInvalidUrl =
-    normalized.includes('did not match the expected pattern') ||
-    normalized.includes('failed to parse url')
-
-  if (isWailsDesktopRuntime) {
-    return looksLikeInvalidUrl
-      ? 'Локальный API недоступен (не удалось определить адрес). Перезапустите приложение и попробуйте снова.'
-      : raw
-  }
-
-  return err instanceof Error ? `${err.message}\nЗапустите npm run dev (API на порту 5151).` : String(err)
-}
-
 export function useGitIntegration({
   hasModel,
   loadedFilename,
@@ -176,59 +25,10 @@ export function useGitIntegration({
   onModelParseError,
   onRepositoryDeleted,
 }: UseGitIntegrationOptions) {
-  const [gitRepoPath, setGitRepoPath] = useState(() =>
-    typeof sessionStorage !== 'undefined'
-      ? sessionStorage.getItem('archimate-git-repo-path') ?? ''
-      : '',
-  )
-  const [gitCommitMessage, setGitCommitMessage] = useState('')
-  const [gitCloneUrl, setGitCloneUrl] = useState(() =>
-    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('archimate-git-clone-url') ?? '' : '',
-  )
-  const [gitCloneShallow, setGitCloneShallow] = useState(false)
-  const [gitPushUpstream, setGitPushUpstream] = useState(false)
-  const [gitCheckoutBranch, setGitCheckoutBranch] = useState(() =>
-    typeof sessionStorage !== 'undefined'
-      ? normalizeBranchName(sessionStorage.getItem('archimate-git-checkout-branch') ?? '')
-      : '',
-  )
-  const [gitConfigPat, setGitConfigPat] = useState('')
-  const [gitRepoRoot, setGitRepoRoot] = useState('')
-  const [gitRepoRootDefault, setGitRepoRootDefault] = useState('')
-  const [gitRepoRootInput, setGitRepoRootInput] = useState('')
-  const canPickDirectory = isWailsRuntime()
-  const [gitRepoProbe, setGitRepoProbe] = useState<GitRepoProbe>({
-    loaded: false,
-    loading: false,
-    hasDotGit: false,
-    workFolder: '.',
-    remoteUrl: '',
-    currentBranch: '',
-  })
-  const [gitBranches, setGitBranches] = useState<GitBranchesState>({
-    loading: false,
-    list: [],
-    error: null,
-    defaultBranch: '',
-  })
   const [gitOutput, setGitOutput] = useState('')
   const [gitCommandLoading, setGitCommandLoading] = useState(false)
   const [gitCommandLabel, setGitCommandLabel] = useState('')
   const [gitApiReady, setGitApiReady] = useState(false)
-  const [modelLoading, setModelLoading] = useState(false)
-
-  const gitRepoPathRef = useRef('')
-  const gitConfigPatRef = useRef('')
-  const branchesRequestSeqRef = useRef(0)
-  gitRepoPathRef.current = gitRepoPath.trim()
-  gitConfigPatRef.current = gitConfigPat
-
-  const onModelLoadedRef = useRef(onModelLoaded)
-  const onModelSavedRef = useRef(onModelSaved)
-  const onModelParseErrorRef = useRef(onModelParseError)
-  onModelLoadedRef.current = onModelLoaded
-  onModelSavedRef.current = onModelSaved
-  onModelParseErrorRef.current = onModelParseError
 
   const withGitCommand = useCallback(async <T>(label: string, fn: () => Promise<T>): Promise<T> => {
     setGitCommandLoading(true)
@@ -241,237 +41,10 @@ export function useGitIntegration({
     }
   }, [])
 
-  useEffect(() => {
-    sessionStorage.setItem('archimate-git-clone-url', gitCloneUrl)
-  }, [gitCloneUrl])
-
-  useEffect(() => {
-    sessionStorage.setItem('archimate-git-checkout-branch', normalizeBranchName(gitCheckoutBranch))
-  }, [gitCheckoutBranch])
-
-  useEffect(() => {
-    const trimmed = gitRepoPath.trim()
-    if (trimmed) {
-      sessionStorage.setItem('archimate-git-repo-path', trimmed)
-    }
-  }, [gitRepoPath])
-
-  const readAndApplyModel = useCallback(async (relPath: string): Promise<ReadModelResult> => {
-    setModelLoading(true)
-    try {
-    const readRes = await fetch(apiUrl('/api/model/read'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path: relPath }),
-    })
-    const readData = await readRes.json()
-    if (!readData.ok || typeof readData.content !== 'string') {
-      return {
-        ok: false,
-        error: readData.error || String(readRes.status),
-        path: relPath,
-      }
-    }
-    const baseName =
-      readData.path.split('/').pop() || relPath.split('/').pop() || 'model.archimate'
-    try {
-      onModelLoadedRef.current({
-        content: readData.content,
-        filename: baseName,
-        repoPath: readData.path,
-      })
-      setGitRepoPath(readData.path)
-      return { ok: true, path: readData.path, filename: baseName }
-    } catch (parseErr) {
-      const msg = parseErr instanceof Error ? parseErr.message : String(parseErr)
-      onModelParseErrorRef.current(msg)
-      return { ok: false, error: msg, path: readData.path }
-    }
-    } finally {
-      setModelLoading(false)
-    }
-  }, [])
-
-  const refreshGitRepoRoot = useCallback(async (): Promise<void> => {
-    try {
-      const r = await fetch(apiUrl('/api/git/repo-root'))
-      const data = await r.json()
-      if (data.ok) {
-        const root = typeof data.repoRoot === 'string' ? data.repoRoot : ''
-        setGitRepoRoot(root)
-        setGitRepoRootInput(root)
-        setGitRepoRootDefault(
-          typeof data.defaultRepoRoot === 'string' ? data.defaultRepoRoot : '',
-        )
-      }
-    } catch {
-      // Leave previous values; the info banner already reports API availability.
-    }
-  }, [])
-
-  const refreshGitRepoState = useCallback(async (options: RefreshGitRepoOptions = {}): Promise<RefreshRepoResult> => {
-    setGitRepoProbe((p) => ({ ...p, loading: true }))
-    try {
-      const r = await fetch(apiUrl('/api/git/repo-state'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: DEFAULT_GIT_WORK_FOLDER }),
-      })
-      const data = await r.json()
-      if (data.ok) {
-        const probeBranch = typeof data.currentBranch === 'string' ? data.currentBranch.trim() : ''
-        const remoteUrl = typeof data.remoteUrl === 'string' ? data.remoteUrl : ''
-        setGitRepoProbe({
-          loaded: true,
-          loading: false,
-          hasDotGit: Boolean(data.hasDotGit),
-          workFolder: data.workFolder ?? '.',
-          remoteUrl,
-          currentBranch: probeBranch === 'HEAD' ? '' : probeBranch,
-        })
-        if (options.syncRemoteUrl) {
-          setGitCloneUrl(remoteUrl)
-        } else if (remoteUrl) {
-          setGitCloneUrl((prev) => (prev.trim() ? prev : remoteUrl))
-        }
-        if (typeof data.modelPath === 'string' && data.modelPath) {
-          setGitRepoPath(data.modelPath)
-        } else {
-          setGitRepoPath('')
-        }
-        return {
-          ok: true,
-          modelPath: typeof data.modelPath === 'string' ? data.modelPath : '',
-          hasDotGit: Boolean(data.hasDotGit),
-        }
-      }
-      setGitRepoProbe((p) => ({ ...p, loaded: true, loading: false }))
-      return { ok: false, modelPath: '', hasDotGit: false }
-    } catch {
-      setGitRepoProbe((p) => ({ ...p, loaded: true, loading: false }))
-      return { ok: false, modelPath: '', hasDotGit: false }
-    }
-  }, [])
-
-  const loadGitBranches = useCallback(
-    async (modelPathOverride?: string, options: { fetch?: boolean } = {}): Promise<void> => {
-      const fetchRemote = options.fetch === true
-      const run = async (): Promise<void> => {
-        const requestId = ++branchesRequestSeqRef.current
-        const rel = String(modelPathOverride ?? gitRepoPathRef.current).trim()
-        const pat = gitConfigPatRef.current.trim()
-        setGitBranches((s) => ({ ...s, loading: true, error: null }))
-        try {
-          const res = await fetch(apiUrl('/api/git/branches'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              workFolder: DEFAULT_GIT_WORK_FOLDER,
-              ...(rel ? { path: rel } : {}),
-              ...(fetchRemote ? { fetch: true } : {}),
-              ...(pat ? { pat } : {}),
-            }),
-          })
-          const data = await res.json()
-          if (branchesRequestSeqRef.current !== requestId) {
-            return
-          }
-          if (data.ok && Array.isArray(data.branches)) {
-            const list = data.branches as BranchEntry[]
-            const defaultBranch =
-              typeof data.defaultBranch === 'string' ? data.defaultBranch.trim() : ''
-            setGitBranches({ loading: false, list, error: null, defaultBranch })
-            const resolvedBranch = resolveCurrentBranchFromList(list)
-            setGitRepoProbe((prev) => ({ ...prev, currentBranch: resolvedBranch }))
-            if (resolvedBranch) {
-              setGitCheckoutBranch((prev) => preferLocalBranchSelection(prev, list, resolvedBranch))
-            }
-            if (fetchRemote) {
-              const count = data.branches.length
-              const localCount = data.branches.filter((b: BranchEntry) => b.local !== false).length
-              const fetchWarning =
-                typeof data.fetchWarning === 'string' ? data.fetchWarning.trim() : ''
-              setGitOutput(
-                joinGitCommandOutput([
-                  formatGitCommandOutput('git fetch', data.fetch as GitCommandBlock | undefined),
-                  fetchWarning,
-                  `Список веток обновлён: ${count} (${localCount} локальных).`,
-                ]),
-              )
-            }
-          } else {
-            const errText = typeof data.error === 'string' ? data.error : 'Ошибка списка веток'
-            setGitBranches((s) => ({
-              ...s,
-              loading: false,
-              error: errText,
-            }))
-            if (fetchRemote) {
-              setGitOutput(
-                joinGitCommandOutput([
-                  formatGitCommandOutput('git fetch', data.fetch as GitCommandBlock | undefined),
-                  errText,
-                ]),
-              )
-            }
-          }
-        } catch (e) {
-          if (branchesRequestSeqRef.current !== requestId) {
-            return
-          }
-          const errText = e instanceof Error ? e.message : String(e)
-          setGitBranches((s) => ({
-            ...s,
-            loading: false,
-            error: errText,
-          }))
-          if (fetchRemote) {
-            setGitOutput(`Обновление списка веток: ${errText}`)
-          }
-        }
-      }
-      if (fetchRemote) {
-        return withGitCommand('Загрузка списка веток…', run)
-      }
-      return run()
-    },
-    [withGitCommand],
+  const readAndApplyModelRef = useRef<(relPath: string) => Promise<ReadModelResult>>(
+    async () => ({ ok: false, error: 'Model loader not ready' }),
   )
-
-  useEffect(() => {
-    if (!gitRepoProbe.hasDotGit) {
-      branchesRequestSeqRef.current += 1
-      setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
-    }
-  }, [gitRepoProbe.hasDotGit])
-
-  useEffect(() => {
-    if (!gitBranches.list.length) {
-      return
-    }
-    const current = normalizeBranchName(gitRepoProbe.currentBranch)
-    const selected = normalizeBranchName(gitCheckoutBranch)
-    let next = selected
-
-    if (!next && current) {
-      next = current
-    } else if (next && !gitBranches.list.some((b) => b.name === next)) {
-      if (current && gitBranches.list.some((b) => b.name === current)) {
-        next = current
-      }
-    }
-
-    if (next && next !== gitCheckoutBranch) {
-      setGitCheckoutBranch(next)
-    }
-  }, [gitBranches.list, gitRepoProbe.currentBranch, gitCheckoutBranch])
-
-  useEffect(() => {
-    if (!gitApiReady || !gitRepoProbe.hasDotGit) {
-      return
-    }
-    void loadGitBranches(undefined, { fetch: false })
-  }, [gitApiReady, gitRepoProbe.hasDotGit, gitRepoPath, loadGitBranches])
+  const setModelLoadingRef = useRef<(value: boolean) => void>(() => {})
 
   useEffect(() => {
     let cancelled = false
@@ -479,12 +52,10 @@ export function useGitIntegration({
 
     const checkHealth = async (): Promise<void> => {
       try {
-        const response = await fetch(apiUrl('/api/health'))
-        const data = await response.json()
+        const { ok } = await fetchApiHealth()
         if (cancelled) {
           return
         }
-        const ok = Boolean(data.ok)
         setGitApiReady(ok)
         if (!ok && isWailsDesktopRuntime) {
           timer = window.setTimeout(() => {
@@ -513,675 +84,90 @@ export function useGitIntegration({
     }
   }, [])
 
-  useEffect(() => {
-    if (!gitApiReady) {
-      return
-    }
-    void refreshGitRepoState({ syncRemoteUrl: true })
-  }, [gitApiReady, refreshGitRepoState])
-
-  useEffect(() => {
-    if (!gitApiReady) {
-      return
-    }
-    void refreshGitRepoRoot()
-  }, [gitApiReady, refreshGitRepoRoot])
-
-  useEffect(() => {
-    if (!gitApiReady || !gitRepoProbe.loaded || gitRepoProbe.loading) {
-      return
-    }
-    if (!gitRepoProbe.hasDotGit) {
-      return
-    }
-    const relPath = gitRepoPath.trim()
-    if (!relPath || hasModel) {
-      return
-    }
-    let cancelled = false
-    ;(async () => {
-      try {
-        const result = await readAndApplyModel(relPath)
-        if (cancelled) {
-          return
-        }
-        if (result.ok) {
-          setGitOutput(`Модель загружена из репозитория: ${result.path}`)
-        } else if (result.error) {
-          setGitOutput(
-            result.path
-              ? `Файл в репозитории (${result.path}) не разобран как модель: ${result.error}`
-              : `Репозиторий найден, но не удалось прочитать модель (${relPath}): ${result.error}`,
-          )
-        }
-      } catch (readErr) {
-        if (!cancelled) {
-          setGitOutput(
-            `Ошибка автозагрузки модели: ${readErr instanceof Error ? readErr.message : String(readErr)}`,
-          )
-        }
-      }
-    })()
-    return () => {
-      cancelled = true
-      setModelLoading(false)
-    }
-  }, [
+  const settings = useGitRepoSettings({
     gitApiReady,
-    gitRepoProbe.loaded,
-    gitRepoProbe.loading,
-    gitRepoProbe.hasDotGit,
-    gitRepoPath,
+    withGitCommand,
+    setGitOutput,
+    readAndApplyModel: (relPath) => readAndApplyModelRef.current(relPath),
+    onRepositoryDeleted,
+    setModelLoading: (value) => setModelLoadingRef.current(value),
+  })
+
+  const branches = useGitBranches({
+    gitApiReady,
+    gitRepoPath: settings.gitRepoPath,
+    gitConfigPatRef: settings.gitConfigPatRef,
+    gitRepoProbe: settings.gitRepoProbe,
+    setGitRepoProbe: settings.setGitRepoProbe,
+    withGitCommand,
+    setGitOutput,
+    readAndApplyModel: (relPath) => readAndApplyModelRef.current(relPath),
+    refreshGitRepoState: settings.refreshGitRepoState,
+  })
+
+  const workflow = useGitWorkflow({
     hasModel,
-    readAndApplyModel,
-  ])
+    loadedFilename,
+    getEditedModelXml,
+    onModelLoaded,
+    onModelSaved,
+    onModelParseError,
+    gitApiReady,
+    gitRepoPath: settings.gitRepoPath,
+    setGitRepoPath: settings.setGitRepoPath,
+    gitConfigPat: settings.gitConfigPat,
+    gitCheckoutBranch: branches.gitCheckoutBranch,
+    gitRepoProbe: settings.gitRepoProbe,
+    withGitCommand,
+    setGitOutput,
+    loadGitBranches: branches.loadGitBranches,
+    refreshGitRepoState: settings.refreshGitRepoState,
+  })
 
-  const buildRepoModelWriteRelativePath = useCallback((): string | null => {
-    const tracked = String(gitRepoPath || '')
-      .trim()
-      .replace(/^[\\/]+/, '')
-      .replace(/\\/g, '/')
-    if (
-      tracked &&
-      !tracked.split('/').some((segment) => segment === '..' || segment === '.') &&
-      /\.(archimate|xml)$/i.test(tracked)
-    ) {
-      return tracked
-    }
-
-    let base =
-      String(loadedFilename || 'model.archimate')
-        .replace(/^[\\/]+/, '')
-        .split(/[/\\]/)
-        .pop() || 'model.archimate'
-    base = base.replace(/\.[^.\\/]+$/iu, '') + '.archimate'
-    if (!/\.archimate$/iu.test(base)) {
-      base = 'model.archimate'
-    }
-    return base
-  }, [gitRepoPath, loadedFilename])
-
-  const handleReloadModelFromFile = useCallback(async (): Promise<GitCommandResult> => {
-    const rel = buildRepoModelWriteRelativePath()
-    if (!rel) {
-      const msg =
-        'Не найден путь к файлу model.archimate в репозитории. Клонируйте репозиторий или дождитесь автозагрузки.'
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-
-    return withGitCommand('Обновление модели…', async () => {
-      const result = await readAndApplyModel(rel)
-      if (result.ok) {
-        setGitOutput(`Модель загружена из файла: ${result.path}`)
-        return result
-      }
-      const msg = result.error || 'Не удалось загрузить модель'
-      setGitOutput(msg)
-      return { ok: false, error: msg, path: result.path }
-    })
-  }, [buildRepoModelWriteRelativePath, readAndApplyModel, withGitCommand])
-
-  async function handleSaveModelToGitFile(): Promise<GitCommandResult> {
-    let nextXml: string | null | undefined
-    try {
-      nextXml = getEditedModelXml()
-    } catch (buildErr) {
-      const msg = `Не удалось собрать XML модели: ${
-        buildErr instanceof Error ? buildErr.message : String(buildErr)
-      }`
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    if (!nextXml) {
-      const msg = hasModel
-        ? 'Не удалось собрать XML модели: исходный файл не загружен в память. Нажмите «Обновить модель» и сохраните снова.'
-        : 'Нет загруженной модели для записи'
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    const rel = buildRepoModelWriteRelativePath()
-    if (!rel) {
-      const msg =
-        'Не найден путь к файлу модели в репозитории. Клонируйте репозиторий или дождитесь автозагрузки.'
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    try {
-      const response = await fetch(apiUrl('/api/model/write'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: rel, content: nextXml }),
-      })
-      const data = await response.json().catch(() => ({}) as Record<string, unknown>)
-      if (!response.ok) {
-        const msg =
-          typeof data.error === 'string'
-            ? data.error
-            : `Ошибка API (${response.status})`
-        setGitOutput(msg)
-        return { ok: false, error: msg }
-      }
-      if (data.ok) {
-        const savedPath = data.path ?? rel
-        setGitRepoPath(savedPath)
-        const baseName =
-          savedPath.split('/').pop() || rel.split('/').pop() || 'model.archimate'
-        const msg = `Модель сохранена: ${savedPath}`
-        setGitOutput(msg)
-        onModelSavedRef.current?.({
-          content: nextXml,
-          filename: baseName,
-          repoPath: savedPath,
-        })
-        return { ok: true, path: savedPath }
-      }
-      const msg = data.error || data.stderr || JSON.stringify(data)
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    } catch (err) {
-      const msg = formatApiRequestError(err)
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-  }
-
-  async function handleSaveGitSettings(): Promise<void> {
-    await withGitCommand('Сохранение настроек…', async () => {
-    const remoteUrl = gitCloneUrl.trim()
-    const pat = gitConfigPat.trim()
-    try {
-      const response = await fetch(apiUrl('/api/git/settings'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          workFolder: DEFAULT_GIT_WORK_FOLDER,
-          ...(remoteUrl ? { remoteUrl } : {}),
-          ...(pat ? { pat } : {}),
-        }),
-      })
-      const data = await response.json()
-      if (data.ok) {
-        let msg = data.patVerified ? 'Настройки сохранены (PAT проверен, remote без токена).' : 'Настройки сохранены.'
-        if (data.hasDotGit === false) {
-          msg += ' Репозиторий в этой папке ещё не клонирован — выполните git clone.'
-        }
-        setGitOutput(msg)
-        await refreshGitRepoState()
-      } else {
-        setGitOutput(data.error || JSON.stringify(data))
-      }
-    } catch (err) {
-      setGitOutput(err instanceof Error ? err.message : String(err))
-    }
-    })
-  }
-
-  async function applyRepoRoot(payload: { repoRoot?: string; reset?: boolean }): Promise<void> {
-    if (!gitApiReady) {
-      setGitOutput(apiUnavailableMessage)
-      return
-    }
-    await withGitCommand('Смена GIT_REPO_ROOT…', async () => {
-      try {
-        const response = await fetch(apiUrl('/api/git/repo-root'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        const rawText = await response.text()
-        let data: Record<string, unknown> = {}
-        try {
-          data = rawText ? (JSON.parse(rawText) as Record<string, unknown>) : {}
-        } catch {
-          data = {}
-        }
-        if (response.ok && data.ok) {
-          const root = typeof data.repoRoot === 'string' ? data.repoRoot : ''
-          setGitRepoRoot(root)
-          setGitRepoRootInput(root)
-          if (typeof data.defaultRepoRoot === 'string') {
-            setGitRepoRootDefault(data.defaultRepoRoot)
-          }
-          setGitRepoPath('')
-          setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
-          onRepositoryDeleted()
-          setGitOutput(`Каталог GIT_REPO_ROOT изменён: ${root}`)
-          await refreshGitRepoState({ syncRemoteUrl: true })
-          return
-        }
-        if (typeof data.error === 'string' && data.error) {
-          setGitOutput(data.error)
-          return
-        }
-        const detail = rawText.trim()
-        if (response.status === 404) {
-          setGitOutput(
-            'Эндпоинт /api/git/repo-root не найден (HTTP 404). Перезапустите локальный API (npm run dev:api) или приложение — установлена устаревшая версия сервера.',
-          )
-          return
-        }
-        setGitOutput(
-          `Не удалось изменить каталог (HTTP ${response.status})${detail ? `: ${detail}` : '.'}`,
-        )
-      } catch (err) {
-        setGitOutput(formatApiRequestError(err))
-      }
-    })
-  }
-
-  async function handleApplyRepoRoot(): Promise<void> {
-    const next = gitRepoRootInput.trim()
-    if (!next) {
-      setGitOutput('Укажите путь к каталогу GIT_REPO_ROOT')
-      return
-    }
-    await applyRepoRoot({ repoRoot: next })
-  }
-
-  async function handleResetRepoRoot(): Promise<void> {
-    await applyRepoRoot({ reset: true })
-  }
-
-  async function handleBrowseRepoRoot(): Promise<void> {
-    if (!canPickDirectory) {
-      return
-    }
-    try {
-      const picked = (await SelectDirectory('Выберите каталог GIT_REPO_ROOT')).trim()
-      if (picked) {
-        setGitRepoRootInput(picked)
-      }
-    } catch (err) {
-      setGitOutput(formatApiRequestError(err))
-    }
-  }
-
-  async function handleDeleteGitRepository(): Promise<void> {
-    if (!gitApiReady) {
-      setGitOutput(apiUnavailableMessage)
-      return
-    }
-    const repoRootLabel = gitRepoRoot.trim() || 'GIT_REPO_ROOT'
-    const confirmed = await confirmDialog({
-      title: 'Удалить репозиторий с диска',
-      content: `Удалить содержимое каталога «${repoRootLabel}» (включая .git)? Действие необратимо.`,
-      okText: 'Удалить',
-      cancelText: 'Отмена',
-      danger: true,
-    })
-    if (!confirmed) {
-      return
-    }
-    await withGitCommand('Удаление репозитория…', async () => {
-    try {
-      const response = await fetch(apiUrl('/api/git/delete-repository'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workFolder: DEFAULT_GIT_WORK_FOLDER }),
-      })
-      const data = await response.json()
-      if (data.ok) {
-        setGitRepoPath('')
-        setModelLoading(false)
-        setGitBranches({ loading: false, list: [], error: null, defaultBranch: '' })
-        setGitOutput(
-          data.deleted === false
-            ? (data.message ?? `Каталог «${data.rel ?? repoRootLabel}» уже отсутствует.`)
-            : `Репозиторий удалён с диска: ${data.rel === '.' ? repoRootLabel : (data.rel ?? repoRootLabel)}`,
-        )
-        onRepositoryDeleted()
-        await refreshGitRepoState({ syncRemoteUrl: true })
-      } else {
-        setGitOutput(data.error || JSON.stringify(data))
-      }
-    } catch (err) {
-      setGitOutput(err instanceof Error ? err.message : String(err))
-    }
-    })
-  }
-
-  async function handleGitClone(): Promise<void> {
-    const url = gitCloneUrl.trim()
-    if (!url) {
-      setGitOutput('Укажите URL репозитория для git clone')
-      return
-    }
-    await withGitCommand('Клонирование репозитория…', async () => {
-    const pat = gitConfigPat.trim()
-    try {
-      const response = await fetch(apiUrl('/api/git/clone'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url,
-          workFolder: DEFAULT_GIT_WORK_FOLDER,
-          ...(gitCloneShallow ? { depth: 1 } : {}),
-          ...(pat ? { pat } : {}),
-        }),
-      })
-      const data = await response.json()
-      if (data.ok) {
-        const tail = [data.stdout, data.stderr].filter(Boolean).join('\n').trim()
-        const originNote =
-          data.originSanitized === true
-            ? '\nURL origin очищен от токена в .git/config (push/pull потребуют снова настроить доступ).'
-            : pat && data.originSanitized === false
-              ? '\nНе удалось очистить origin от токена — проверьте remote вручную.'
-              : ''
-        let out =
-          (tail
-            ? `Клон создан: ${data.path}\n${tail}`
-            : `Клон создан в каталоге относительно корня репо: ${data.path}`) + originNote
-        if (data.modelPath) {
-          const result = await readAndApplyModel(data.modelPath)
-          if (result.ok) {
-            out += `\nМодель загружена: ${result.path}`
-          } else if (result.path) {
-            out += `\nФайл прочитан (${result.path}), но не разобран как модель: ${result.error}`
-          } else {
-            out += `\nНе удалось прочитать модель (${data.modelPath}): ${result.error}`
-          }
-        } else {
-          out +=
-            '\nВ клоне не найден файл модели .archimate (поиск по дереву). Split-модели (model/folder.xml) больше не поддерживаются.'
-        }
-        setGitOutput(out)
-        await refreshGitRepoState()
-      } else {
-        setGitOutput(data.error || `${data.stderr}\n${data.stdout}`)
-      }
-    } catch (err) {
-      setGitOutput(formatApiRequestError(err))
-    }
-    })
-  }
-
-  async function handleGitCheckout(): Promise<void> {
-    const rel = gitRepoPath.trim()
-    const branch = gitCheckoutBranch.trim()
-    if (!branch) {
-      setGitOutput('Выберите ветку из списка')
-      return
-    }
-    await withGitCommand('Переключение ветки…', async () => {
-    try {
-      const response = await fetch(apiUrl('/api/git/checkout'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
-          branch,
-        }),
-      })
-      const data = await response.json()
-      const co = data.checkout ?? data
-      if (data.ok) {
-        let msg = [co.stdout, co.stderr].filter(Boolean).join('\n').trim()
-        if (data.currentBranch) {
-          msg = msg ? `${msg}\nТекущая ветка: ${data.currentBranch}` : `Текущая ветка: ${data.currentBranch}`
-        }
-        if (!msg) {
-          msg = 'Ветка переключена'
-        }
-        if (data.workTree) {
-          msg += `\n(work tree: ${data.workTree})`
-        }
-        if (data.checkoutMode === 'checkout-attached-from-remote') {
-          msg +=
-            '\nПереключение с удалённой ветки на локальную (не detached HEAD) — git push будет с текущей ветки.'
-        }
-        if (rel) {
-          const result = await readAndApplyModel(rel)
-          if (result.ok) {
-            msg += `\nМодель перечитана с диска: ${result.path}`
-          } else if (result.path) {
-            msg += `\nCheckout выполнен, файл не разобран как модель: ${result.error}`
-          } else {
-            msg += `\nНе удалось перечитать файл модели (${rel}): ${result.error}`
-          }
-        }
-        setGitOutput(msg)
-        const nextBranch =
-          (typeof data.currentBranch === 'string' && data.currentBranch.trim()) ||
-          preferLocalBranchSelection(branch, gitBranches.list)
-        if (nextBranch) {
-          setGitCheckoutBranch(nextBranch)
-        }
-        await refreshGitRepoState()
-        await loadGitBranches(undefined, { fetch: false })
-      } else {
-        setGitOutput(data.error || [co.stderr, co.stdout].filter(Boolean).join('\n'))
-      }
-    } catch (err) {
-      setGitOutput(formatApiRequestError(err))
-    }
-    })
-  }
-
-  async function handleGitPush(): Promise<void> {
-    const rel = gitRepoPath.trim()
-    const remote = 'origin'
-    const branch =
-      gitCheckoutBranch.trim() ||
-      (typeof gitRepoProbe.currentBranch === 'string' ? gitRepoProbe.currentBranch.trim() : '')
-    const pat = gitConfigPat.trim()
-    if (!branch) {
-      setGitOutput('Выберите ветку в списке выше или дождитесь определения текущей ветки — она используется для git push.')
-      return
-    }
-    await withGitCommand('Отправка в origin…', async () => {
-    try {
-      const response = await fetch(apiUrl('/api/git/push'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
-          remote,
-          branch,
-          ...(gitPushUpstream ? { setUpstream: true } : {}),
-          ...(pat ? { pat } : {}),
-        }),
-      })
-      const data = await response.json()
-      const pushBlock = data.push ?? data
-      if (data.ok) {
-        const text = [pushBlock.stdout, pushBlock.stderr].filter(Boolean).join('\n').trim()
-        let msg = joinGitCommandOutput([
-          formatGitCommandOutput('git push', pushBlock as GitCommandBlock, text || 'выполнен'),
-        ])
-        if (data.workTree) {
-          msg += `\n(work tree: ${data.workTree})`
-        }
-        if (pat && data.originSanitized === false) {
-          const rs = data.restoreRemote?.stderr?.trim()
-          msg += `\nНе удалось восстановить URL remote без токена.${rs ? ` ${rs}` : ''}`
-        }
-        setGitOutput(msg)
-      } else {
-        const pushErr = [pushBlock.stderr, pushBlock.stdout].filter(Boolean).join('\n').trim()
-        setGitOutput(
-          joinGitCommandOutput([
-            formatGitCommandOutput('git push', pushBlock as GitCommandBlock),
-            data.error ||
-              pushErr ||
-              data.remoteGetUrl?.stderr ||
-              data.remoteSetUrl?.stderr ||
-              JSON.stringify(data),
-          ]),
-        )
-      }
-    } catch (err) {
-      setGitOutput(formatApiRequestError(err))
-    }
-    })
-  }
-
-  async function handleGitPullAndRefresh(): Promise<void> {
-    if (!gitApiReady) {
-      setGitOutput(apiUnavailableMessage)
-      return
-    }
-    await withGitCommand('Получение изменений…', async () => {
-    const rel = gitRepoPath.trim()
-    const pat = gitConfigPat.trim()
-    try {
-      const response = await fetch(apiUrl('/api/git/pull'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...(rel ? { path: rel } : { workFolder: DEFAULT_GIT_WORK_FOLDER }),
-          remote: 'origin',
-          ...(pat ? { pat } : {}),
-        }),
-      })
-      const data = await response.json()
-      const pullBlock = data.pull ?? data
-      if (!data.ok) {
-        setGitOutput(
-          data.error ||
-            [pullBlock.stderr, pullBlock.stdout].filter(Boolean).join('\n').trim() ||
-            JSON.stringify(data),
-        )
-        return
-      }
-      let msg = [pullBlock.stdout, pullBlock.stderr].filter(Boolean).join('\n').trim()
-      if (typeof data.resolvedBranch === 'string' && data.resolvedBranch.trim()) {
-        msg = msg
-          ? `${msg}\n(ветка: ${data.resolvedBranch.trim()})`
-          : `(ветка: ${data.resolvedBranch.trim()})`
-      }
-      if (data.workTree) {
-        msg = msg ? `${msg}\n(work tree: ${data.workTree})` : `(work tree: ${data.workTree})`
-      }
-      if (pat && data.originSanitized === false) {
-        const rs = data.restoreRemote?.stderr?.trim()
-        msg += `\nНе удалось восстановить URL remote без токена.${rs ? ` ${rs}` : ''}`
-      }
-
-      const meta = await refreshGitRepoState()
-      const modelRel = (meta?.modelPath && String(meta.modelPath).trim()) || rel
-      if (!modelRel) {
-        setGitOutput(
-          `${msg}\nPull выполнен; файл модели в репозитории не найден — обновите папку или клонируйте репозиторий.`,
-        )
-        await loadGitBranches(undefined, { fetch: false })
-        return
-      }
-
-      const result = await readAndApplyModel(modelRel)
-      if (result.ok) {
-        await loadGitBranches(result.path, { fetch: false })
-        setGitOutput(`${msg}\nМодель перечитана: ${result.path}`)
-      } else if (result.path) {
-        setGitOutput(`${msg}\nФайл не разобран как модель: ${result.error}`)
-        await loadGitBranches(result.path, { fetch: false })
-      } else {
-        setGitOutput(`${msg}\nНе удалось прочитать модель (${modelRel}): ${result.error}`)
-        await loadGitBranches(modelRel, { fetch: false })
-      }
-    } catch (err) {
-      setGitOutput(err instanceof Error ? err.message : String(err))
-    }
-    })
-  }
-
-  async function handleGitCommit(): Promise<void> {
-    const rel = gitRepoPath.trim()
-    const message = gitCommitMessage.trim()
-    if (!rel) {
-      setGitOutput(
-        'Не найден файл модели в папке репозитория — клонируйте репозиторий с .archimate или смените папку в настройках.',
-      )
-      return
-    }
-    if (!message) {
-      setGitOutput('Введите сообщение коммита')
-      return
-    }
-    await withGitCommand('Создание коммита…', async () => {
-    try {
-      const response = await fetch(apiUrl('/api/git/commit'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: rel,
-          message,
-        }),
-      })
-      const data = await response.json()
-      if (data.ok) {
-        let msg = joinGitCommandOutput([
-          formatGitCommandOutput('git add', data.add as GitCommandBlock | undefined),
-          formatGitCommandOutput('git commit', data.commit as GitCommandBlock | undefined, 'коммит создан'),
-        ])
-        if (data.workTree) {
-          msg += `\n(work tree: ${data.workTree})`
-        }
-        setGitOutput(msg)
-        setGitCommitMessage('')
-      } else {
-        setGitOutput(
-          joinGitCommandOutput([
-            formatGitCommandOutput('git add', data.add as GitCommandBlock | undefined),
-            formatGitCommandOutput('git commit', data.commit as GitCommandBlock | undefined),
-            data.error ||
-              [data.commit?.stderr, data.add?.stderr, data.stdout].filter(Boolean).join('\n'),
-          ]),
-        )
-      }
-    } catch (err) {
-      setGitOutput(err instanceof Error ? err.message : String(err))
-    }
-    })
-  }
-
-  const displayedGitBranch = useMemo(
-    () => resolveCurrentBranchFromList(gitBranches.list, gitRepoProbe.currentBranch),
-    [gitBranches.list, gitRepoProbe.currentBranch],
-  )
+  readAndApplyModelRef.current = workflow.readAndApplyModel
+  setModelLoadingRef.current = workflow.setModelLoading
 
   return {
-    displayedGitBranch,
+    displayedGitBranch: branches.displayedGitBranch,
     gitApiReady,
-    gitRepoPath,
-    setGitRepoPath,
-    gitCommitMessage,
-    setGitCommitMessage,
-    gitCloneUrl,
-    setGitCloneUrl,
-    gitCloneShallow,
-    setGitCloneShallow,
-    gitPushUpstream,
-    setGitPushUpstream,
-    gitCheckoutBranch,
-    setGitCheckoutBranch,
-    gitConfigPat,
-    setGitConfigPat,
-    gitRepoRoot,
-    gitRepoRootDefault,
-    gitRepoRootInput,
-    setGitRepoRootInput,
-    canPickDirectory,
-    handleApplyRepoRoot,
-    handleResetRepoRoot,
-    handleBrowseRepoRoot,
-    gitRepoProbe,
-    modelLoading,
-    gitBranches,
+    gitRepoPath: settings.gitRepoPath,
+    setGitRepoPath: settings.setGitRepoPath,
+    gitCommitMessage: workflow.gitCommitMessage,
+    setGitCommitMessage: workflow.setGitCommitMessage,
+    gitCloneUrl: settings.gitCloneUrl,
+    setGitCloneUrl: settings.setGitCloneUrl,
+    gitCloneShallow: settings.gitCloneShallow,
+    setGitCloneShallow: settings.setGitCloneShallow,
+    gitPushUpstream: workflow.gitPushUpstream,
+    setGitPushUpstream: workflow.setGitPushUpstream,
+    gitCheckoutBranch: branches.gitCheckoutBranch,
+    setGitCheckoutBranch: branches.setGitCheckoutBranch,
+    gitConfigPat: settings.gitConfigPat,
+    setGitConfigPat: settings.setGitConfigPat,
+    gitRepoRoot: settings.gitRepoRoot,
+    gitRepoRootDefault: settings.gitRepoRootDefault,
+    gitRepoRootInput: settings.gitRepoRootInput,
+    setGitRepoRootInput: settings.setGitRepoRootInput,
+    canPickDirectory: settings.canPickDirectory,
+    handleApplyRepoRoot: settings.handleApplyRepoRoot,
+    handleResetRepoRoot: settings.handleResetRepoRoot,
+    handleBrowseRepoRoot: settings.handleBrowseRepoRoot,
+    gitRepoProbe: settings.gitRepoProbe,
+    modelLoading: workflow.modelLoading,
+    gitBranches: branches.gitBranches,
     gitOutput,
     gitCommandLoading,
     gitCommandLabel,
-    loadGitBranches,
-    buildRepoModelWriteRelativePath,
-    handleReloadModelFromFile,
-    handleSaveModelToGitFile,
-    handleSaveGitSettings,
-    handleDeleteGitRepository,
-    handleGitClone,
-    handleGitCheckout,
-    handleGitPush,
-    handleGitPullAndRefresh,
-    handleGitCommit,
+    loadGitBranches: branches.loadGitBranches,
+    buildRepoModelWriteRelativePath: workflow.buildRepoModelWriteRelativePath,
+    handleReloadModelFromFile: workflow.handleReloadModelFromFile,
+    handleSaveModelToGitFile: workflow.handleSaveModelToGitFile,
+    handleSaveGitSettings: settings.handleSaveGitSettings,
+    handleDeleteGitRepository: settings.handleDeleteGitRepository,
+    handleGitClone: settings.handleGitClone,
+    handleGitCheckout: branches.handleGitCheckout,
+    handleGitPush: workflow.handleGitPush,
+    handleGitPullAndRefresh: workflow.handleGitPullAndRefresh,
+    handleGitCommit: workflow.handleGitCommit,
   }
 }

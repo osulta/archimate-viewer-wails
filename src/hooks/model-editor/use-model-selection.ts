@@ -59,6 +59,7 @@ export interface ModelSelectionState {
   diagramTreeSelectedKey: string
   setDiagramTreeSelectedKey: React.Dispatch<React.SetStateAction<string>>
   handleSelectRelationshipType: (relationshipType: string) => void
+  handleCanvasRelationshipSelect: (ref: string | null) => void
   handleSelectRelationshipFromProperties: (relationshipId: string) => void
   handleSelectElementFromProperties: (elementId: string) => void
 }
@@ -359,18 +360,51 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     [setPendingLinkType, setLinkCreateSourceId],
   )
 
+  const handleCanvasRelationshipSelect = useCallback((ref: string | null) => {
+    setSelectedRelationshipRef(ref)
+    setSelectedBendpointIndex(null)
+    if (ref) {
+      setSelectedNode(null)
+      setSelectedNodeIds([])
+      setSelectedElementId(null)
+    }
+  }, [])
+
   const handleSelectRelationshipFromProperties = useCallback(
     (relationshipId: string) => {
       if (!model || !relationshipId) {
         return
       }
-      setSelectedNode(null)
-      setSelectedNodeIds([])
-      setSelectedElementId(null)
-      setSelectedRelationshipRef(relationshipId)
-      setSelectedBendpointIndex(null)
+      handleCanvasRelationshipSelect(relationshipId)
+
+      const currentHasConnection =
+        Boolean(selectedDiagramId) &&
+        Boolean(
+          model.diagrams
+            .find((diagram) => diagram.id === selectedDiagramId)
+            ?.connections.some((connection) => connection.relationshipRef === relationshipId),
+        )
+      if (currentHasConnection) {
+        return
+      }
+
+      const indexed = model.diagramIndexByRelationshipRef?.get(relationshipId)
+      const diagramId =
+        indexed?.find((id) => model.diagrams.some((diagram) => diagram.id === id)) ??
+        model.diagrams.find((diagram) =>
+          diagram.connections.some((connection) => connection.relationshipRef === relationshipId),
+        )?.id
+      if (!diagramId) {
+        return
+      }
+      setSelectedDiagramId(diagramId)
+      setDiagramTreeSelectedKey(diagramId)
+      const diagram = model.diagrams.find((item) => item.id === diagramId)
+      setSelectedDiagramFolderKey(
+        diagram?.folderPath ? `diagram-folder:${diagram.folderPath}` : '',
+      )
     },
-    [model],
+    [handleCanvasRelationshipSelect, model, selectedDiagramId],
   )
 
   const handleSelectElementFromProperties = useCallback(
@@ -480,6 +514,7 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     diagramTreeSelectedKey,
     setDiagramTreeSelectedKey,
     handleSelectRelationshipType,
+    handleCanvasRelationshipSelect,
     handleSelectRelationshipFromProperties,
     handleSelectElementFromProperties,
   }

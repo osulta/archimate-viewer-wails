@@ -136,13 +136,7 @@ function App() {
                 selection.setSelectedRelationshipRef(null)
               }
             }}
-            onCanvasRelationshipSelect={(ref) => {
-              selection.setSelectedRelationshipRef(ref)
-              if (ref) {
-                selection.setSelectedNode(null)
-                selection.setSelectedElementId(null)
-              }
-            }}
+            onCanvasRelationshipSelect={selection.handleCanvasRelationshipSelect}
             onNavigateToDiagram={({ diagramId, node, elementId }) => {
               handleViewModeSelectDiagram(diagramId)
               selection.setSelectedNode(node ?? null)
@@ -165,12 +159,7 @@ function App() {
                 selection.setSelectedNode(found.node)
               }
             }}
-            onSelectRelationship={(relationshipId) => {
-              selection.setSelectedNode(null)
-              selection.setSelectedElementId(null)
-              selection.setSelectedRelationshipRef(relationshipId)
-              selection.setSelectedBendpointIndex(null)
-            }}
+            onSelectRelationship={selection.handleSelectRelationshipFromProperties}
             onSelectDiagram={handleViewModeSelectDiagram}
             workspaceLayout={workspaceLayout}
           />

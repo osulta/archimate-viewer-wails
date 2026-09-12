@@ -9,15 +9,17 @@ import {
 import {
   applyOverridesToNodes,
   findNodeById,
+  normalizeRelationshipType,
+  formatDiagramCoord,
+} from '../archimate/diagram-model'
+import {
   removeDeletedFromXml,
   serializeXml,
   applyDiagramLayoutToXml,
   applyDiagramMetadataToXml,
   ensureCreatedDiagramsInXml,
   ensureDiagramFoldersInXml,
-  normalizeRelationshipType,
-  formatDiagramCoord,
-} from '../archimate/diagram-model'
+} from '../archimate/serialize/diagram-xml'
 import { isRelationshipModelElement } from '../archimate/relationship-meta'
 import type {
   ParsedModel,
@@ -362,4 +364,5 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
       params.deletedConnectionIds,
     )
 
-    return serializeXml(documentNode)}
+    return serializeXml(documentNode)
+}

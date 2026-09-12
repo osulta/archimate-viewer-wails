@@ -28,8 +28,9 @@ import {
 } from '../archimate/canvas-draw'
 import type { Point } from '../../types/model'
 import { CONNECTION_FLOW_COLOR } from './constants'
-import { resolveConnectionLineColor } from './connection-colors'
+import { resolveConnectionLineColor, DEFAULT_CONNECTION_LINE_COLOR_DARK, DEFAULT_CONNECTION_LINE_COLOR } from './connection-colors'
 import { applyDragPreviewToDiagram } from './diagram-preview'
+import { getCanvasPaintTheme } from './canvas-theme'
 import { resolveNodeDrawColors } from './node-colors'
 import { getResizeHandleRect } from './resize-handle'
 import type { DiagramPaintContext, PaintDiagramResult, RenderedConnection } from './types'
@@ -73,11 +74,14 @@ export function paintDiagramCanvas(
     linkCreateSourceId: linkSourceId,
     dragPreview,
     diagramById,
+    theme: themeMode = 'light',
   } = ctx
 
   if (!diagramProp) {
     return null
   }
+
+  const theme = getCanvasPaintTheme(themeMode)
 
   const diagramForPaint = applyDragPreviewToDiagram(diagramProp, dragPreview ?? null)
 
@@ -98,14 +102,20 @@ export function paintDiagramCanvas(
   context.setTransform(dpr, 0, 0, dpr, 0, 0)
 
   context.clearRect(0, 0, canvas.width, canvas.height)
-  context.fillStyle = '#ffffff'
+  context.fillStyle = theme.background
   context.fillRect(0, 0, cssWidth, cssHeight)
 
   const translateX = -minX + padding / 2
   const translateY = -minY + padding / 2
 
   if (!isReadOnly) {
-    drawPositioningGrid(context, { cssWidth, cssHeight, translateX, translateY })
+    drawPositioningGrid(context, {
+      cssWidth,
+      cssHeight,
+      translateX,
+      translateY,
+      color: theme.gridDot,
+    })
   }
 
   const nodeById = new Map(allNodes.map((item) => [item.id, item]))
@@ -162,7 +172,10 @@ export function paintDiagramCanvas(
 
     const { points, sourceCenter, targetCenter, layout } = resolved
 
-    const baseLineColor = resolveConnectionLineColor(connection)
+    const baseLineColor = resolveConnectionLineColor(
+      connection,
+      themeMode === 'dark' ? DEFAULT_CONNECTION_LINE_COLOR_DARK : DEFAULT_CONNECTION_LINE_COLOR,
+    )
     const lineColor = isSelectedRelationship
       ? '#ff7a00'
       : isChangedConnection
@@ -240,15 +253,15 @@ export function paintDiagramCanvas(
     const isChanged = Boolean(
       hlNodes && (hlNodes instanceof Set ? hlNodes.has(node.id) : (hlNodes as string[]).includes(node.id)),
     )
-    const colors = resolveNodeDrawColors(node, style, { isSelected, isChanged })
+    const colors = resolveNodeDrawColors(node, style, { isSelected, isChanged }, theme)
     const isLinkSource = Boolean(linkMode && linkSourceId === node.id)
     const x = node.x + translateX
     const y = node.y + translateY
 
     if (isReference) {
       context.save()
-      context.fillStyle = isSelected ? '#eef3ff' : '#f8f9fb'
-      context.strokeStyle = isSelected ? '#1f47bf' : '#7986cb'
+      context.fillStyle = isSelected ? theme.referenceFillSelected : theme.referenceFill
+      context.strokeStyle = isSelected ? theme.referenceBorderSelected : theme.referenceBorder
       context.lineWidth = isSelected ? 2 : 1.2
       context.setLineDash([5, 3])
       context.beginPath()
@@ -257,7 +270,7 @@ export function paintDiagramCanvas(
       context.stroke()
       context.setLineDash([])
 
-      context.fillStyle = isSelected ? '#1f47bf' : '#3949ab'
+      context.fillStyle = isSelected ? theme.referenceTextSelected : theme.referenceText
       context.font = '12px system-ui, sans-serif'
       const textX = x + 8
       const textY = y + Math.min(node.height - 6, 18)
@@ -272,7 +285,7 @@ export function paintDiagramCanvas(
       context.lineWidth = 1
       context.stroke()
 
-      context.strokeStyle = isSelected ? '#1f47bf' : '#7986cb'
+      context.strokeStyle = isSelected ? theme.referenceBorderSelected : theme.referenceBorder
       context.lineWidth = 1.5
       context.beginPath()
       context.moveTo(x + node.width - 16, y + 6)
@@ -282,8 +295,8 @@ export function paintDiagramCanvas(
 
       if (isSelected) {
         const handle = getResizeHandleRect(node, translateX, translateY)
-        context.fillStyle = '#ffffff'
-        context.strokeStyle = '#1f47bf'
+        context.fillStyle = theme.handleFill
+        context.strokeStyle = theme.handleStroke
         context.lineWidth = 1.8
         context.beginPath()
         context.rect(handle.left, handle.top, handle.size, handle.size)
@@ -305,13 +318,13 @@ export function paintDiagramCanvas(
     if (isNote) {
       context.stroke()
     } else if (visual.shape === 'and-junction') {
-      context.fillStyle = isSelected ? '#1f47bf' : '#000000'
-      context.strokeStyle = isSelected ? '#1f47bf' : '#000000'
+      context.fillStyle = isSelected ? theme.selectionBorder : theme.andJunctionFill
+      context.strokeStyle = isSelected ? theme.selectionBorder : theme.andJunctionFill
       context.fill()
       context.stroke()
     } else if (visual.shape === 'junction') {
-      context.fillStyle = isSelected ? '#d6e4ff' : '#ffffff'
-      context.strokeStyle = isSelected ? '#1f47bf' : '#000000'
+      context.fillStyle = isSelected ? theme.junctionFillSelected : theme.junctionFill
+      context.strokeStyle = isSelected ? theme.selectionBorder : theme.junctionStroke
       context.lineWidth = isSelected ? 2 : 1.5
       context.fill()
       context.stroke()
@@ -332,7 +345,7 @@ export function paintDiagramCanvas(
         node.width,
         node.height,
         visual.shape,
-        isSelected ? '#1f47bf' : colors.border,
+        isSelected ? theme.selectionBorder : colors.border,
       )
     }
 
@@ -346,7 +359,7 @@ export function paintDiagramCanvas(
       context.restore()
     } else if (isChanged) {
       context.save()
-      context.strokeStyle = '#e65100'
+      context.strokeStyle = theme.changedBorder
       context.lineWidth = 2.5
       drawElementShape(context, x, y, node.width, node.height, visual.shape)
       context.stroke()
@@ -401,8 +414,8 @@ export function paintDiagramCanvas(
     if (isSelected) {
       const handle = getResizeHandleRect(node, translateX, translateY)
       context.save()
-      context.fillStyle = '#ffffff'
-      context.strokeStyle = '#1f47bf'
+      context.fillStyle = theme.handleFill
+      context.strokeStyle = theme.handleStroke
       context.lineWidth = 1.8
       context.beginPath()
       context.rect(handle.left, handle.top, handle.size, handle.size)
@@ -497,7 +510,7 @@ export function paintDiagramCanvas(
     ].forEach(({ point, fill }) => {
       context.save()
       context.fillStyle = fill
-      context.strokeStyle = '#ffffff'
+      context.strokeStyle = theme.endpointHandleStroke
       context.lineWidth = 2
       context.beginPath()
       context.rect(point.x - 5, point.y - 5, 10, 10)
@@ -516,8 +529,8 @@ export function paintDiagramCanvas(
       const handleY = sourceCenter.y + (bp.startY ?? 0)
       const isActiveBendpoint = selBpIndex === bendpointIndex
       context.save()
-      context.fillStyle = isActiveBendpoint ? '#ff7a00' : '#ffffff'
-      context.strokeStyle = '#ff7a00'
+      context.fillStyle = isActiveBendpoint ? theme.bendpointFillActive : theme.bendpointFill
+      context.strokeStyle = theme.bendpointStroke
       context.lineWidth = isActiveBendpoint ? 2.5 : 2
       context.beginPath()
       context.arc(handleX, handleY, isActiveBendpoint ? 6 : 5, 0, Math.PI * 2)

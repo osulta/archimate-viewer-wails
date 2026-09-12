@@ -157,6 +157,8 @@ export interface DiagramPaintContext {
   linkCreateSourceId?: string | null
   dragPreview?: DragPreview | null
   diagramById?: Map<string, ParsedDiagram>
+  /** Canvas chrome theme; ArchiMate layer fills stay standard. */
+  theme?: 'light' | 'dark'
 }
 
 export interface DiagramCanvasProps {

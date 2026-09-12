@@ -1438,7 +1438,14 @@ interface PositioningGridOptions {
 
 export function drawPositioningGrid(
   ctx: CanvasRenderingContext2D,
-  { cssWidth, cssHeight, translateX, translateY, step = DIAGRAM_GRID_STEP }: PositioningGridOptions,
+  {
+    cssWidth,
+    cssHeight,
+    translateX,
+    translateY,
+    step = DIAGRAM_GRID_STEP,
+    color = 'rgba(148, 163, 184, 0.4)',
+  }: PositioningGridOptions & { color?: string },
 ): void {
   const minLogicalX = -translateX
   const minLogicalY = -translateY
@@ -1447,7 +1454,7 @@ export function drawPositioningGrid(
   const startX = Math.floor(minLogicalX / step) * step
   const startY = Math.floor(minLogicalY / step) * step
 
-  ctx.fillStyle = 'rgba(148, 163, 184, 0.4)'
+  ctx.fillStyle = color
   const radius = 1
 
   for (let lx = startX; lx <= maxLogicalX; lx += step) {
