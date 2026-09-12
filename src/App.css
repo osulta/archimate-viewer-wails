@@ -69,8 +69,28 @@
   min-height: 0;
 }
 
+.app-tab-panel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-tab-loader {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--app-color-canvas) 88%, transparent);
+}
+
 .app-body > .workspace-layout,
-.app-body > .view-mode-layout {
+.app-body > .view-mode-layout,
+.app-tab-panel > .workspace-layout,
+.app-tab-panel > .view-mode-layout {
   flex: 1;
   min-height: 0;
 }

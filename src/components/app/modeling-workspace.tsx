@@ -11,7 +11,7 @@ import type { ModelEditState } from '../../hooks/model-editor/use-model-edit-sta
 import type { ModelSelectionState } from '../../hooks/model-editor/use-model-selection'
 import type { ModelMutations } from '../../hooks/model-editor/use-model-mutations'
 import type { WorkspaceLayoutState } from '../../hooks/use-workspace-layout'
-import type { Point } from '../../types/model'
+import type { Point, DiagramNode } from '../../types/model'
 import { resolveSelectedDiagramFolderInfo } from '../../lib/archimate/model-folder-tree'
 
 type GitIntegration = ReturnType<typeof useGitIntegration>
@@ -22,6 +22,12 @@ export interface ModelingWorkspaceProps {
   selection: ModelSelectionState
   mutations: ModelMutations
   workspaceLayout: WorkspaceLayoutState
+  onSelectDiagram?: (diagramId: string) => void
+  onSelectElement?: (
+    elementId: string,
+    found?: { diagramId: string; node?: DiagramNode | null; pending?: boolean } | null,
+  ) => void
+  onSelectRelationship?: (relationshipId: string) => void
 }
 
 export function ModelingWorkspace({
@@ -30,6 +36,9 @@ export function ModelingWorkspace({
   selection,
   mutations,
   workspaceLayout,
+  onSelectDiagram,
+  onSelectElement,
+  onSelectRelationship,
 }: ModelingWorkspaceProps) {
   const {
     model,
@@ -117,26 +126,29 @@ export function ModelingWorkspace({
       modelSaving={modelSaving}
       onCreateDiagram={mutations.createNewDiagram}
       onCreateFolder={mutations.createNewDiagramFolder}
-      onSelectDiagram={handleSelectDiagram}
+      onSelectDiagram={onSelectDiagram ?? handleSelectDiagram}
       onSelectDiagramFolder={handleSelectDiagramFolder}
       diagramTreeSelectedKey={diagramTreeSelectedKey}
-      onSelectElement={(elementId, found) => {
-        setSelectedRelationshipRef(null)
-        if (found?.pending) {
-          pendingElementFocusRef.current = elementId
-          setSelectedDiagramId(found.diagramId)
+      onSelectElement={
+        onSelectElement ??
+        ((elementId, found) => {
+          setSelectedRelationshipRef(null)
+          if (found?.pending) {
+            pendingElementFocusRef.current = elementId
+            setSelectedDiagramId(found.diagramId)
+            setSelectedElementId(elementId)
+            setSelectedNode(null)
+            return
+          }
           setSelectedElementId(elementId)
           setSelectedNode(null)
-          return
-        }
-        setSelectedElementId(elementId)
-        setSelectedNode(null)
-        if (found?.node) {
-          setSelectedDiagramId(found.diagramId)
-          setSelectedNode(found.node)
-        }
-      }}
-      onSelectRelationship={handleSelectRelationshipFromProperties}
+          if (found?.node) {
+            setSelectedDiagramId(found.diagramId)
+            setSelectedNode(found.node)
+          }
+        })
+      }
+      onSelectRelationship={onSelectRelationship ?? handleSelectRelationshipFromProperties}
     />
   )
 
@@ -179,11 +191,23 @@ export function ModelingWorkspace({
           selectedRelationshipRef={selectedRelationshipRef}
           linkCreateMode={linkCreateMode}
           linkCreateSourceId={linkCreateSourceId}
-          onNodeSelect={(node, options) => selection.handleCanvasNodeSelect(node, options)}
+          onNodeSelect={(node, options) => {
+            if (node?.elementRef && selectedDiagramId && !options?.shiftKey && onSelectElement) {
+              onSelectElement(node.elementRef, { diagramId: selectedDiagramId, node })
+              return
+            }
+            selection.handleCanvasNodeSelect(node, options)
+          }}
           onNodeMove={(nodeId, dx, dy) => mutations.moveNode(selectedDiagramId, nodeId, dx, dy)}
           onNodesMove={(nodeIds, dx, dy) => mutations.moveNodes(selectedDiagramId, nodeIds, dx, dy)}
           onNodeResize={(nodeId, dw, dh) => mutations.resizeNode(selectedDiagramId, nodeId, dw, dh)}
-          onRelationshipSelect={handleCanvasRelationshipSelect}
+          onRelationshipSelect={(ref) => {
+            if (ref && onSelectRelationship) {
+              onSelectRelationship(ref)
+              return
+            }
+            handleCanvasRelationshipSelect(ref)
+          }}
           selectedBendpointIndex={selectedBendpointIndex}
           onBendpointSelect={setSelectedBendpointIndex}
           onRelationshipBendpointChange={mutations.updateRelationshipBendpoint}
@@ -201,7 +225,7 @@ export function ModelingWorkspace({
           onDropDiagramReferenceAtPoint={(diagramId, x, y) =>
             mutations.placeDiagramReferenceOnDiagram(diagramId, { x, y } as Point)
           }
-          onOpenDiagramReference={handleSelectDiagram}
+          onOpenDiagramReference={onSelectDiagram ?? handleSelectDiagram}
           onShowObjectProperties={handleShowObjectProperties}
           onDeleteNodeFromDiagram={mutations.deleteSelectedFromDiagram}
           onDeleteNodeFromModel={mutations.deleteElementFromModel}
@@ -245,10 +269,12 @@ export function ModelingWorkspace({
           onDeleteRelationshipFromModel={mutations.deleteRelationshipFromModel}
           onDeleteSelectedFromDiagram={mutations.deleteSelectedFromDiagram}
           onDeleteElementFromModel={mutations.deleteElementFromModel}
-          onSelectRelationshipFromProperties={handleSelectRelationshipFromProperties}
-          onSelectElementFromProperties={handleSelectElementFromProperties}
+          onSelectRelationshipFromProperties={
+            onSelectRelationship ?? handleSelectRelationshipFromProperties
+          }
+          onSelectElementFromProperties={onSelectElement ?? handleSelectElementFromProperties}
           onNavigateToDiagram={({ diagramId, nodes }) => {
-            handleSelectDiagram(diagramId)
+            ;(onSelectDiagram ?? handleSelectDiagram)(diagramId)
             setSelectedNode(nodes[0] ?? null)
             setSelectedElementId(null)
             setSelectedRelationshipRef(null)

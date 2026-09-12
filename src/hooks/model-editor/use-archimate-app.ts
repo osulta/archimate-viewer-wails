@@ -2,28 +2,44 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AppTab } from '../../app/types'
 import { deriveModelLoadState } from '../../lib/model-editor/apply-model-load'
 import {
-  getViewModeDiagramIdFromLocation,
+  navigationStatesEqual,
+  readNavigationFromLocation,
+  readNavigationHistoryState,
   resolveDiagramIdInModel,
-  setViewModeDiagramInUrl,
+  resolveElementIdInModel,
+  resolveRelationshipIdInModel,
+  writeNavigationUrl,
+  type NavigationUrlState,
 } from '../../lib/view-mode-url'
 import { useGitIntegration } from '../use-git-integration'
-import type { ModelLoadPayload } from '../../types/model'
+import type { DiagramNode, ModelLoadPayload } from '../../types/model'
 import { useModelEditState } from './use-model-edit-state'
 import { useModelSelection } from './use-model-selection'
 import { useModelMutations } from './use-model-mutations'
 import { useModelSave } from './use-model-save'
 
-function readInitialViewModeDiagramId(): string | null {
+function readInitialNavigation(): NavigationUrlState {
   if (typeof window === 'undefined') {
-    return null
+    return { diagramId: null, elementId: null, relationshipId: null }
   }
-  return getViewModeDiagramIdFromLocation(window.location)
+  return readNavigationFromLocation(window.location)
+}
+
+function isDiagramNavigationTab(tab: AppTab): boolean {
+  return tab === 'modeling' || tab === 'viewMode'
 }
 
 export function useArchimateApp() {
-  const initialViewDiagramId = readInitialViewModeDiagramId()
-  const pendingViewDiagramRef = useRef<string | null>(initialViewDiagramId)
-  const [appTab, setAppTab] = useState<AppTab>(initialViewDiagramId ? 'viewMode' : 'modeling')
+  const initialNav = readInitialNavigation()
+  const pendingNavRef = useRef<NavigationUrlState | null>(
+    initialNav.diagramId || initialNav.elementId || initialNav.relationshipId
+      ? initialNav
+      : null,
+  )
+  const applyingFromUrlRef = useRef(false)
+  const [appTab, setAppTab] = useState<AppTab>(
+    initialNav.tab === 'viewMode' ? 'viewMode' : 'modeling',
+  )
   const [compareDiagramId, setCompareDiagramId] = useState('')
 
   const editState = useModelEditState()
@@ -31,23 +47,126 @@ export function useArchimateApp() {
   const mutations = useModelMutations({ editState, selection })
   const { clearCanvasHistory, undoCanvasCommand, redoCanvasCommand, canvasHistory } = mutations
 
-  const applyViewModeDiagramFromUrl = useCallback(
+  const syncNavigationUrl = useCallback(
+    (
+      nav: NavigationUrlState,
+      mode: 'push' | 'replace' = 'push',
+      tab: AppTab = appTab,
+    ) => {
+      if (applyingFromUrlRef.current) {
+        return
+      }
+      if (!isDiagramNavigationTab(tab)) {
+        return
+      }
+      const current = readNavigationFromLocation()
+      const next: NavigationUrlState = {
+        diagramId: nav.diagramId,
+        elementId: nav.elementId,
+        relationshipId: nav.relationshipId,
+        tab,
+      }
+      if (mode === 'replace' || navigationStatesEqual(current, next)) {
+        writeNavigationUrl(next, 'replace')
+        return
+      }
+      writeNavigationUrl(next, 'push')
+    },
+    [appTab],
+  )
+
+  const applyNavigationSelection = useCallback(
+    (nav: NavigationUrlState, options?: { switchToTab?: AppTab }) => {
+      const model = editState.model
+      if (!model) {
+        pendingNavRef.current = nav
+        return false
+      }
+
+      applyingFromUrlRef.current = true
+      try {
+        if (options?.switchToTab && isDiagramNavigationTab(options.switchToTab)) {
+          setAppTab(options.switchToTab)
+        } else if (nav.tab === 'viewMode' || nav.tab === 'modeling') {
+          setAppTab(nav.tab)
+        }
+
+        const diagramId = nav.diagramId
+          ? resolveDiagramIdInModel(model, nav.diagramId)
+          : null
+        if (nav.diagramId && !diagramId) {
+          editState.setError(`Диаграмма «${nav.diagramId}» не найдена в модели.`)
+          return false
+        }
+
+        if (diagramId) {
+          selection.handleSelectDiagram(diagramId)
+        }
+
+        if (nav.relationshipId) {
+          const relationshipId = resolveRelationshipIdInModel(model, nav.relationshipId)
+          if (!relationshipId) {
+            editState.setError(`Связь «${nav.relationshipId}» не найдена в модели.`)
+          } else {
+            selection.handleSelectRelationshipFromProperties(relationshipId)
+          }
+          return true
+        }
+
+        if (nav.elementId) {
+          const elementId = resolveElementIdInModel(model, nav.elementId)
+          if (!elementId) {
+            editState.setError(`Элемент «${nav.elementId}» не найден в модели.`)
+          } else {
+            selection.handleSelectElementFromProperties(elementId)
+          }
+        }
+
+        return true
+      } finally {
+        queueMicrotask(() => {
+          applyingFromUrlRef.current = false
+        })
+      }
+    },
+    [editState, selection],
+  )
+
+  const applyPendingNavigationFromUrl = useCallback(
     (parsedModel: NonNullable<typeof editState.model>, fallbackDiagramId: string): string => {
-      const pending =
-        pendingViewDiagramRef.current ?? getViewModeDiagramIdFromLocation(window.location)
-      if (!pending) {
+      const pending = pendingNavRef.current ?? readNavigationFromLocation(window.location)
+      if (!pending.diagramId && !pending.elementId && !pending.relationshipId) {
         return fallbackDiagramId
       }
-      const resolved = resolveDiagramIdInModel(parsedModel, pending)
-      pendingViewDiagramRef.current = null
-      if (!resolved) {
-        editState.setError(`Диаграмма «${pending}» не найдена в модели.`)
-        setViewModeDiagramInUrl(null)
+      pendingNavRef.current = null
+
+      const targetTab: AppTab =
+        pending.tab === 'modeling' || pending.tab === 'viewMode' ? pending.tab : 'viewMode'
+
+      const resolvedDiagram = pending.diagramId
+        ? resolveDiagramIdInModel(parsedModel, pending.diagramId)
+        : null
+      if (pending.diagramId && !resolvedDiagram) {
+        editState.setError(`Диаграмма «${pending.diagramId}» не найдена в модели.`)
+        writeNavigationUrl(
+          { diagramId: null, elementId: null, relationshipId: null, tab: targetTab },
+          'replace',
+        )
         return fallbackDiagramId
       }
-      setAppTab('viewMode')
-      setViewModeDiagramInUrl(resolved)
-      return resolved
+
+      const diagramId = resolvedDiagram ?? fallbackDiagramId
+      setAppTab(targetTab)
+      writeNavigationUrl(
+        {
+          diagramId,
+          elementId: pending.elementId,
+          relationshipId: pending.relationshipId,
+          tab: targetTab,
+        },
+        'replace',
+      )
+      return diagramId
     },
     [editState],
   )
@@ -63,7 +182,7 @@ export function useArchimateApp() {
         derived.parsedModel.diagrams.some((diagram) => diagram.id === options.preserveDiagramId)
           ? options.preserveDiagramId
           : derived.selectedDiagramId
-      const selectedDiagramId = applyViewModeDiagramFromUrl(
+      const selectedDiagramId = applyPendingNavigationFromUrl(
         derived.parsedModel,
         preferredDiagramId,
       )
@@ -75,8 +194,29 @@ export function useArchimateApp() {
         selection.setSelectedDiagramFolderKey('')
         selection.setDiagramTreeSelectedKey('')
       }
-      selection.setSelectedElementId(null)
-      selection.setSelectedRelationshipRef(null)
+
+      const nav = readNavigationFromLocation()
+      if (nav.relationshipId) {
+        const relationshipId = resolveRelationshipIdInModel(derived.parsedModel, nav.relationshipId)
+        if (relationshipId) {
+          selection.handleSelectRelationshipFromProperties(relationshipId)
+        } else {
+          selection.setSelectedRelationshipRef(null)
+          selection.setSelectedElementId(null)
+        }
+      } else if (nav.elementId) {
+        const elementId = resolveElementIdInModel(derived.parsedModel, nav.elementId)
+        if (elementId) {
+          selection.handleSelectElementFromProperties(elementId)
+        } else {
+          selection.setSelectedElementId(null)
+          selection.setSelectedRelationshipRef(null)
+        }
+      } else {
+        selection.setSelectedElementId(null)
+        selection.setSelectedRelationshipRef(null)
+      }
+
       editState.resetEditOverrides()
       editState.setCreatedObjects([])
       editState.setCreatedRelationships([])
@@ -100,7 +240,7 @@ export function useArchimateApp() {
       editState.setLoadedFilename(derived.loadedFilename)
       clearCanvasHistory()
     },
-    [editState, selection, clearCanvasHistory, applyViewModeDiagramFromUrl],
+    [editState, selection, clearCanvasHistory, applyPendingNavigationFromUrl],
   )
 
   const git = useGitIntegration({
@@ -131,92 +271,203 @@ export function useArchimateApp() {
 
   const save = useModelSave({ editState, git })
 
+  const navigateToDiagram = useCallback(
+    (diagramId: string, options?: { replace?: boolean }) => {
+      selection.handleSelectDiagram(diagramId)
+      syncNavigationUrl(
+        {
+          diagramId,
+          elementId: null,
+          relationshipId: null,
+        },
+        options?.replace ? 'replace' : 'push',
+      )
+    },
+    [selection, syncNavigationUrl],
+  )
+
   const handleOpenCompareChanges = useCallback(() => {
     if (!selection.selectedDiagramId) {
       return
     }
     setCompareDiagramId(selection.selectedDiagramId)
     setAppTab('changes')
-    setViewModeDiagramInUrl(null)
+    writeNavigationUrl(
+      { diagramId: null, elementId: null, relationshipId: null, tab: 'changes' },
+      'replace',
+    )
   }, [selection.selectedDiagramId])
 
   const handleAppTabChange = useCallback(
     (tab: AppTab) => {
       setAppTab(tab)
-      if (tab === 'viewMode') {
+      if (tab === 'viewMode' || tab === 'modeling') {
         if (selection.selectedDiagramId) {
-          setViewModeDiagramInUrl(selection.selectedDiagramId)
+          syncNavigationUrl(
+            {
+              diagramId: selection.selectedDiagramId,
+              elementId: selection.selectedElementId,
+              relationshipId: selection.selectedRelationshipRef,
+            },
+            'replace',
+            tab,
+          )
         }
         return
       }
-      setViewModeDiagramInUrl(null)
+      writeNavigationUrl(
+        { diagramId: null, elementId: null, relationshipId: null, tab },
+        'replace',
+      )
     },
-    [selection.selectedDiagramId],
+    [
+      selection.selectedDiagramId,
+      selection.selectedElementId,
+      selection.selectedRelationshipRef,
+      syncNavigationUrl,
+    ],
   )
 
   const handleViewModeSelectDiagram = useCallback(
     (diagramId: string) => {
-      selection.handleSelectDiagram(diagramId)
-      if (appTab === 'viewMode') {
-        setViewModeDiagramInUrl(diagramId)
-      }
+      navigateToDiagram(diagramId)
     },
-    [appTab, selection],
+    [navigateToDiagram],
   )
 
-  useEffect(() => {
-    if (appTab !== 'viewMode' || !selection.selectedDiagramId) {
-      return
-    }
-    const fromUrl = getViewModeDiagramIdFromLocation(window.location)
-    if (fromUrl === selection.selectedDiagramId) {
-      return
-    }
-    setViewModeDiagramInUrl(selection.selectedDiagramId)
-  }, [appTab, selection.selectedDiagramId])
+  const handleSelectDiagramWithUrl = useCallback(
+    (diagramId: string) => {
+      navigateToDiagram(diagramId)
+    },
+    [navigateToDiagram],
+  )
+
+  const handleSelectElementWithUrl = useCallback(
+    (
+      elementId: string,
+      found?: { diagramId: string; node?: DiagramNode | null; pending?: boolean } | null,
+    ) => {
+      selection.setSelectedRelationshipRef(null)
+      if (found?.pending) {
+        editState.pendingElementFocusRef.current = elementId
+        selection.setSelectedDiagramId(found.diagramId)
+        selection.setSelectedElementId(elementId)
+        selection.setSelectedNode(null)
+        syncNavigationUrl({
+          diagramId: found.diagramId,
+          elementId,
+          relationshipId: null,
+        })
+        return
+      }
+      if (found?.node) {
+        selection.setSelectedElementId(elementId)
+        selection.setSelectedDiagramId(found.diagramId)
+        selection.setSelectedNode(found.node)
+        selection.setDiagramTreeSelectedKey(found.diagramId)
+        syncNavigationUrl({
+          diagramId: found.diagramId,
+          elementId,
+          relationshipId: null,
+        })
+        return
+      }
+      selection.handleSelectElementFromProperties(elementId)
+      const indexed = editState.model?.diagramIndexByElementRef?.get(elementId)?.[0] ?? null
+      syncNavigationUrl({
+        diagramId: indexed || selection.selectedDiagramId || null,
+        elementId,
+        relationshipId: null,
+      })
+    },
+    [editState, selection, syncNavigationUrl],
+  )
+
+  const handleSelectRelationshipWithUrl = useCallback(
+    (relationshipId: string) => {
+      const model = editState.model
+      const currentHas =
+        Boolean(selection.selectedDiagramId) &&
+        Boolean(
+          model?.diagrams
+            .find((diagram) => diagram.id === selection.selectedDiagramId)
+            ?.connections.some((connection) => connection.relationshipRef === relationshipId),
+        )
+      const indexed = model?.diagramIndexByRelationshipRef?.get(relationshipId)?.[0] ?? null
+      const diagramId = currentHas
+        ? selection.selectedDiagramId
+        : indexed || selection.selectedDiagramId || null
+
+      selection.handleSelectRelationshipFromProperties(relationshipId)
+      syncNavigationUrl({
+        diagramId,
+        elementId: null,
+        relationshipId,
+      })
+    },
+    [editState.model, selection, syncNavigationUrl],
+  )
 
   useEffect(() => {
     if (!editState.model) {
       return
     }
-    const pending = pendingViewDiagramRef.current
+    const pending = pendingNavRef.current
     if (!pending) {
       return
     }
-    const resolved = resolveDiagramIdInModel(editState.model, pending)
-    pendingViewDiagramRef.current = null
-    if (!resolved) {
-      editState.setError(`Диаграмма «${pending}» не найдена в модели.`)
-      setViewModeDiagramInUrl(null)
-      return
+    pendingNavRef.current = null
+    const targetTab: AppTab =
+      pending.tab === 'modeling' || pending.tab === 'viewMode' ? pending.tab : 'viewMode'
+    applyNavigationSelection(pending, { switchToTab: targetTab })
+    if (pending.diagramId) {
+      const resolved = resolveDiagramIdInModel(editState.model, pending.diagramId)
+      writeNavigationUrl(
+        {
+          diagramId: resolved,
+          elementId: pending.elementId,
+          relationshipId: pending.relationshipId,
+          tab: targetTab,
+        },
+        'replace',
+      )
     }
-    setAppTab('viewMode')
-    selection.setSelectedDiagramId(resolved)
-    setViewModeDiagramInUrl(resolved)
-  }, [editState.model, editState, selection])
+  }, [editState.model, applyNavigationSelection])
 
   useEffect(() => {
-    function onPopState() {
-      const diagramId = getViewModeDiagramIdFromLocation(window.location)
-      if (!diagramId) {
-        setAppTab('modeling')
+    function onPopState(event: PopStateEvent) {
+      const historyNav = readNavigationHistoryState(event.state)
+      const urlNav = readNavigationFromLocation(window.location)
+      const diagramId = historyNav?.diagramId ?? urlNav.diagramId
+      const elementId = historyNav?.elementId ?? urlNav.elementId
+      const relationshipId = historyNav?.relationshipId ?? urlNav.relationshipId
+      const tab = historyNav?.tab ?? urlNav.tab
+
+      if (!diagramId && !elementId && !relationshipId) {
+        if (tab && tab !== 'viewMode' && tab !== 'modeling') {
+          setAppTab(tab)
+        } else if (appTab === 'viewMode') {
+          setAppTab('modeling')
+        }
         return
       }
-      setAppTab('viewMode')
-      if (editState.model) {
-        const resolved = resolveDiagramIdInModel(editState.model, diagramId)
-        if (resolved) {
-          selection.handleSelectDiagram(resolved)
-          return
-        }
-        editState.setError(`Диаграмма «${diagramId}» не найдена в модели.`)
-      } else {
-        pendingViewDiagramRef.current = diagramId
+
+      if (tab === 'modeling' || tab === 'viewMode') {
+        setAppTab(tab)
+      } else if (!tab && diagramId) {
+        setAppTab('viewMode')
       }
+
+      applyNavigationSelection({
+        diagramId: diagramId ?? null,
+        elementId: elementId ?? null,
+        relationshipId: relationshipId ?? null,
+        tab: tab === 'modeling' || tab === 'viewMode' ? tab : undefined,
+      })
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [editState, selection])
+  }, [appTab, applyNavigationSelection])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -305,6 +556,9 @@ export function useArchimateApp() {
     setAppTab,
     handleAppTabChange,
     handleViewModeSelectDiagram,
+    handleSelectDiagramWithUrl,
+    handleSelectElementWithUrl,
+    handleSelectRelationshipWithUrl,
     compareDiagramId,
     setCompareDiagramId,
     editState,

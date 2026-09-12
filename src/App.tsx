@@ -3,6 +3,7 @@ import { Layout } from 'antd'
 import './App.css'
 import type { AppTab } from './app/types'
 import { AppHeader } from './components/app-header'
+import { AppTabPanel } from './components/app/app-tab-panel'
 import { ModelingWorkspace } from './components/app'
 import { ChangesComparePanel } from './components/changes/changes-compare-panel'
 import { LintersPanel } from './components/linters/linters-panel'
@@ -13,6 +14,7 @@ import { ViewModePanel } from './components/view-mode/view-mode-panel'
 import { AdminPanel } from './components/admin/admin-panel'
 import { ModelingHeaderActions } from './components/workspace/modeling-header-actions'
 import { useArchimateApp } from './hooks/model-editor/use-archimate-app'
+import { useDeferredTabMount } from './hooks/use-deferred-tab-mount'
 import { useWorkspaceLayout } from './hooks/use-workspace-layout'
 
 function App() {
@@ -22,6 +24,9 @@ function App() {
     appTab,
     handleAppTabChange,
     handleViewModeSelectDiagram,
+    handleSelectDiagramWithUrl,
+    handleSelectElementWithUrl,
+    handleSelectRelationshipWithUrl,
     compareDiagramId,
     setCompareDiagramId,
     editState,
@@ -32,8 +37,11 @@ function App() {
     handleOpenCompareChanges,
   } = app
 
-  const { model, error, elementOverrides, relationshipMetaOverrides, pendingElementFocusRef, modelSaving } =
+  const { model, error, elementOverrides, relationshipMetaOverrides, modelSaving } =
     editState
+
+  const modelingMount = useDeferredTabMount(appTab === 'modeling')
+  const viewModeMount = useDeferredTabMount(appTab === 'viewMode')
 
   const saveTargetPath = git.buildRepoModelWriteRelativePath() ?? undefined
 
@@ -86,13 +94,22 @@ function App() {
       />
       <Layout.Content className="app-body">
         {appTab === 'modeling' ? (
-          <ModelingWorkspace
-            git={git}
-            editState={editState}
-            selection={selection}
-            mutations={mutations}
-            workspaceLayout={workspaceLayout}
-          />
+          <AppTabPanel
+            shouldMount={modelingMount.shouldMount}
+            isReady={modelingMount.isReady}
+            loadingLabel="Загрузка режима моделирования…"
+          >
+            <ModelingWorkspace
+              git={git}
+              editState={editState}
+              selection={selection}
+              mutations={mutations}
+              workspaceLayout={workspaceLayout}
+              onSelectDiagram={handleSelectDiagramWithUrl}
+              onSelectElement={handleSelectElementWithUrl}
+              onSelectRelationship={handleSelectRelationshipWithUrl}
+            />
+          </AppTabPanel>
         ) : null}
         {appTab === 'changes' ? (
           <ChangesComparePanel
@@ -110,59 +127,70 @@ function App() {
         {appTab === 'aiArchitect' ? <AiArchitectPanel /> : null}
         {appTab === 'adr' ? <AdrPanel /> : null}
         {appTab === 'viewMode' ? (
-          <ViewModePanel
-            model={model}
-            modelLoading={git.modelLoading}
-            error={error}
-            elementOverrides={elementOverrides}
-            relationshipMetaOverrides={relationshipMetaOverrides}
-            selectedElementId={selection.selectedElementId}
-            selectedRelationshipRef={selection.selectedRelationshipRef}
-            selectedDiagramId={selection.selectedDiagramId}
-            selectedDiagram={selection.selectedDiagram}
-            elementByIdForCanvas={selection.elementByIdForCanvas}
-            selectedNodeLive={selection.selectedNodeLive}
-            selectedElement={selection.selectedElement}
-            selectedRelationship={selection.selectedRelationship}
-            selectedElementRefForUsage={selection.selectedElementRefForUsage}
-            diagramsUsingSelectedElement={selection.diagramsUsingSelectedElement}
-            selectedElementRelationships={selection.selectedElementRelationships}
-            onSelectRelationshipFromProperties={selection.handleSelectRelationshipFromProperties}
-            onSelectElementFromProperties={selection.handleSelectElementFromProperties}
-            onCanvasNodeSelect={(node) => {
-              selection.setSelectedNode(node)
-              selection.setSelectedElementId(node?.elementRef ?? null)
-              if (node) {
+          <AppTabPanel
+            shouldMount={viewModeMount.shouldMount}
+            isReady={viewModeMount.isReady}
+            loadingLabel="Загрузка режима просмотра…"
+          >
+            <ViewModePanel
+              model={model}
+              modelLoading={git.modelLoading}
+              error={error}
+              elementOverrides={elementOverrides}
+              relationshipMetaOverrides={relationshipMetaOverrides}
+              selectedElementId={selection.selectedElementId}
+              selectedRelationshipRef={selection.selectedRelationshipRef}
+              selectedDiagramId={selection.selectedDiagramId}
+              selectedDiagram={selection.selectedDiagram}
+              elementByIdForCanvas={selection.elementByIdForCanvas}
+              selectedNodeLive={selection.selectedNodeLive}
+              selectedElement={selection.selectedElement}
+              selectedRelationship={selection.selectedRelationship}
+              selectedElementRefForUsage={selection.selectedElementRefForUsage}
+              diagramsUsingSelectedElement={selection.diagramsUsingSelectedElement}
+              selectedElementRelationships={selection.selectedElementRelationships}
+              onSelectRelationshipFromProperties={handleSelectRelationshipWithUrl}
+              onSelectElementFromProperties={handleSelectElementWithUrl}
+              onCanvasNodeSelect={(node) => {
+                if (node?.elementRef && selection.selectedDiagramId) {
+                  handleSelectElementWithUrl(node.elementRef, {
+                    diagramId: selection.selectedDiagramId,
+                    node,
+                  })
+                  return
+                }
+                selection.setSelectedNode(node)
+                selection.setSelectedElementId(node?.elementRef ?? null)
+                if (node) {
+                  selection.setSelectedRelationshipRef(null)
+                }
+              }}
+              onCanvasRelationshipSelect={(ref) => {
+                if (ref) {
+                  handleSelectRelationshipWithUrl(ref)
+                  return
+                }
+                selection.handleCanvasRelationshipSelect(null)
+              }}
+              onNavigateToDiagram={({ diagramId, node, elementId }) => {
+                if (elementId) {
+                  handleSelectElementWithUrl(elementId, {
+                    diagramId,
+                    node: node ?? undefined,
+                  })
+                  return
+                }
+                handleViewModeSelectDiagram(diagramId)
+                selection.setSelectedNode(node ?? null)
+                selection.setSelectedElementId(null)
                 selection.setSelectedRelationshipRef(null)
-              }
-            }}
-            onCanvasRelationshipSelect={selection.handleCanvasRelationshipSelect}
-            onNavigateToDiagram={({ diagramId, node, elementId }) => {
-              handleViewModeSelectDiagram(diagramId)
-              selection.setSelectedNode(node ?? null)
-              selection.setSelectedElementId(elementId)
-              selection.setSelectedRelationshipRef(null)
-            }}
-            onSelectElement={(elementId, found) => {
-              selection.setSelectedRelationshipRef(null)
-              if (found?.pending) {
-                pendingElementFocusRef.current = elementId
-                handleViewModeSelectDiagram(found.diagramId)
-                selection.setSelectedElementId(elementId)
-                selection.setSelectedNode(null)
-                return
-              }
-              selection.setSelectedElementId(elementId)
-              selection.setSelectedNode(null)
-              if (found?.node) {
-                handleViewModeSelectDiagram(found.diagramId)
-                selection.setSelectedNode(found.node)
-              }
-            }}
-            onSelectRelationship={selection.handleSelectRelationshipFromProperties}
-            onSelectDiagram={handleViewModeSelectDiagram}
-            workspaceLayout={workspaceLayout}
-          />
+              }}
+              onSelectElement={handleSelectElementWithUrl}
+              onSelectRelationship={handleSelectRelationshipWithUrl}
+              onSelectDiagram={handleViewModeSelectDiagram}
+              workspaceLayout={workspaceLayout}
+            />
+          </AppTabPanel>
         ) : null}
         {appTab === 'admin' ? <AdminPanel git={git} /> : null}
       </Layout.Content>

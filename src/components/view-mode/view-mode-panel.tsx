@@ -2,7 +2,7 @@ import { useCallback, useMemo } from 'react'
 import { Button, Empty, Tooltip } from 'antd'
 import { FullscreenExitOutlined, FullscreenOutlined } from '@ant-design/icons'
 import { DiagramCanvas } from '../diagram-canvas'
-import { collectConnectionIdsForDiagramNode } from '../../lib/archimate/diagram-model'
+import { collectConnectionIdsForDiagramNode, collectConnectionIdsForRelationshipRef } from '../../lib/archimate/diagram-model'
 import { Sidebar } from '../sidebar/sidebar'
 import { ViewModeProperties } from './view-mode-properties'
 import { WorkspaceCanvasLayout } from '../workspace/workspace-canvas-layout'
@@ -113,7 +113,13 @@ export function ViewModePanel(props: ViewModePanelProps) {
   }, [canvasFocusMode, setPropertiesOpen, toggleCanvasFocusMode])
 
   const flowConnectionIds = useMemo(() => {
-    if (!selectedDiagram || !selectedNodeId || selectedRelationshipRef) {
+    if (!selectedDiagram) {
+      return []
+    }
+    if (selectedRelationshipRef) {
+      return collectConnectionIdsForRelationshipRef(selectedDiagram, selectedRelationshipRef)
+    }
+    if (!selectedNodeId) {
       return []
     }
     return collectConnectionIdsForDiagramNode(selectedDiagram, selectedNodeId)

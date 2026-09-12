@@ -643,6 +643,19 @@ export function collectConnectionIdsForDiagramNode(
     .map((connection) => connection.id)
 }
 
+/** Connection ids on a diagram that visualize the given relationship. */
+export function collectConnectionIdsForRelationshipRef(
+  diagram: ParsedDiagram | null | undefined,
+  relationshipRef: string,
+): string[] {
+  if (!diagram?.connections?.length || !relationshipRef) {
+    return []
+  }
+  return diagram.connections
+    .filter((connection) => connection.relationshipRef === relationshipRef)
+    .map((connection) => connection.id)
+}
+
 export function collectDiagramHighlightsForElement(
   diagram: ParsedDiagram | null | undefined,
   elementRef?: string,

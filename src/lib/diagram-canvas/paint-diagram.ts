@@ -154,9 +154,7 @@ export function paintDiagramCanvas(
       hlConns && highlightIdSetHas(hlConns, connection.id),
     )
     const isFlowConnection =
-      !isSelectedRelationship &&
-      !isChangedConnection &&
-      highlightIdSetHas(flowConns, connection.id)
+      !isChangedConnection && highlightIdSetHas(flowConns, connection.id)
 
     const resolved = resolveConnectionPolyline(
       connection,
@@ -176,20 +174,22 @@ export function paintDiagramCanvas(
       connection,
       themeMode === 'dark' ? DEFAULT_CONNECTION_LINE_COLOR_DARK : DEFAULT_CONNECTION_LINE_COLOR,
     )
-    const lineColor = isSelectedRelationship
-      ? '#ff7a00'
-      : isChangedConnection
-        ? '#e65100'
-        : isFlowConnection
-          ? CONNECTION_FLOW_COLOR
+    const lineColor = isFlowConnection
+      ? CONNECTION_FLOW_COLOR
+      : isSelectedRelationship
+        ? '#ff7a00'
+        : isChangedConnection
+          ? '#e65100'
           : baseLineColor
 
-    const lineWidth = isSelectedRelationship
-      ? 3
-      : isChangedConnection
-        ? 2.5
-        : isFlowConnection
-          ? 2.4
+    const lineWidth = isFlowConnection
+      ? isSelectedRelationship
+        ? 3
+        : 2.4
+      : isSelectedRelationship
+        ? 3
+        : isChangedConnection
+          ? 2.5
           : layout === 'nested'
             ? 1.25
             : Math.max(1.2, style.width ?? 1.6)
@@ -221,11 +221,12 @@ export function paintDiagramCanvas(
       endMarker,
       layout,
       label,
-      dash:
-        isSelectedRelationship || isChangedConnection
-          ? []
-          : isFlowConnection
-            ? [10, 7]
+      dash: isChangedConnection
+        ? []
+        : isFlowConnection
+          ? [10, 7]
+          : isSelectedRelationship
+            ? []
             : layout === 'nested'
               ? []
               : style.dash ?? [],
