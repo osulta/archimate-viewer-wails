@@ -29,6 +29,10 @@ export function resolveNodeDrawColors(
       : flags.isChanged
         ? theme.changedBorder
         : customLine || style.border,
-    text: customFont || style.text,
+    text: flags.isSelected
+      ? theme.selectionText
+      : flags.isChanged
+        ? theme.changedText
+        : customFont || style.text,
   }
 }

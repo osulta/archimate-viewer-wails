@@ -6,9 +6,11 @@ export interface CanvasPaintTheme {
   selectionFill: string
   selectionHeader: string
   selectionBorder: string
+  selectionText: string
   changedFill: string
   changedHeader: string
   changedBorder: string
+  changedText: string
   referenceFill: string
   referenceFillSelected: string
   referenceBorder: string
@@ -33,9 +35,11 @@ const LIGHT_CANVAS_THEME: CanvasPaintTheme = {
   selectionFill: '#d6e4ff',
   selectionHeader: '#bfd4ff',
   selectionBorder: '#1f47bf',
+  selectionText: '#14224d',
   changedFill: '#fff9c4',
   changedHeader: '#fff59d',
   changedBorder: '#e65100',
+  changedText: '#3e2723',
   referenceFill: '#f8f9fb',
   referenceFillSelected: '#eef3ff',
   referenceBorder: '#7986cb',
@@ -60,9 +64,11 @@ const DARK_CANVAS_THEME: CanvasPaintTheme = {
   selectionFill: '#243356',
   selectionHeader: '#2c3f68',
   selectionBorder: '#6b8cff',
+  selectionText: '#e8eeff',
   changedFill: '#3d3420',
   changedHeader: '#4a3f24',
   changedBorder: '#ff9800',
+  changedText: '#ffe0b2',
   referenceFill: '#252830',
   referenceFillSelected: '#2a3550',
   referenceBorder: '#7b8cff',
