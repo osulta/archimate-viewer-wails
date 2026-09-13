@@ -89,21 +89,27 @@ function compareNames(a: string, b: string): number {
   return a.localeCompare(b, undefined, { sensitivity: 'base' })
 }
 
-export function sortModelFolderNodes(folders: ModelFolderNode[]): ModelFolderNode[] {
+export function sortModelFolderNodes(
+  folders: ModelFolderNode[],
+  options?: { sortLeafItems?: boolean },
+): ModelFolderNode[] {
+  const sortLeafItems = options?.sortLeafItems !== false
   return [...(folders ?? [])]
     .sort((a, b) => compareNames(a.name, b.name))
     .map((folder) => ({
       ...folder,
-      folders: sortModelFolderNodes(folder.folders ?? []),
-      diagrams: [...(folder.diagrams ?? [])].sort((a, b) =>
-        compareNames(a.name ?? '', b.name ?? ''),
-      ),
-      elements: [...(folder.elements ?? [])].sort((a, b) =>
-        compareNames(a.name ?? '', b.name ?? ''),
-      ),
-      relationships: [...(folder.relationships ?? [])].sort((a, b) =>
-        compareNames(a.name ?? a.id ?? '', b.name ?? b.id ?? ''),
-      ),
+      folders: sortModelFolderNodes(folder.folders ?? [], options),
+      diagrams: sortLeafItems
+        ? [...(folder.diagrams ?? [])].sort((a, b) => compareNames(a.name ?? '', b.name ?? ''))
+        : folder.diagrams,
+      elements: sortLeafItems
+        ? [...(folder.elements ?? [])].sort((a, b) => compareNames(a.name ?? '', b.name ?? ''))
+        : folder.elements,
+      relationships: sortLeafItems
+        ? [...(folder.relationships ?? [])].sort((a, b) =>
+            compareNames(a.name ?? a.id ?? '', b.name ?? b.id ?? ''),
+          )
+        : folder.relationships,
     }))
 }
 
@@ -424,7 +430,10 @@ export function buildDiagramFolderTree(
   }
 }
 
-export function buildElementFolderTree(elements: ParsedElement[]): {
+export function buildElementFolderTree(
+  elements: ParsedElement[],
+  options?: { deferElementSort?: boolean },
+): {
   folders: ModelFolderNode[]
   rootElements: ParsedElement[]
 } {
@@ -437,9 +446,12 @@ export function buildElementFolderTree(elements: ParsedElement[]): {
     },
   )
 
+  const deferElementSort = Boolean(options?.deferElementSort)
   return {
-    folders: sortModelFolderNodes(folders),
-    rootElements: rootItems.sort((a, b) => compareNames(a.name ?? '', b.name ?? '')),
+    folders: sortModelFolderNodes(folders, { sortLeafItems: !deferElementSort }),
+    rootElements: deferElementSort
+      ? rootItems
+      : rootItems.sort((a, b) => compareNames(a.name ?? '', b.name ?? '')),
   }
 }
 
@@ -538,6 +550,113 @@ export function buildElementSidebarTreeData(
     ...folderNodesToElementSidebarTreeData(folders),
     ...rootElements.map(elementToSidebarTreeNode),
   ]
+}
+
+/** Synthetic folder key for root-level elements loaded on demand. */
+export const ELEMENT_ROOT_LAZY_FOLDER_KEY = 'element-folder:__root__'
+
+const LAZY_ROOT_ELEMENTS_THRESHOLD = 80
+
+function folderHasElementChildren(folder: ModelFolderNode): boolean {
+  return (folder.folders?.length ?? 0) > 0 || (folder.elements?.length ?? 0) > 0
+}
+
+function folderToLazySkeletonNode(folder: ModelFolderNode): ElementSidebarTreeNode {
+  const hasChildren = folderHasElementChildren(folder)
+  return {
+    key: folder.key,
+    title: folder.name,
+    tooltip: folder.name,
+    selectable: false,
+    isLeaf: !hasChildren,
+  }
+}
+
+/**
+ * Top-level Ant Tree nodes for idle (non-search) mode: folders only.
+ * Element leaves are attached later via {@link buildElementFolderChildrenTreeData}.
+ */
+export function buildLazyElementSidebarTreeData(
+  folders: ModelFolderNode[],
+  rootElements: ParsedElement[],
+): ElementSidebarTreeNode[] {
+  const nodes = folders.map(folderToLazySkeletonNode)
+  if (!rootElements.length) {
+    return nodes
+  }
+  if (rootElements.length > LAZY_ROOT_ELEMENTS_THRESHOLD) {
+    nodes.push({
+      key: ELEMENT_ROOT_LAZY_FOLDER_KEY,
+      title: `Без папки (${rootElements.length.toLocaleString()})`,
+      tooltip: 'Элементы без папки',
+      selectable: false,
+      isLeaf: false,
+    })
+    return nodes
+  }
+  return [...nodes, ...rootElements.map(elementToSidebarTreeNode)]
+}
+
+/** Children for one folder (or synthetic root) when the user expands it. */
+export function buildElementFolderChildrenTreeData(
+  folders: ModelFolderNode[],
+  rootElements: ParsedElement[],
+  folderKey: string,
+): ElementSidebarTreeNode[] | null {
+  if (folderKey === ELEMENT_ROOT_LAZY_FOLDER_KEY) {
+    return [...rootElements]
+      .sort((a, b) => compareNames(a.name ?? '', b.name ?? ''))
+      .map(elementToSidebarTreeNode)
+  }
+  const folder = findElementFolderNodeByKey(folders, folderKey)
+  if (!folder) {
+    return null
+  }
+  return [
+    ...(folder.folders ?? []).map(folderToLazySkeletonNode),
+    ...[...(folder.elements ?? [])]
+      .sort((a, b) => compareNames(a.name ?? '', b.name ?? ''))
+      .map(elementToSidebarTreeNode),
+  ]
+}
+
+export function findElementFolderNodeByKey(
+  folders: ModelFolderNode[],
+  folderKey: string,
+): ModelFolderNode | null {
+  for (const folder of folders ?? []) {
+    if (folder.key === folderKey) {
+      return folder
+    }
+    const nested = findElementFolderNodeByKey(folder.folders ?? [], folderKey)
+    if (nested) {
+      return nested
+    }
+  }
+  return null
+}
+
+export function updateElementSidebarTreeChildren(
+  nodes: ElementSidebarTreeNode[],
+  folderKey: string,
+  children: ElementSidebarTreeNode[],
+): ElementSidebarTreeNode[] {
+  return nodes.map((node) => {
+    if (String(node.key) === folderKey) {
+      return {
+        ...node,
+        children,
+        isLeaf: children.length === 0,
+      }
+    }
+    if (!node.children?.length) {
+      return node
+    }
+    return {
+      ...node,
+      children: updateElementSidebarTreeChildren(node.children, folderKey, children),
+    }
+  })
 }
 
 export function collectElementFolderKeys(nodes: ElementSidebarTreeNode[]): string[] {

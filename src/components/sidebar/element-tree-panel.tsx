@@ -2,11 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Tree } from 'antd'
 import { FileOutlined, FolderOutlined } from '@ant-design/icons'
 import type { Key } from 'antd/es/table/interface'
+import type { EventDataNode } from 'antd/es/tree'
 import { setSidebarElementDragData } from '../../lib/archimate/sidebar-drag'
 import {
+  buildElementFolderChildrenTreeData,
   buildElementSidebarTreeData,
+  buildLazyElementSidebarTreeData,
   collectElementFolderKeys,
   formatArchimateTypeLabel,
+  updateElementSidebarTreeChildren,
   type ElementSidebarTreeNode,
   type ModelFolderNode,
 } from '../../lib/archimate/model-folder-tree'
@@ -23,14 +27,6 @@ interface ElementTreePanelProps {
   onSelectElement: (elementId: string) => void
 }
 
-function withTreeIcons(nodes: ElementSidebarTreeNode[]): ElementSidebarTreeNode[] {
-  return nodes.map((node) => ({
-    ...node,
-    icon: node.elementId ? <FileOutlined /> : <FolderOutlined />,
-    children: node.children ? withTreeIcons(node.children) : undefined,
-  }))
-}
-
 export function ElementTreePanel({
   folders,
   rootElements,
@@ -41,18 +37,53 @@ export function ElementTreePanel({
   allowElementDrag = false,
   onSelectElement,
 }: ElementTreePanelProps): React.JSX.Element {
-  const treeData = useMemo(
-    () => withTreeIcons(buildElementSidebarTreeData(folders, rootElements)),
-    [folders, rootElements],
+  const eagerTreeData = useMemo(() => {
+    if (!treeSearchActive) {
+      return null
+    }
+    return buildElementSidebarTreeData(folders, rootElements)
+  }, [treeSearchActive, folders, rootElements])
+
+  const [lazyTreeData, setLazyTreeData] = useState<ElementSidebarTreeNode[]>(() =>
+    buildLazyElementSidebarTreeData(folders, rootElements),
   )
+
+  useEffect(() => {
+    if (treeSearchActive) {
+      return
+    }
+    setLazyTreeData(buildLazyElementSidebarTreeData(folders, rootElements))
+  }, [treeSearchActive, folders, rootElements])
+
+  const treeData = treeSearchActive ? (eagerTreeData ?? []) : lazyTreeData
 
   const [expandedKeys, setExpandedKeys] = useState<Key[]>([])
 
   useEffect(() => {
-    if (treeSearchActive) {
-      setExpandedKeys(collectElementFolderKeys(treeData))
+    if (treeSearchActive && eagerTreeData) {
+      setExpandedKeys(collectElementFolderKeys(eagerTreeData))
+      return
     }
-  }, [treeSearchActive, treeData])
+    setExpandedKeys([])
+  }, [treeSearchActive, eagerTreeData])
+
+  const handleLoadData = useCallback(
+    async (treeNode: EventDataNode<ElementSidebarTreeNode>) => {
+      if (treeSearchActive) {
+        return
+      }
+      const folderKey = String(treeNode.key)
+      if (treeNode.children?.length) {
+        return
+      }
+      const children = buildElementFolderChildrenTreeData(folders, rootElements, folderKey)
+      if (!children) {
+        return
+      }
+      setLazyTreeData((current) => updateElementSidebarTreeChildren(current, folderKey, children))
+    },
+    [treeSearchActive, folders, rootElements],
+  )
 
   const handleSelect = useCallback(
     (_keys: Key[], info: { node: ElementSidebarTreeNode }) => {
@@ -62,6 +93,10 @@ export function ElementTreePanel({
     },
     [onSelectElement],
   )
+
+  const renderIcon = useCallback((props: { isLeaf?: boolean }) => {
+    return props.isLeaf ? <FileOutlined /> : <FolderOutlined />
+  }, [])
 
   const renderTitle = useCallback(
     (node: ElementSidebarTreeNode) => {
@@ -122,7 +157,9 @@ export function ElementTreePanel({
       selectedKeys={selectedElementId ? [selectedElementId] : []}
       expandedKeys={expandedKeys}
       onExpand={setExpandedKeys}
+      loadData={treeSearchActive ? undefined : handleLoadData}
       onSelect={handleSelect}
+      icon={renderIcon}
       titleRender={renderTitle}
     />
   )

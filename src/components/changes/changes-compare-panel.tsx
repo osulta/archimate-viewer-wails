@@ -254,6 +254,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
                   diagramExportName={leftDiagram.name}
                   elementById={model.elementById}
                   relationshipById={model.relationshipById}
+                  diagrams={model.diagrams}
                   highlightNodeIds={compareDiff.changedNodeIds}
                   highlightConnectionIds={compareDiff.changedConnectionIds}
                 />
@@ -285,6 +286,7 @@ export function ChangesComparePanel(props: ChangesComparePanelProps) {
                   diagramExportName={rightDiagram.name}
                   elementById={compareModel!.elementById}
                   relationshipById={compareModel!.relationshipById}
+                  diagrams={compareModel!.diagrams}
                 />
               )}
             </section>

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { Button, Collapse, Input } from 'antd'
 import { SearchOutlined, FolderOutlined } from '@ant-design/icons'
 import {
@@ -63,6 +63,8 @@ interface ModelTreeProps {
   onCreateFolder?: () => void
 }
 
+const DEFAULT_INNER_KEYS = ['diagrams']
+
 export function ModelTree({
   model,
   treeSearchActive,
@@ -85,17 +87,41 @@ export function ModelTree({
   onSelectDiagram,
   onSelectDiagramFolder,
   diagramTreeSelectedKey = '',
-  focusElementInDiagram,
-  focusRelationshipInDiagram,
   allowElementDrag = false,
   allowDiagramDrag = false,
   onCreateDiagram,
   onCreateFolder,
 }: ModelTreeProps): React.JSX.Element {
-  const { folders: elementFolderTree, rootElements: rootTreeElements } = useMemo(
-    () => buildElementFolderTree(filteredTreeElements),
-    [filteredTreeElements],
-  )
+  const [innerActiveKeys, setInnerActiveKeys] = useState<string[]>(DEFAULT_INNER_KEYS)
+
+  useEffect(() => {
+    if (!treeSearchActive) {
+      return
+    }
+    setInnerActiveKeys((current) => {
+      const next = new Set(current)
+      next.add('elements')
+      next.add('relationships')
+      next.add('diagrams')
+      return [...next]
+    })
+  }, [treeSearchActive])
+
+  const elementsSectionOpen = treeSearchActive || innerActiveKeys.includes('elements')
+  const relationshipsSectionOpen =
+    treeSearchActive || innerActiveKeys.includes('relationships')
+
+  const { folders: elementFolderTree, rootElements: rootTreeElements } = useMemo(() => {
+    if (!elementsSectionOpen) {
+      return {
+        folders: [] as ReturnType<typeof buildElementFolderTree>['folders'],
+        rootElements: [] as ParsedElement[],
+      }
+    }
+    return buildElementFolderTree(filteredTreeElements, {
+      deferElementSort: !treeSearchActive,
+    })
+  }, [elementsSectionOpen, filteredTreeElements, treeSearchActive])
 
   const { folders: diagramFolderTree, rootDiagrams: rootTreeDiagrams } = useMemo(
     () => buildDiagramFolderTree(filteredTreeDiagrams, model?.diagramFolderPaths ?? []),
@@ -120,13 +146,16 @@ export function ModelTree({
     )
   }
 
-  const elementsPanel = (
+  const elementsPanel = elementsSectionOpen ? (
     <>
       {elementSearchMeta.truncated ? (
         <p className="tree-hint-compact">
           Показаны первые {filteredTreeElements.length.toLocaleString()} из{' '}
           {elementSearchMeta.totalMatches.toLocaleString()}. Уточните запрос.
         </p>
+      ) : null}
+      {!treeSearchActive ? (
+        <p className="tree-hint-compact">Элементы подгружаются при раскрытии папки.</p>
       ) : null}
       <ElementTreePanel
         folders={elementFolderTree}
@@ -139,22 +168,21 @@ export function ModelTree({
         onSelectElement={(elementId) => onSelectElement(elementId, null)}
       />
     </>
-  )
+  ) : null
 
-  const relationshipsPanel =
-    filteredTreeRelationships.length === 0 ? (
-      <p className="tree-search-empty">
-        {treeSearchActive ? 'Нет совпадений' : 'Нет связей'}
-      </p>
-    ) : (
-      <>
-        {relationshipSearchMeta.truncated ? (
-          <p className="tree-hint-compact">
-            Показаны первые {filteredTreeRelationships.length} из{' '}
-            {relationshipSearchMeta.totalMatches.toLocaleString()}. Уточните запрос.
-          </p>
-        ) : null}
-        <ul className="tree-list">
+  const relationshipsPanel = !relationshipsSectionOpen ? null : filteredTreeRelationships.length === 0 ? (
+    <p className="tree-search-empty">
+      {treeSearchActive ? 'Нет совпадений' : 'Нет связей'}
+    </p>
+  ) : (
+    <>
+      {relationshipSearchMeta.truncated ? (
+        <p className="tree-hint-compact">
+          Показаны первые {filteredTreeRelationships.length} из{' '}
+          {relationshipSearchMeta.totalMatches.toLocaleString()}. Уточните запрос.
+        </p>
+      ) : null}
+      <ul className="tree-list">
         {filteredTreeRelationships.map((item) => (
           <li key={item.id} title={`${item.source} -> ${item.target}`}>
             <Button
@@ -170,9 +198,9 @@ export function ModelTree({
             </Button>
           </li>
         ))}
-        </ul>
-      </>
-    )
+      </ul>
+    </>
+  )
 
   const innerItems = [
     {
@@ -252,8 +280,6 @@ export function ModelTree({
     },
   ]
 
-  const defaultInnerKeys = ['diagrams']
-
   return (
     <div className="tree">
       <Input
@@ -283,7 +309,12 @@ export function ModelTree({
             children: (
               <Collapse
                 className="tree-collapse"
-                defaultActiveKey={defaultInnerKeys}
+                activeKey={innerActiveKeys}
+                destroyOnHidden
+                onChange={(keys) => {
+                  const next = Array.isArray(keys) ? keys.map(String) : [String(keys)]
+                  setInnerActiveKeys(next)
+                }}
                 items={innerItems}
               />
             ),
