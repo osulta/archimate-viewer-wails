@@ -22,14 +22,18 @@ export function computeRemoveRelationshipBendpoint(
   if (!currentConnection) {
     return null
   }
-  const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
+  const prev = relationshipOverrides.get(diagramId)?.get(relationshipRef)
+  const nextBendpoints = [...(prev?.bendpoints ?? currentConnection.bendpoints ?? [])]
   if (bendpointIndex < 0 || bendpointIndex >= nextBendpoints.length) {
     return null
   }
   nextBendpoints.splice(bendpointIndex, 1)
   const beforeOverrides = cloneBendpointMap(relationshipOverrides)
   const diagramMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
-  diagramMap.set(relationshipRef, nextBendpoints)
+  diagramMap.set(relationshipRef, {
+    bendpoints: nextBendpoints,
+    ...(prev?.lineColor !== undefined ? { lineColor: prev.lineColor } : {}),
+  })
   const nextOverrides = new Map(relationshipOverrides)
   nextOverrides.set(diagramId, diagramMap)
   return {
@@ -51,14 +55,18 @@ export function computeUpdateRelationshipBendpoint(
   if (!currentConnection) {
     return null
   }
-  const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
+  const prev = relationshipOverrides.get(diagramId)?.get(relationshipRef)
+  const nextBendpoints = [...(prev?.bendpoints ?? currentConnection.bendpoints ?? [])]
   if (!nextBendpoints[bendpointIndex]) {
     return null
   }
   nextBendpoints[bendpointIndex] = bendpoint
   const beforeOverrides = cloneBendpointMap(relationshipOverrides)
   const diagramMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
-  diagramMap.set(relationshipRef, nextBendpoints)
+  diagramMap.set(relationshipRef, {
+    bendpoints: nextBendpoints,
+    ...(prev?.lineColor !== undefined ? { lineColor: prev.lineColor } : {}),
+  })
   const nextOverrides = new Map(relationshipOverrides)
   nextOverrides.set(diagramId, diagramMap)
   return { nextOverrides, beforeOverrides }
@@ -76,12 +84,16 @@ export function computeAddRelationshipBendpoint(
   if (!currentConnection) {
     return null
   }
-  const nextBendpoints = [...(currentConnection.bendpoints ?? [])]
+  const prev = relationshipOverrides.get(diagramId)?.get(relationshipRef)
+  const nextBendpoints = [...(prev?.bendpoints ?? currentConnection.bendpoints ?? [])]
   const insertAt = Math.max(0, Math.min(nextBendpoints.length, segmentIndex))
   nextBendpoints.splice(insertAt, 0, bendpoint)
   const beforeOverrides = cloneBendpointMap(relationshipOverrides)
   const diagramMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
-  diagramMap.set(relationshipRef, nextBendpoints)
+  diagramMap.set(relationshipRef, {
+    bendpoints: nextBendpoints,
+    ...(prev?.lineColor !== undefined ? { lineColor: prev.lineColor } : {}),
+  })
   const nextOverrides = new Map(relationshipOverrides)
   nextOverrides.set(diagramId, diagramMap)
   return {

@@ -192,11 +192,16 @@ export function ModelingWorkspace({
           linkCreateMode={linkCreateMode}
           linkCreateSourceId={linkCreateSourceId}
           onNodeSelect={(node, options) => {
-            if (node?.elementRef && selectedDiagramId && !options?.shiftKey && onSelectElement) {
-              onSelectElement(node.elementRef, { diagramId: selectedDiagramId, node })
-              return
-            }
             selection.handleCanvasNodeSelect(node, options)
+            if (
+              node?.elementRef &&
+              selectedDiagramId &&
+              !options?.shiftKey &&
+              !options?.selectedIds &&
+              onSelectElement
+            ) {
+              onSelectElement(node.elementRef, { diagramId: selectedDiagramId, node })
+            }
           }}
           onNodeMove={(nodeId, dx, dy) => mutations.moveNode(selectedDiagramId, nodeId, dx, dy)}
           onNodesMove={(nodeIds, dx, dy) => mutations.moveNodes(selectedDiagramId, nodeIds, dx, dy)}
@@ -282,6 +287,11 @@ export function ModelingWorkspace({
           onUpdateNodeFillColor={(nodeId, fillColor) => {
             if (selectedDiagramId) {
               mutations.updateNodeFillColor(selectedDiagramId, nodeId, fillColor)
+            }
+          }}
+          onUpdateConnectionLineColor={(relationshipRef, lineColor) => {
+            if (selectedDiagramId) {
+              mutations.updateConnectionLineColor(selectedDiagramId, relationshipRef, lineColor)
             }
           }}
         />

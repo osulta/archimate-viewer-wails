@@ -361,9 +361,9 @@ export function useArchimateApp() {
         return
       }
       if (found?.node) {
-        selection.setSelectedElementId(elementId)
         selection.setSelectedDiagramId(found.diagramId)
-        selection.setSelectedNode(found.node)
+        selection.handleCanvasNodeSelect(found.node)
+        selection.setSelectedElementId(elementId)
         selection.setDiagramTreeSelectedKey(found.diagramId)
         syncNavigationUrl({
           diagramId: found.diagramId,

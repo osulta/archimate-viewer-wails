@@ -8,8 +8,8 @@ import {
 import type {
   ParsedDiagram,
   DiagramNode,
-  Bendpoint,
   NodeOverride,
+  ConnectionOverride,
   ElementOverride,
   RelationshipMetaOverride,
   CreatedObject,
@@ -90,10 +90,10 @@ export function computeDeleteSelectedFromDiagram(
   const nextRelOverrides = new Map(relationshipOverrides)
   const relMap = relationshipOverrides.get(selectedDiagramId)
   if (relMap?.size) {
-    const nextMap = new Map<string, Bendpoint[]>()
-    relMap.forEach((bendpoints, ref) => {
+    const nextMap = new Map<string, ConnectionOverride>()
+    relMap.forEach((ov, ref) => {
       if (validRefs.has(ref)) {
-        nextMap.set(ref, bendpoints)
+        nextMap.set(ref, ov)
       }
     })
     nextRelOverrides.set(selectedDiagramId, nextMap)
@@ -240,7 +240,7 @@ export function computeDeleteRelationshipFromModel(
   const nextDiagramIndexByRelationshipRef = new Map(model.diagramIndexByRelationshipRef ?? [])
   nextDiagramIndexByRelationshipRef.delete(relationshipRef)
 
-  const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
+  const nextRelOverrides = new Map<string, Map<string, ConnectionOverride>>()
   relationshipOverrides.forEach((relMap, diagramId) => {
     const m = new Map(relMap)
     m.delete(relationshipRef)
@@ -335,7 +335,7 @@ export function computeDeleteElementFromModel(
     nextDiagramOverrides.set(diagramId, m)
   })
 
-  const nextRelOverrides = new Map<string, Map<string, Bendpoint[]>>()
+  const nextRelOverrides = new Map<string, Map<string, ConnectionOverride>>()
   relationshipOverrides.forEach((relMap, diagramId) => {
     const m = new Map(relMap)
     removedRelIds.forEach((rid) => m.delete(rid))

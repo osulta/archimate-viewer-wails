@@ -5,6 +5,7 @@ import {
   applyPropertiesToElementXml,
   clearConnectionBendpoints,
   appendConnectionBendpoints,
+  applyConnectionLineColorToXml,
 } from '../archimate/xml-utils'
 import {
   applyOverridesToNodes,
@@ -27,7 +28,7 @@ import { isRelationshipModelElement } from '../archimate/relationship-meta'
 import type {
   ParsedModel,
   NodeOverride,
-  Bendpoint,
+  ConnectionOverride,
   ElementOverride,
   RelationshipMetaOverride,
   CreatedObject,
@@ -38,7 +39,7 @@ export interface BuildEditedModelXmlParams {
   model: ParsedModel
   loadedXml: string
   diagramOverrides: Map<string, Map<string, NodeOverride>>
-  relationshipOverrides: Map<string, Map<string, Bendpoint[]>>
+  relationshipOverrides: Map<string, Map<string, ConnectionOverride>>
   elementOverrides: Map<string, ElementOverride>
   relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
   createdObjects: CreatedObject[]
@@ -306,6 +307,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
           connNode.setAttribute('target', connection.target)
           connNode.setAttribute('archimateRelationship', connection.relationshipRef)
           appendConnectionBendpoints(connNode, documentNode, connection.bendpoints ?? [])
+          applyConnectionLineColorToXml(connNode, connection.lineColor)
           sourceObj.appendChild(connNode)
         }
       } else {
@@ -360,7 +362,7 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
       const connectionElements = Array.from(diagramRoot.getElementsByTagName('*')).filter(
         (el) => el.localName === 'sourceConnection' || el.localName === 'connection',
       )
-      relMap.forEach((bendpoints, relationshipRef) => {
+      relMap.forEach((ov, relationshipRef) => {
         connectionElements.forEach((el) => {
           const relAttr =
             el.getAttribute('archimateRelationship') ??
@@ -370,7 +372,8 @@ export function buildEditedModelXml(params: BuildEditedModelXmlParams): string |
             return
           }
           clearConnectionBendpoints(el)
-          appendConnectionBendpoints(el, documentNode, bendpoints)
+          appendConnectionBendpoints(el, documentNode, ov.bendpoints)
+          applyConnectionLineColorToXml(el, ov.lineColor)
         })
       })
     })

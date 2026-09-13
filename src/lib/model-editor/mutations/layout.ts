@@ -16,7 +16,6 @@ import type {
   ParsedRelationship,
   DiagramNode,
   DiagramConnection,
-  Bendpoint,
   NodeOverride,
   CreatedRelationship,
   ParsedModel,
@@ -41,7 +40,15 @@ export function cloneBendpointMap(source: RelationshipOverridesMap): Relationshi
   return new Map(
     Array.from(source.entries(), ([diagramId, relMap]) => [
       diagramId,
-      new Map(Array.from(relMap.entries(), ([ref, points]) => [ref, [...points]])),
+      new Map(
+        Array.from(relMap.entries(), ([ref, ov]) => [
+          ref,
+          {
+            bendpoints: [...ov.bendpoints],
+            ...(ov.lineColor !== undefined ? { lineColor: ov.lineColor } : {}),
+          },
+        ]),
+      ),
     ]),
   )
 }
@@ -364,9 +371,13 @@ export function computeResizeNodeUpdate(
     if (!connection.bendpoints?.length) {
       return
     }
-    const current = relMap.get(connection.relationshipRef) ?? connection.bendpoints
+    const prevOv = relMap.get(connection.relationshipRef)
+    const current = prevOv?.bendpoints ?? connection.bendpoints
     const next = adjustBendpointsForNodeResize(current, connection, nodeId, appliedDw, appliedDh)
-    relMap.set(connection.relationshipRef, next)
+    relMap.set(connection.relationshipRef, {
+      bendpoints: next,
+      ...(prevOv?.lineColor !== undefined ? { lineColor: prevOv.lineColor } : {}),
+    })
     relChanged = true
   })
   const nextRelOverrides = new Map(relationshipOverrides)
@@ -415,4 +426,35 @@ export function computeNodeFillColorUpdate(
   const nextDiagramOverrides = new Map(diagramOverrides)
   nextDiagramOverrides.set(diagramId, nextOverrides)
   return { nextDiagramOverrides, beforeDiagramOverrides }
+}
+
+export interface ConnectionLineColorUpdate {
+  nextOverrides: RelationshipOverridesMap
+  beforeOverrides: RelationshipOverridesMap
+}
+
+export function computeConnectionLineColorUpdate(
+  diagram: ParsedDiagram,
+  diagramId: string,
+  relationshipRef: string,
+  lineColor: string | null,
+  relationshipOverrides: RelationshipOverridesMap,
+): ConnectionLineColorUpdate | null {
+  if (!diagramId || !relationshipRef) {
+    return null
+  }
+  const currentConnection = diagram.connections.find((c) => c.relationshipRef === relationshipRef)
+  if (!currentConnection) {
+    return null
+  }
+  const beforeOverrides = cloneBendpointMap(relationshipOverrides)
+  const diagramMap = new Map(relationshipOverrides.get(diagramId) ?? new Map())
+  const prev = diagramMap.get(relationshipRef)
+  diagramMap.set(relationshipRef, {
+    bendpoints: prev?.bendpoints ? [...prev.bendpoints] : [...(currentConnection.bendpoints ?? [])],
+    lineColor,
+  })
+  const nextOverrides = new Map(relationshipOverrides)
+  nextOverrides.set(diagramId, diagramMap)
+  return { nextOverrides, beforeOverrides }
 }

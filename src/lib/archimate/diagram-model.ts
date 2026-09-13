@@ -9,6 +9,7 @@ import type {
   DiagramConnection,
   DiagramOverridesMap,
   RelationshipOverridesMap,
+  ConnectionOverride,
 } from '../../types/model'
 import {
   getId,
@@ -248,19 +249,33 @@ export function resolveDiagramWithOverrides(
     }
     return {
       ...diagram,
-      connections: diagram.connections.map((c) => {
-        const ov = relOverrides.get(c.relationshipRef)
-        return ov !== undefined ? { ...c, bendpoints: ov } : c
-      }),
+      connections: diagram.connections.map((c) => applyConnectionOverride(c, relOverrides.get(c.relationshipRef))),
     }
   }
   return {
     ...diagram,
     nodes: applyOverridesToNodes(diagram.nodes, overrides),
-    connections: diagram.connections.map((c) => {
-      const ov = relOverrides?.get(c.relationshipRef)
-      return ov !== undefined ? { ...c, bendpoints: ov } : c
-    }),
+    connections: diagram.connections.map((c) =>
+      applyConnectionOverride(c, relOverrides?.get(c.relationshipRef)),
+    ),
+  }
+}
+
+export function applyConnectionOverride(
+  connection: DiagramConnection,
+  ov: ConnectionOverride | undefined,
+): DiagramConnection {
+  if (!ov) {
+    return connection
+  }
+  let lineColor = connection.lineColor
+  if (ov.lineColor !== undefined) {
+    lineColor = ov.lineColor === null ? undefined : ov.lineColor
+  }
+  return {
+    ...connection,
+    bendpoints: ov.bendpoints,
+    lineColor,
   }
 }
 

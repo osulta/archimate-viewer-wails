@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { findNodeById } from '../../lib/archimate/diagram-model'
+import { findNodeById, resolveDiagramWithOverrides } from '../../lib/archimate/diagram-model'
 import { createSnapshotCommand, useCommandHistory } from '../../lib/commands'
 import type { ConnectionEndpointKind } from '../../lib/diagram-canvas/types'
 import {
@@ -16,6 +16,7 @@ import {
   computeDeleteSelectedFromDiagram,
   computeMoveNodesUpdate,
   computeNodeFillColorUpdate,
+  computeConnectionLineColorUpdate,
   computePlaceDiagramReferenceOnDiagram,
   computePlaceElementOnDiagram,
   computeReassignRelationshipEndpoint,
@@ -51,6 +52,11 @@ export interface ModelMutations {
   moveNodes: (diagramId: string, nodeIds: string[], dx: number, dy: number) => void
   resizeNode: (diagramId: string, nodeId: string, dw: number, dh: number) => void
   updateNodeFillColor: (diagramId: string, nodeId: string, fillColor: string | null) => void
+  updateConnectionLineColor: (
+    diagramId: string,
+    relationshipRef: string,
+    lineColor: string | null,
+  ) => void
   updateDiagramMetadata: (diagramId: string, patch: Partial<ParsedDiagram>) => void
   updateDiagramFolderMetadata: (folderKey: string, patch: { name: string }) => void
   updateRelationshipMetaOverride: (relationshipId: string, patch: Partial<RelationshipMetaOverride>) => void
@@ -339,6 +345,47 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
       )
     },
     [diagramOverrides, commitDiagramOverrides, pushSnapshotCommand],
+  )
+
+  const updateConnectionLineColor = useCallback(
+    (diagramId: string, relationshipRef: string, lineColor: string | null) => {
+      const diagram = model?.diagrams.find((item) => item.id === diagramId)
+      if (!diagram) {
+        return
+      }
+      const resolved = resolveDiagramWithOverrides(
+        diagram,
+        diagramOverrides,
+        relationshipOverrides,
+        diagramId,
+      )
+      if (!resolved) {
+        return
+      }
+      const update = computeConnectionLineColorUpdate(
+        resolved,
+        diagramId,
+        relationshipRef,
+        lineColor,
+        relationshipOverrides,
+      )
+      if (!update) {
+        return
+      }
+      commitRelationshipOverrides(update.nextOverrides)
+      pushSnapshotCommand(
+        'Изменение цвета связи',
+        () => commitRelationshipOverrides(cloneBendpointMap(update.beforeOverrides)),
+        () => commitRelationshipOverrides(cloneBendpointMap(update.nextOverrides)),
+      )
+    },
+    [
+      model,
+      diagramOverrides,
+      relationshipOverrides,
+      commitRelationshipOverrides,
+      pushSnapshotCommand,
+    ],
   )
 
   const updateDiagramFolderMetadata = useCallback(
@@ -1017,6 +1064,7 @@ export function useModelMutations({ editState, selection }: UseModelMutationsOpt
     moveNodes,
     resizeNode,
     updateNodeFillColor,
+    updateConnectionLineColor,
     updateDiagramMetadata,
     updateDiagramFolderMetadata,
     updateRelationshipMetaOverride,

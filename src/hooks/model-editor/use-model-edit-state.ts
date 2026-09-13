@@ -2,7 +2,7 @@ import { useRef, useState, useCallback } from 'react'
 import type {
   ParsedModel,
   NodeOverride,
-  Bendpoint,
+  ConnectionOverride,
   ElementOverride,
   RelationshipMetaOverride,
   CreatedObject,
@@ -15,7 +15,7 @@ export interface ModelEditState {
   error: string
   setError: React.Dispatch<React.SetStateAction<string>>
   diagramOverrides: Map<string, Map<string, NodeOverride>>
-  relationshipOverrides: Map<string, Map<string, Bendpoint[]>>
+  relationshipOverrides: Map<string, Map<string, ConnectionOverride>>
   elementOverrides: Map<string, ElementOverride>
   relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
   createdObjects: CreatedObject[]
@@ -64,7 +64,7 @@ export interface ModelEditState {
   getEditedModelXmlRef: React.MutableRefObject<() => string | null>
   pendingElementFocusRef: React.MutableRefObject<string | null>
   diagramOverridesRef: React.MutableRefObject<Map<string, Map<string, NodeOverride>>>
-  relationshipOverridesRef: React.MutableRefObject<Map<string, Map<string, Bendpoint[]>>>
+  relationshipOverridesRef: React.MutableRefObject<Map<string, Map<string, ConnectionOverride>>>
   elementOverridesRef: React.MutableRefObject<Map<string, ElementOverride>>
   relationshipMetaOverridesRef: React.MutableRefObject<Map<string, RelationshipMetaOverride>>
   commitDiagramOverrides: (
@@ -74,8 +74,8 @@ export interface ModelEditState {
   ) => void
   commitRelationshipOverrides: (
     updater:
-      | Map<string, Map<string, Bendpoint[]>>
-      | ((prev: Map<string, Map<string, Bendpoint[]>>) => Map<string, Map<string, Bendpoint[]>>),
+      | Map<string, Map<string, ConnectionOverride>>
+      | ((prev: Map<string, Map<string, ConnectionOverride>>) => Map<string, Map<string, ConnectionOverride>>),
   ) => void
   commitElementOverrides: (
     updater:
@@ -101,7 +101,7 @@ export function useModelEditState(): ModelEditState {
     () => new Map(),
   )
   const [relationshipOverrides, setRelationshipOverrides] = useState<
-    Map<string, Map<string, Bendpoint[]>>
+    Map<string, Map<string, ConnectionOverride>>
   >(() => new Map())
   const [elementOverrides, setElementOverrides] = useState<Map<string, ElementOverride>>(
     () => new Map(),
@@ -136,7 +136,7 @@ export function useModelEditState(): ModelEditState {
   const getEditedModelXmlRef = useRef<() => string | null>(() => null)
   const pendingElementFocusRef = useRef<string | null>(null)
   const diagramOverridesRef = useRef<Map<string, Map<string, NodeOverride>>>(new Map())
-  const relationshipOverridesRef = useRef<Map<string, Map<string, Bendpoint[]>>>(new Map())
+  const relationshipOverridesRef = useRef<Map<string, Map<string, ConnectionOverride>>>(new Map())
   const elementOverridesRef = useRef<Map<string, ElementOverride>>(new Map())
   const relationshipMetaOverridesRef = useRef<Map<string, RelationshipMetaOverride>>(new Map())
   const [saveStatusMessage, setSaveStatusMessage] = useState('')
@@ -160,8 +160,8 @@ export function useModelEditState(): ModelEditState {
   const commitRelationshipOverrides = useCallback(
     (
       updater:
-        | Map<string, Map<string, Bendpoint[]>>
-        | ((prev: Map<string, Map<string, Bendpoint[]>>) => Map<string, Map<string, Bendpoint[]>>),
+        | Map<string, Map<string, ConnectionOverride>>
+        | ((prev: Map<string, Map<string, ConnectionOverride>>) => Map<string, Map<string, ConnectionOverride>>),
     ) => {
       setRelationshipOverrides((prev) => {
         const next = typeof updater === 'function' ? updater(prev) : updater

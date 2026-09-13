@@ -5,7 +5,7 @@ import type {
   DiagramNode,
   DiagramConnection,
   NodeOverride,
-  Bendpoint,
+  ConnectionOverride,
   ElementOverride,
   RelationshipMetaOverride,
   CreatedObject,
@@ -15,7 +15,7 @@ import type {
 export interface CanvasEditSnapshot {
   model: ParsedModel
   diagramOverrides: Map<string, Map<string, NodeOverride>>
-  relationshipOverrides: Map<string, Map<string, Bendpoint[]>>
+  relationshipOverrides: Map<string, Map<string, ConnectionOverride>>
   elementOverrides: Map<string, ElementOverride>
   relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
   createdObjects: CreatedObject[]
@@ -71,11 +71,19 @@ function cloneNodeOverrideMap(source: Map<string, Map<string, NodeOverride>>) {
   return new Map(Array.from(source.entries(), ([diagramId, nodeMap]) => [diagramId, new Map(nodeMap)]))
 }
 
-function cloneBendpointMap(source: Map<string, Map<string, Bendpoint[]>>) {
+function cloneBendpointMap(source: Map<string, Map<string, ConnectionOverride>>) {
   return new Map(
     Array.from(source.entries(), ([diagramId, relMap]) => [
       diagramId,
-      new Map(Array.from(relMap.entries(), ([ref, points]) => [ref, [...points]])),
+      new Map(
+        Array.from(relMap.entries(), ([ref, ov]) => [
+          ref,
+          {
+            bendpoints: [...ov.bendpoints],
+            ...(ov.lineColor !== undefined ? { lineColor: ov.lineColor } : {}),
+          },
+        ]),
+      ),
     ]),
   )
 }
@@ -128,7 +136,7 @@ export interface CaptureCanvasEditSnapshotParams {
   model: ParsedModel | null
   selectedDiagramId: string
   diagramOverrides: Map<string, Map<string, NodeOverride>>
-  relationshipOverrides: Map<string, Map<string, Bendpoint[]>>
+  relationshipOverrides: Map<string, Map<string, ConnectionOverride>>
   elementOverrides: Map<string, ElementOverride>
   relationshipMetaOverrides: Map<string, RelationshipMetaOverride>
   createdObjects: CreatedObject[]
@@ -180,8 +188,8 @@ export interface RestoreCanvasEditSnapshotHandlers {
   ) => void
   commitRelationshipOverrides: (
     updater:
-      | Map<string, Map<string, Bendpoint[]>>
-      | ((prev: Map<string, Map<string, Bendpoint[]>>) => Map<string, Map<string, Bendpoint[]>>),
+      | Map<string, Map<string, ConnectionOverride>>
+      | ((prev: Map<string, Map<string, ConnectionOverride>>) => Map<string, Map<string, ConnectionOverride>>),
   ) => void
   commitElementOverrides: (
     updater:

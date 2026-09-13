@@ -7,11 +7,13 @@ export {
   computeMoveNodesUpdate,
   computeResizeNodeUpdate,
   computeNodeFillColorUpdate,
+  computeConnectionLineColorUpdate,
 } from './layout'
 export type {
   MoveNodesUpdate,
   ResizeNodeUpdate,
   NodeFillColorUpdate,
+  ConnectionLineColorUpdate,
 } from './layout'
 
 export {

@@ -257,6 +257,22 @@ export function applyDiagramObjectVisualToXml(xmlEl: Element, node: DiagramNode)
   }
 }
 
+/** Writes connection line color to Archi XML. `null` clears; `undefined` leaves unchanged. */
+export function applyConnectionLineColorToXml(
+  xmlEl: Element,
+  lineColor: string | null | undefined,
+): void {
+  if (lineColor === undefined) {
+    return
+  }
+  const color = lineColor?.trim()
+  if (color) {
+    xmlEl.setAttribute('lineColor', color)
+  } else {
+    xmlEl.removeAttribute('lineColor')
+  }
+}
+
 const CONNECTION_BENDPOINT_TAGS = ['bendpoint', 'bendpoints']
 
 export function parseConnectionBendpoints(connectionNode: Element): Bendpoint[] {

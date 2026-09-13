@@ -96,6 +96,12 @@ export interface NodeOverride {
   fillColor?: string | null
 }
 
+export interface ConnectionOverride {
+  bendpoints: Bendpoint[]
+  /** Diagram line color override; null clears custom color. */
+  lineColor?: string | null
+}
+
 export interface ElementOverride {
   name?: string
   documentation?: string
@@ -121,7 +127,7 @@ export interface Rect {
 }
 
 export type DiagramOverridesMap = Map<string, Map<string, NodeOverride>>
-export type RelationshipOverridesMap = Map<string, Map<string, Bendpoint[]>>
+export type RelationshipOverridesMap = Map<string, Map<string, ConnectionOverride>>
 
 export interface ModelLoadPayload {
   content: string

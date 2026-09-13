@@ -5,6 +5,7 @@ import { ObjectRelationshipsPanel } from './object-relationships-panel'
 import { flattenNodes } from '../lib/archimate/diagram-model'
 import { formatArchimateTypeLabel, type SelectedDiagramFolderInfo } from '../lib/archimate/model-folder-tree'
 import { getElementNotationStyle } from '../lib/archimate/notation'
+import { DEFAULT_CONNECTION_LINE_COLOR } from '../lib/diagram-canvas/connection-colors'
 import {
   formatRelationshipEndpointLabel,
   getRelationshipDisplayLabel,
@@ -198,6 +199,52 @@ function NodeDisplayEditor({
   )
 }
 
+interface ConnectionDisplayEditorProps {
+  connection: DiagramConnection
+  onLineColorChange: (lineColor: string | null) => void
+}
+
+function ConnectionDisplayEditor({
+  connection,
+  onLineColorChange,
+}: ConnectionDisplayEditorProps): React.JSX.Element {
+  const defaultLine = DEFAULT_CONNECTION_LINE_COLOR
+  const hasCustomLine = connection.lineColor != null && connection.lineColor.trim() !== ''
+  const displayLine = hasCustomLine ? connection.lineColor!.trim() : defaultLine
+
+  return (
+    <div className="props-grid props-display-panel">
+      <div className="props-field-full">
+        <span className="props-label">Цвет линии</span>
+        <div className="props-display-color-row">
+          <ColorPicker
+            value={displayLine}
+            disabledAlpha
+            showText
+            onChangeComplete={(color) => onLineColorChange(color.toHexString())}
+          />
+          <Button
+            size="small"
+            disabled={!hasCustomLine}
+            onClick={() => onLineColorChange(null)}
+          >
+            По умолчанию
+          </Button>
+        </div>
+        <p className="props-hint">
+          Цвет по умолчанию:{' '}
+          <span
+            className="props-display-swatch"
+            style={{ backgroundColor: defaultLine }}
+            aria-hidden="true"
+          />{' '}
+          {defaultLine}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 function flushRelationshipMeta(
   relationshipId: string,
   patch: Partial<RelationshipMetaOverride>,
@@ -236,6 +283,7 @@ interface ObjectPropertiesPanelProps {
   selectedDiagramFolder?: SelectedDiagramFolderInfo | null
   diagramTreeSelectedKey?: string
   onUpdateNodeFillColor?: (nodeId: string, fillColor: string | null) => void
+  onUpdateConnectionLineColor?: (relationshipRef: string, lineColor: string | null) => void
 }
 
 export function ObjectPropertiesPanel({
@@ -266,6 +314,7 @@ export function ObjectPropertiesPanel({
   selectedDiagramFolder = null,
   diagramTreeSelectedKey = '',
   onUpdateNodeFillColor,
+  onUpdateConnectionLineColor,
 }: ObjectPropertiesPanelProps): React.JSX.Element | null {
   const [nameDraft, setNameDraft] = useState('')
   const [documentationDraft, setDocumentationDraft] = useState('')
@@ -504,123 +553,150 @@ export function ObjectPropertiesPanel({
     return (
       <section className="properties">
         <h3>Свойства relationship</h3>
-        <div className="props-grid">
-          <div>
-            <b>Relationship ID:</b> {selectedRelationshipRef}
-          </div>
-          <div>
-            <b>Name:</b>{' '}
-            <Input
-              className="prop-input"
-              value={relationshipNameDraft}
-              placeholder={
-                getRelationshipDisplayLabel(selectedRelationship, selectedConnection) ||
-                relationshipTypeLabel ||
-                'Без имени'
+        <Tabs
+          className="props-tab-bar"
+          activeKey={objectPropsTab === 'display' ? 'display' : 'details'}
+          onChange={onObjectPropsTabChange}
+          items={[
+            { key: 'details', label: 'Детали' },
+            { key: 'display', label: 'Отображение' },
+          ]}
+        />
+        {objectPropsTab === 'display' ? (
+          selectedConnection ? (
+            <ConnectionDisplayEditor
+              connection={selectedConnection}
+              onLineColorChange={(lineColor) =>
+                onUpdateConnectionLineColor?.(selectedRelationshipRef, lineColor)
               }
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRelationshipNameDraft(e.target.value)}
-              onBlur={() =>
+            />
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description="Связь не на текущей диаграмме — откройте диаграмму с этой связью, чтобы изменить отображение."
+            />
+          )
+        ) : (
+          <div className="props-grid">
+            <div>
+              <b>Relationship ID:</b> {selectedRelationshipRef}
+            </div>
+            <div>
+              <b>Name:</b>{' '}
+              <Input
+                className="prop-input"
+                value={relationshipNameDraft}
+                placeholder={
+                  getRelationshipDisplayLabel(selectedRelationship, selectedConnection) ||
+                  relationshipTypeLabel ||
+                  'Без имени'
+                }
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                  setRelationshipNameDraft(e.target.value)
+                }
+                onBlur={() =>
+                  flushRelationshipMeta(
+                    selectedRelationshipRef,
+                    {
+                      name: relationshipNameDraft,
+                      documentation: relationshipDocumentationDraft,
+                      properties: relationshipPropertiesDraft,
+                    },
+                    onUpdateRelationshipMeta,
+                  )
+                }
+              />
+            </div>
+            <div>
+              <b>Type:</b> {relationshipTypeLabel || '—'}
+            </div>
+            <div>
+              <b>Endpoints:</b>
+            </div>
+            <div>
+              <b>Source:</b>{' '}
+              {formatRelationshipEndpointLabel(selectedRelationship?.source, elementById)}
+            </div>
+            <div>
+              <b>Target:</b>{' '}
+              {formatRelationshipEndpointLabel(selectedRelationship?.target, elementById)}
+            </div>
+            <div className="props-field-full">
+              <label className="props-label" htmlFor="relationship-documentation">
+                Documentation
+              </label>
+              <Input.TextArea
+                id="relationship-documentation"
+                className="prop-textarea"
+                rows={5}
+                value={relationshipDocumentationDraft}
+                onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  setRelationshipDocumentationDraft(e.target.value)
+                }
+                onBlur={() =>
+                  flushRelationshipMeta(
+                    selectedRelationshipRef,
+                    {
+                      name: relationshipNameDraft,
+                      documentation: relationshipDocumentationDraft,
+                      properties: relationshipPropertiesDraft,
+                    },
+                    onUpdateRelationshipMeta,
+                  )
+                }
+                spellCheck={true}
+              />
+            </div>
+            <ElementPropertiesEditor
+              elementId={selectedRelationshipRef}
+              properties={relationshipPropertiesDraft}
+              onChange={setRelationshipPropertiesDraft}
+              onCommit={(next) =>
                 flushRelationshipMeta(
                   selectedRelationshipRef,
                   {
                     name: relationshipNameDraft,
                     documentation: relationshipDocumentationDraft,
-                    properties: relationshipPropertiesDraft,
+                    properties: next,
                   },
                   onUpdateRelationshipMeta,
                 )
               }
             />
-          </div>
-          <div>
-            <b>Type:</b> {relationshipTypeLabel || '—'}
-          </div>
-          <div>
-            <b>Endpoints:</b>
-          </div>
-          <div>
-            <b>Source:</b>{' '}
-            {formatRelationshipEndpointLabel(selectedRelationship?.source, elementById)}
-          </div>
-          <div>
-            <b>Target:</b>{' '}
-            {formatRelationshipEndpointLabel(selectedRelationship?.target, elementById)}
-          </div>
-          <div className="props-field-full">
-            <label className="props-label" htmlFor="relationship-documentation">
-              Documentation
-            </label>
-            <Input.TextArea
-              id="relationship-documentation"
-              className="prop-textarea"
-              rows={5}
-              value={relationshipDocumentationDraft}
-              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
-                setRelationshipDocumentationDraft(e.target.value)
-              }
-              onBlur={() =>
-                flushRelationshipMeta(
-                  selectedRelationshipRef,
-                  {
-                    name: relationshipNameDraft,
-                    documentation: relationshipDocumentationDraft,
-                    properties: relationshipPropertiesDraft,
-                  },
-                  onUpdateRelationshipMeta,
-                )
-              }
-              spellCheck={true}
-            />
-          </div>
-          <ElementPropertiesEditor
-            elementId={selectedRelationshipRef}
-            properties={relationshipPropertiesDraft}
-            onChange={setRelationshipPropertiesDraft}
-            onCommit={(next) =>
-              flushRelationshipMeta(
-                selectedRelationshipRef,
-                {
-                  name: relationshipNameDraft,
-                  documentation: relationshipDocumentationDraft,
-                  properties: next,
-                },
-                onUpdateRelationshipMeta,
-              )
-            }
-          />
-          <div className="props-actions props-actions-stack">
-            {selectedDiagram?.connections?.some(
-              (c: DiagramConnection) => c.relationshipRef === selectedRelationshipRef,
-            ) ? (
-              <>
-                <Button
-                  danger
-                  icon={<DeleteOutlined />}
-                  onClick={onDeleteSelectedConnectionFromDiagram}
-                >
-                  Удалить с диаграммы
-                </Button>
+            <div className="props-actions props-actions-stack">
+              {selectedDiagram?.connections?.some(
+                (c: DiagramConnection) => c.relationshipRef === selectedRelationshipRef,
+              ) ? (
+                <>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={onDeleteSelectedConnectionFromDiagram}
+                  >
+                    Удалить с диаграммы
+                  </Button>
+                  <span className="props-hint">
+                    Двойной клик по линии — добавить точку излома; по точке — удалить. Delete /
+                    Backspace — удалить выбранную точку или всю связь на диаграмме.
+                  </span>
+                </>
+              ) : (
                 <span className="props-hint">
-                  Двойной клик по линии — добавить точку излома; по точке — удалить. Delete /
-                  Backspace — удалить выбранную точку или всю связь на диаграмме.
+                  Связь не на текущей диаграмме — переключите диаграмму слева или удалите из модели
+                  ниже.
                 </span>
-              </>
-            ) : (
-              <span className="props-hint">
-                Связь не на текущей диаграмме — переключите диаграмму слева или удалите из модели
-                ниже.
-              </span>
-            )}
-            <Button
-              danger
-              type="primary"
-              icon={<DeleteOutlined />}
-              onClick={onDeleteRelationshipFromModel}
-            >
-              Удалить из модели
-            </Button>
+              )}
+              <Button
+                danger
+                type="primary"
+                icon={<DeleteOutlined />}
+                onClick={onDeleteRelationshipFromModel}
+              >
+                Удалить из модели
+              </Button>
+            </div>
           </div>
-        </div>
+        )}
       </section>
     )
   }

@@ -8,9 +8,9 @@ import {
 } from '../../lib/archimate/relationship-meta'
 import {
   flattenNodes,
-  applyOverridesToNodes,
   findNodeById,
   findNodeByElementRefInDiagram,
+  resolveDiagramWithOverrides,
 } from '../../lib/archimate/diagram-model'
 import {
   inferDiagramsBranchName,
@@ -109,28 +109,12 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
     if (!original) {
       return null
     }
-    const overrides = diagramOverrides.get(selectedDiagramId)
-    const relOverrides = relationshipOverrides.get(selectedDiagramId)
-    if (!overrides || overrides.size === 0) {
-      if (!relOverrides || relOverrides.size === 0) {
-        return original
-      }
-      return {
-        ...original,
-        connections: original.connections.map((c) => {
-          const ov = relOverrides.get(c.relationshipRef)
-          return ov !== undefined ? { ...c, bendpoints: ov } : c
-        }),
-      }
-    }
-    return {
-      ...original,
-      nodes: applyOverridesToNodes(original.nodes, overrides),
-      connections: original.connections.map((c) => {
-        const ov = relOverrides?.get(c.relationshipRef)
-        return ov !== undefined ? { ...c, bendpoints: ov } : c
-      }),
-    }
+    return resolveDiagramWithOverrides(
+      original,
+      diagramOverrides,
+      relationshipOverrides,
+      selectedDiagramId,
+    )
   }, [model, selectedDiagramId, diagramOverrides, relationshipOverrides])
 
   const selectedElement = useMemo(() => {
@@ -421,6 +405,7 @@ export function useModelSelection({ editState }: UseModelSelectionOptions): Mode
         if (hit) {
           setSelectedDiagramId(diagram.id)
           setSelectedNode(hit)
+          setSelectedNodeIds([hit.id])
           return
         }
       }
