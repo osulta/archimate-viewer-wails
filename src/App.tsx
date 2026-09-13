@@ -28,7 +28,7 @@ function App() {
     handleSelectElementWithUrl,
     handleSelectRelationshipWithUrl,
     compareDiagramId,
-    setCompareDiagramId,
+    handleCompareDiagramChange,
     editState,
     selection,
     mutations,
@@ -115,7 +115,7 @@ function App() {
           <ChangesComparePanel
             model={model}
             selectedDiagramId={compareDiagramId}
-            onSelectedDiagramIdChange={setCompareDiagramId}
+            onSelectedDiagramIdChange={handleCompareDiagramChange}
             diagramOverrides={editState.diagramOverrides}
             relationshipOverrides={editState.relationshipOverrides}
             git={git}

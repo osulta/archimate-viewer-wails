@@ -5,10 +5,12 @@ import type { AppTab } from '../app/types'
 export const VIEW_MODE_DIAGRAM_PARAM = 'view'
 /** Modeling mode: `?diagram=<diagramId>` */
 export const MODELING_DIAGRAM_PARAM = 'diagram'
+/** Changes compare mode: `?compare=<diagramId>` */
+export const COMPARE_DIAGRAM_PARAM = 'compare'
 export const NAV_ELEMENT_PARAM = 'element'
 export const NAV_RELATIONSHIP_PARAM = 'relationship'
 
-export type NavigationModeTab = 'modeling' | 'viewMode'
+export type NavigationModeTab = 'modeling' | 'viewMode' | 'changes'
 
 export interface NavigationUrlState {
   diagramId: string | null
@@ -41,16 +43,30 @@ export function getModelingDiagramIdFromSearch(search: string): string | null {
   return trimParam(new URLSearchParams(search), MODELING_DIAGRAM_PARAM)
 }
 
+export function getCompareDiagramIdFromSearch(search: string): string | null {
+  return trimParam(new URLSearchParams(search), COMPARE_DIAGRAM_PARAM)
+}
+
 /**
  * Reads navigation from the URL.
- * `view` → view mode; `diagram` → modeling. If both exist, `view` wins (legacy deep links).
+ * Priority: `compare` → changes; `view` → view mode; `diagram` → modeling.
  */
 export function readNavigationFromSearch(search: string): NavigationUrlState {
   const params = new URLSearchParams(search)
+  const compareDiagramId = trimParam(params, COMPARE_DIAGRAM_PARAM)
   const viewDiagramId = trimParam(params, VIEW_MODE_DIAGRAM_PARAM)
   const modelingDiagramId = trimParam(params, MODELING_DIAGRAM_PARAM)
   const elementId = trimParam(params, NAV_ELEMENT_PARAM)
   const relationshipId = trimParam(params, NAV_RELATIONSHIP_PARAM)
+
+  if (compareDiagramId) {
+    return {
+      diagramId: compareDiagramId,
+      elementId: null,
+      relationshipId: null,
+      tab: 'changes',
+    }
+  }
 
   if (viewDiagramId) {
     return {
@@ -118,8 +134,14 @@ export function buildModelingUrl(
   return `${originPathname}?${params.toString()}`
 }
 
+export function buildCompareUrl(diagramId: string, originPathname = '/'): string {
+  const params = new URLSearchParams()
+  params.set(COMPARE_DIAGRAM_PARAM, diagramId)
+  return `${originPathname}?${params.toString()}`
+}
+
 function resolveNavigationModeTab(tab: AppTab | undefined): NavigationModeTab | null {
-  if (tab === 'viewMode' || tab === 'modeling') {
+  if (tab === 'viewMode' || tab === 'modeling' || tab === 'changes') {
     return tab
   }
   return null
@@ -133,16 +155,20 @@ function buildSearchFromNavigation(nav: NavigationUrlState): string {
     params.set(VIEW_MODE_DIAGRAM_PARAM, nav.diagramId)
   } else if (mode === 'modeling' && nav.diagramId) {
     params.set(MODELING_DIAGRAM_PARAM, nav.diagramId)
+  } else if (mode === 'changes' && nav.diagramId) {
+    params.set(COMPARE_DIAGRAM_PARAM, nav.diagramId)
   } else if (!mode && nav.diagramId) {
     // Fallback for callers that omit tab: keep legacy view links.
     params.set(VIEW_MODE_DIAGRAM_PARAM, nav.diagramId)
   }
 
-  if (nav.elementId) {
-    params.set(NAV_ELEMENT_PARAM, nav.elementId)
-  }
-  if (nav.relationshipId) {
-    params.set(NAV_RELATIONSHIP_PARAM, nav.relationshipId)
+  if (mode !== 'changes') {
+    if (nav.elementId) {
+      params.set(NAV_ELEMENT_PARAM, nav.elementId)
+    }
+    if (nav.relationshipId) {
+      params.set(NAV_RELATIONSHIP_PARAM, nav.relationshipId)
+    }
   }
 
   const text = params.toString()

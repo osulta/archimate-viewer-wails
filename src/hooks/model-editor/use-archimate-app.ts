@@ -29,6 +29,17 @@ function isDiagramNavigationTab(tab: AppTab): boolean {
   return tab === 'modeling' || tab === 'viewMode'
 }
 
+function isUrlSyncedTab(tab: AppTab): boolean {
+  return tab === 'modeling' || tab === 'viewMode' || tab === 'changes'
+}
+
+function initialAppTab(nav: NavigationUrlState): AppTab {
+  if (nav.tab === 'viewMode' || nav.tab === 'changes') {
+    return nav.tab
+  }
+  return 'modeling'
+}
+
 export function useArchimateApp() {
   const initialNav = readInitialNavigation()
   const pendingNavRef = useRef<NavigationUrlState | null>(
@@ -37,10 +48,10 @@ export function useArchimateApp() {
       : null,
   )
   const applyingFromUrlRef = useRef(false)
-  const [appTab, setAppTab] = useState<AppTab>(
-    initialNav.tab === 'viewMode' ? 'viewMode' : 'modeling',
+  const [appTab, setAppTab] = useState<AppTab>(initialAppTab(initialNav))
+  const [compareDiagramId, setCompareDiagramId] = useState(
+    initialNav.tab === 'changes' ? initialNav.diagramId ?? '' : '',
   )
-  const [compareDiagramId, setCompareDiagramId] = useState('')
 
   const editState = useModelEditState()
   const selection = useModelSelection({ editState })
@@ -56,14 +67,14 @@ export function useArchimateApp() {
       if (applyingFromUrlRef.current) {
         return
       }
-      if (!isDiagramNavigationTab(tab)) {
+      if (!isUrlSyncedTab(tab)) {
         return
       }
       const current = readNavigationFromLocation()
       const next: NavigationUrlState = {
         diagramId: nav.diagramId,
-        elementId: nav.elementId,
-        relationshipId: nav.relationshipId,
+        elementId: tab === 'changes' ? null : nav.elementId,
+        relationshipId: tab === 'changes' ? null : nav.relationshipId,
         tab,
       }
       if (mode === 'replace' || navigationStatesEqual(current, next)) {
@@ -73,6 +84,42 @@ export function useArchimateApp() {
       writeNavigationUrl(next, 'push')
     },
     [appTab],
+  )
+
+  const enterCompareTab = useCallback(
+    (diagramId: string | null | undefined, mode: 'push' | 'replace' = 'replace') => {
+      const nextDiagramId = diagramId?.trim() || ''
+      if (nextDiagramId) {
+        setCompareDiagramId(nextDiagramId)
+      }
+      setAppTab('changes')
+      writeNavigationUrl(
+        {
+          diagramId: nextDiagramId || null,
+          elementId: null,
+          relationshipId: null,
+          tab: 'changes',
+        },
+        mode,
+      )
+    },
+    [],
+  )
+
+  const handleCompareDiagramChange = useCallback(
+    (diagramId: string) => {
+      setCompareDiagramId(diagramId)
+      syncNavigationUrl(
+        {
+          diagramId: diagramId || null,
+          elementId: null,
+          relationshipId: null,
+        },
+        'replace',
+        'changes',
+      )
+    },
+    [syncNavigationUrl],
   )
 
   const applyNavigationSelection = useCallback(
@@ -141,7 +188,9 @@ export function useArchimateApp() {
       pendingNavRef.current = null
 
       const targetTab: AppTab =
-        pending.tab === 'modeling' || pending.tab === 'viewMode' ? pending.tab : 'viewMode'
+        pending.tab === 'modeling' || pending.tab === 'viewMode' || pending.tab === 'changes'
+          ? pending.tab
+          : 'viewMode'
 
       const resolvedDiagram = pending.diagramId
         ? resolveDiagramIdInModel(parsedModel, pending.diagramId)
@@ -157,11 +206,14 @@ export function useArchimateApp() {
 
       const diagramId = resolvedDiagram ?? fallbackDiagramId
       setAppTab(targetTab)
+      if (targetTab === 'changes') {
+        setCompareDiagramId(diagramId)
+      }
       writeNavigationUrl(
         {
           diagramId,
-          elementId: pending.elementId,
-          relationshipId: pending.relationshipId,
+          elementId: targetTab === 'changes' ? null : pending.elementId,
+          relationshipId: targetTab === 'changes' ? null : pending.relationshipId,
           tab: targetTab,
         },
         'replace',
@@ -290,16 +342,15 @@ export function useArchimateApp() {
     if (!selection.selectedDiagramId) {
       return
     }
-    setCompareDiagramId(selection.selectedDiagramId)
-    setAppTab('changes')
-    writeNavigationUrl(
-      { diagramId: null, elementId: null, relationshipId: null, tab: 'changes' },
-      'replace',
-    )
-  }, [selection.selectedDiagramId])
+    enterCompareTab(selection.selectedDiagramId, 'replace')
+  }, [enterCompareTab, selection.selectedDiagramId])
 
   const handleAppTabChange = useCallback(
     (tab: AppTab) => {
+      if (tab === 'changes') {
+        enterCompareTab(selection.selectedDiagramId || compareDiagramId || null, 'replace')
+        return
+      }
       setAppTab(tab)
       if (tab === 'viewMode' || tab === 'modeling') {
         if (selection.selectedDiagramId) {
@@ -321,6 +372,8 @@ export function useArchimateApp() {
       )
     },
     [
+      compareDiagramId,
+      enterCompareTab,
       selection.selectedDiagramId,
       selection.selectedElementId,
       selection.selectedRelationshipRef,
@@ -418,7 +471,29 @@ export function useArchimateApp() {
     }
     pendingNavRef.current = null
     const targetTab: AppTab =
-      pending.tab === 'modeling' || pending.tab === 'viewMode' ? pending.tab : 'viewMode'
+      pending.tab === 'modeling' || pending.tab === 'viewMode' || pending.tab === 'changes'
+        ? pending.tab
+        : 'viewMode'
+    if (targetTab === 'changes') {
+      const resolved = pending.diagramId
+        ? resolveDiagramIdInModel(editState.model, pending.diagramId)
+        : null
+      const diagramId = resolved ?? editState.model.diagrams[0]?.id ?? ''
+      setAppTab('changes')
+      if (diagramId) {
+        setCompareDiagramId(diagramId)
+      }
+      writeNavigationUrl(
+        {
+          diagramId: diagramId || null,
+          elementId: null,
+          relationshipId: null,
+          tab: 'changes',
+        },
+        'replace',
+      )
+      return
+    }
     applyNavigationSelection(pending, { switchToTab: targetTab })
     if (pending.diagramId) {
       const resolved = resolveDiagramIdInModel(editState.model, pending.diagramId)
@@ -442,6 +517,19 @@ export function useArchimateApp() {
       const elementId = historyNav?.elementId ?? urlNav.elementId
       const relationshipId = historyNav?.relationshipId ?? urlNav.relationshipId
       const tab = historyNav?.tab ?? urlNav.tab
+
+      if (tab === 'changes') {
+        setAppTab('changes')
+        if (diagramId) {
+          const resolved = editState.model
+            ? resolveDiagramIdInModel(editState.model, diagramId)
+            : diagramId
+          if (resolved) {
+            setCompareDiagramId(resolved)
+          }
+        }
+        return
+      }
 
       if (!diagramId && !elementId && !relationshipId) {
         if (tab && tab !== 'viewMode' && tab !== 'modeling') {
@@ -467,7 +555,7 @@ export function useArchimateApp() {
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [appTab, applyNavigationSelection])
+  }, [appTab, applyNavigationSelection, editState.model])
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -561,6 +649,7 @@ export function useArchimateApp() {
     handleSelectRelationshipWithUrl,
     compareDiagramId,
     setCompareDiagramId,
+    handleCompareDiagramChange,
     editState,
     selection,
     mutations,
