@@ -8,6 +8,8 @@ import type {
   CreatedObject,
   CreatedRelationship,
 } from '../../types/model'
+import type { XmlDocumentCache } from '../../lib/archimate/xml-document-cache'
+import { buildXmlDocumentCache } from '../../lib/archimate/xml-document-cache'
 
 export interface ModelEditState {
   model: ParsedModel | null
@@ -53,6 +55,11 @@ export interface ModelEditState {
   setOriginalConnectionIds: React.Dispatch<React.SetStateAction<Set<string>>>
   loadedXml: string
   setLoadedXml: React.Dispatch<React.SetStateAction<string>>
+  loadedDocumentCacheRef: React.MutableRefObject<XmlDocumentCache | null>
+  lastBuiltDocumentCacheRef: React.MutableRefObject<XmlDocumentCache | null>
+  setLoadedDocumentFromXml: (xml: string) => void
+  adoptDocumentCache: (cache: XmlDocumentCache | null) => void
+  clearLoadedDocumentCache: () => void
   loadedFilename: string
   setLoadedFilename: React.Dispatch<React.SetStateAction<string>>
   objectPropsTab: string
@@ -131,10 +138,27 @@ export function useModelEditState(): ModelEditState {
   const [deletedConnectionIds, setDeletedConnectionIds] = useState<Set<string>>(() => new Set())
   const [originalConnectionIds, setOriginalConnectionIds] = useState<Set<string>>(() => new Set())
   const [loadedXml, setLoadedXml] = useState('')
+  const loadedDocumentCacheRef = useRef<XmlDocumentCache | null>(null)
+  const lastBuiltDocumentCacheRef = useRef<XmlDocumentCache | null>(null)
   const [loadedFilename, setLoadedFilename] = useState('model.archimate')
   const [objectPropsTab, setObjectPropsTab] = useState('details')
   const getEditedModelXmlRef = useRef<() => string | null>(() => null)
   const pendingElementFocusRef = useRef<string | null>(null)
+
+  const clearLoadedDocumentCache = useCallback(() => {
+    loadedDocumentCacheRef.current = null
+    lastBuiltDocumentCacheRef.current = null
+  }, [])
+
+  const setLoadedDocumentFromXml = useCallback((xml: string) => {
+    loadedDocumentCacheRef.current = xml ? buildXmlDocumentCache(xml) : null
+    lastBuiltDocumentCacheRef.current = null
+  }, [])
+
+  const adoptDocumentCache = useCallback((cache: XmlDocumentCache | null) => {
+    loadedDocumentCacheRef.current = cache
+    lastBuiltDocumentCacheRef.current = null
+  }, [])
   const diagramOverridesRef = useRef<Map<string, Map<string, NodeOverride>>>(new Map())
   const relationshipOverridesRef = useRef<Map<string, Map<string, ConnectionOverride>>>(new Map())
   const elementOverridesRef = useRef<Map<string, ElementOverride>>(new Map())
@@ -249,9 +273,10 @@ export function useModelEditState(): ModelEditState {
     setDeletedConnectionIds(new Set())
     setOriginalConnectionIds(new Set())
     setLoadedXml('')
+    clearLoadedDocumentCache()
     setLoadedFilename('model.archimate')
     setError('')
-  }, [resetEditOverrides])
+  }, [resetEditOverrides, clearLoadedDocumentCache])
 
   const resetAfterFailedModelFile = useCallback(
     (caughtError: unknown) => {
@@ -260,7 +285,7 @@ export function useModelEditState(): ModelEditState {
       setCreatedObjects([])
       setCreatedRelationships([])
       setCreatedDiagramIds(new Set())
-    setCreatedDiagramFolderPaths(new Set())
+      setCreatedDiagramFolderPaths(new Set())
       setPendingLinkType(null)
       setLinkCreateSourceId(null)
       setOriginalDiagramNodeIds(new Set())
@@ -272,9 +297,10 @@ export function useModelEditState(): ModelEditState {
       setDeletedConnectionIds(new Set())
       setOriginalConnectionIds(new Set())
       setLoadedXml('')
+      clearLoadedDocumentCache()
       setError(caughtError instanceof Error ? caughtError.message : 'Не удалось прочитать файл.')
     },
-    [resetEditOverrides],
+    [resetEditOverrides, clearLoadedDocumentCache],
   )
 
   return {
@@ -321,6 +347,11 @@ export function useModelEditState(): ModelEditState {
     setOriginalConnectionIds,
     loadedXml,
     setLoadedXml,
+    loadedDocumentCacheRef,
+    lastBuiltDocumentCacheRef,
+    setLoadedDocumentFromXml,
+    adoptDocumentCache,
+    clearLoadedDocumentCache,
     loadedFilename,
     setLoadedFilename,
     objectPropsTab,

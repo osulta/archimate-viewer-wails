@@ -745,11 +745,7 @@ func (s *Server) handleModelWrite(w http.ResponseWriter, r *http.Request) {
 		errJSON(w, http.StatusBadRequest, "Нужно содержимое XML (строка)")
 		return
 	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		errJSON(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+	if err := WriteModelFileAtomic(abs, content); err != nil {
 		errJSON(w, http.StatusBadRequest, err.Error())
 		return
 	}

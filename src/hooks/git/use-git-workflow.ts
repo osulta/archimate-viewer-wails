@@ -200,65 +200,72 @@ export function useGitWorkflow({
   }, [buildRepoModelWriteRelativePath, readAndApplyModel, setGitOutput, withGitCommand])
 
   async function handleSaveModelToGitFile(): Promise<GitCommandResult> {
-    let nextXml: string | null | undefined
-    try {
-      nextXml = getEditedModelXml()
-    } catch (buildErr) {
-      const msg = `Не удалось собрать XML модели: ${
-        buildErr instanceof Error ? buildErr.message : String(buildErr)
-      }`
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    if (!nextXml) {
-      const msg = hasModel
-        ? 'Не удалось собрать XML модели: исходный файл не загружен в память. Нажмите «Обновить модель» и сохраните снова.'
-        : 'Нет загруженной модели для записи'
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    const rel = buildRepoModelWriteRelativePath()
-    if (!rel) {
-      const msg =
-        'Не найден путь к файлу модели в репозитории. Клонируйте репозиторий или дождитесь автозагрузки.'
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
-    try {
-      const { response, data } = await postModelWrite(rel, nextXml)
-      if (!response.ok) {
-        const msg =
-          typeof data.error === 'string'
-            ? data.error
-            : `Ошибка API (${response.status})`
+    return withGitCommand('Сохранение модели…', async () => {
+      // Let the loading UI paint before the heavy XML assemble.
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 0)
+      })
+
+      let nextXml: string | null | undefined
+      try {
+        nextXml = getEditedModelXml()
+      } catch (buildErr) {
+        const msg = `Не удалось собрать XML модели: ${
+          buildErr instanceof Error ? buildErr.message : String(buildErr)
+        }`
         setGitOutput(msg)
         return { ok: false, error: msg }
       }
-      if (data.ok) {
-        const savedPath = typeof data.path === 'string' ? data.path : rel
-        setGitRepoPath(savedPath)
-        const baseName =
-          savedPath.split('/').pop() || rel.split('/').pop() || 'model.archimate'
-        const msg = `Модель сохранена: ${savedPath}`
+      if (!nextXml) {
+        const msg = hasModel
+          ? 'Не удалось собрать XML модели: исходный файл не загружен в память. Нажмите «Обновить модель» и сохраните снова.'
+          : 'Нет загруженной модели для записи'
         setGitOutput(msg)
-        onModelSavedRef.current?.({
-          content: nextXml,
-          filename: baseName,
-          repoPath: savedPath,
-        })
-        return { ok: true, path: savedPath }
+        return { ok: false, error: msg }
       }
-      const msg =
-        (typeof data.error === 'string' && data.error) ||
-        (typeof data.stderr === 'string' && data.stderr) ||
-        JSON.stringify(data)
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    } catch (err) {
-      const msg = formatApiRequestError(err)
-      setGitOutput(msg)
-      return { ok: false, error: msg }
-    }
+      const rel = buildRepoModelWriteRelativePath()
+      if (!rel) {
+        const msg =
+          'Не найден путь к файлу модели в репозитории. Клонируйте репозиторий или дождитесь автозагрузки.'
+        setGitOutput(msg)
+        return { ok: false, error: msg }
+      }
+      try {
+        const { response, data } = await postModelWrite(rel, nextXml)
+        if (!response.ok) {
+          const msg =
+            typeof data.error === 'string'
+              ? data.error
+              : `Ошибка API (${response.status})`
+          setGitOutput(msg)
+          return { ok: false, error: msg }
+        }
+        if (data.ok) {
+          const savedPath = typeof data.path === 'string' ? data.path : rel
+          setGitRepoPath(savedPath)
+          const baseName =
+            savedPath.split('/').pop() || rel.split('/').pop() || 'model.archimate'
+          const msg = `Модель сохранена: ${savedPath}`
+          setGitOutput(msg)
+          onModelSavedRef.current?.({
+            content: nextXml,
+            filename: baseName,
+            repoPath: savedPath,
+          })
+          return { ok: true, path: savedPath }
+        }
+        const msg =
+          (typeof data.error === 'string' && data.error) ||
+          (typeof data.stderr === 'string' && data.stderr) ||
+          JSON.stringify(data)
+        setGitOutput(msg)
+        return { ok: false, error: msg }
+      } catch (err) {
+        const msg = formatApiRequestError(err)
+        setGitOutput(msg)
+        return { ok: false, error: msg }
+      }
+    })
   }
 
   async function handleGitPush(): Promise<void> {

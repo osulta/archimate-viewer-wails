@@ -456,6 +456,11 @@ func (s *Server) resolveWorkTreeDir(dirInput string) (abs, rel string, err error
 	return abs, filepath.ToSlash(relToRoot), nil
 }
 
+// ResolveAllowedModelPath validates a client-relative model path against the repo root.
+func (s *Server) ResolveAllowedModelPath(relPath string) (abs, rel string, err error) {
+	return s.resolveAllowedModelPath(relPath)
+}
+
 // resolveAllowedModelPath mirrors resolveAllowedModelPath.
 func (s *Server) resolveAllowedModelPath(relPath string) (abs, rel string, err error) {
 	if strings.TrimSpace(relPath) == "" {

@@ -3,6 +3,12 @@ import type {
   ParsedModel,
   DiagramOverridesMap,
 } from '../../../types/model'
+import type { XmlElementIndex } from '../xml-document-cache'
+import {
+  buildXmlElementIndex,
+  elementsForId,
+  findFirstByLocalName,
+} from '../xml-document-cache'
 import { serializeArchimateXml } from '../archi-xml-serialize'
 import { generateArchimateModelId } from '../model-id'
 import { inferDiagramsBranchName } from '../model-folder-tree'
@@ -22,7 +28,24 @@ import {
   isDiagramReferenceNode,
 } from '../diagram-model'
 
-export function findArchiDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
+function isArchiDiagramModelElement(el: Element): boolean {
+  if (el.localName !== 'element') {
+    return false
+  }
+  return String(
+    el.getAttribute('xsi:type') ??
+      el.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'type') ??
+      '',
+  ).includes('ArchimateDiagramModel')
+}
+
+export function findArchiDiagramElement(
+  allElements: Element[] | XmlElementIndex,
+  diagramId: string,
+): Element | undefined {
+  if (allElements instanceof Map) {
+    return elementsForId(allElements, diagramId).find(isArchiDiagramModelElement)
+  }
   return allElements.find(
     (el) =>
       el.localName === 'element' &&
@@ -35,8 +58,18 @@ export function findArchiDiagramElement(allElements: Element[], diagramId: strin
   )
 }
 
-export function findViewDiagramElement(allElements: Element[], diagramId: string): Element | undefined {
+export function findViewDiagramElement(
+  allElements: Element[] | XmlElementIndex,
+  diagramId: string,
+): Element | undefined {
+  if (allElements instanceof Map) {
+    return elementsForId(allElements, diagramId).find((el) => el.localName === 'view')
+  }
   return allElements.find((el) => el.localName === 'view' && getId(el) === diagramId)
+}
+
+function resolveIndex(documentNode: Document, index?: XmlElementIndex): XmlElementIndex {
+  return index ?? buildXmlElementIndex(documentNode)
 }
 
 function findFirstDiagramsTypedFolder(modelEl: Element): Element | null {
@@ -71,18 +104,19 @@ function findArchiFolderForNewDiagram(modelEl: Element, folderPath: string): Ele
   return current
 }
 
-export function applyDiagramMetadataToXml(documentNode: Document, model: ParsedModel | null | undefined): void {
+export function applyDiagramMetadataToXml(
+  documentNode: Document,
+  model: ParsedModel | null | undefined,
+  index?: XmlElementIndex,
+): void {
   if (!documentNode || !model?.diagrams?.length) {
     return
   }
 
-  const allElements = Array.from(documentNode.getElementsByTagName('*'))
+  const elementsById = resolveIndex(documentNode, index)
 
   for (const diagram of model.diagrams) {
-    const targets = allElements.filter((el) => {
-      if (getId(el) !== diagram.id) {
-        return false
-      }
+    const targets = elementsForId(elementsById, diagram.id).filter((el) => {
       if (el.localName === 'view') {
         return true
       }
@@ -143,7 +177,7 @@ export function ensureDiagramFoldersInXml(
     return
   }
 
-  const modelEl = Array.from(documentNode.getElementsByTagName('*')).find((n) => n.localName === 'model')
+  const modelEl = findFirstByLocalName(documentNode, 'model')
   if (!modelEl) {
     return
   }
@@ -188,6 +222,7 @@ export function ensureCreatedDiagramsInXml(
   documentNode: Document,
   model: ParsedModel,
   createdDiagramIds: Set<string> | Iterable<string>,
+  index?: XmlElementIndex,
 ): void {
   if (!documentNode || !model?.diagrams?.length || !createdDiagramIds) {
     return
@@ -197,10 +232,12 @@ export function ensureCreatedDiagramsInXml(
     return
   }
 
-  const modelEl = Array.from(documentNode.getElementsByTagName('*')).find((n) => n.localName === 'model')
+  const modelEl = findFirstByLocalName(documentNode, 'model')
   if (!modelEl) {
     return
   }
+
+  const elementsById = resolveIndex(documentNode, index)
 
   for (const diagramId of idList) {
     const diagram = model.diagrams.find((d) => d.id === diagramId)
@@ -208,19 +245,8 @@ export function ensureCreatedDiagramsInXml(
       continue
     }
 
-    const allElements = Array.from(documentNode.getElementsByTagName('*'))
-
     if (model.format === 'archi-tool') {
-      const exists = allElements.some(
-        (el) =>
-          el.localName === 'element' &&
-          getId(el) === diagram.id &&
-          String(
-            el.getAttribute('xsi:type') ??
-              el.getAttributeNS('http://www.w3.org/2001/XMLSchema-instance', 'type') ??
-              '',
-          ).includes('ArchimateDiagramModel'),
-      )
+      const exists = Boolean(findArchiDiagramElement(elementsById, diagram.id))
       if (exists) {
         continue
       }
@@ -238,7 +264,7 @@ export function ensureCreatedDiagramsInXml(
       continue
     }
 
-    const existsView = allElements.some((el) => el.localName === 'view' && getId(el) === diagram.id)
+    const existsView = Boolean(findViewDiagramElement(elementsById, diagram.id))
     if (existsView) {
       continue
     }
@@ -340,12 +366,13 @@ export function applyDiagramLayoutToXml(
   documentNode: Document,
   model: ParsedModel,
   diagramOverrides: DiagramOverridesMap,
+  index?: XmlElementIndex,
 ): void {
   if (!model?.diagrams?.length || !diagramOverrides?.size) {
     return
   }
 
-  const allElements = Array.from(documentNode.getElementsByTagName('*'))
+  const elementsById = resolveIndex(documentNode, index)
 
   diagramOverrides.forEach((overrides, diagramId) => {
     if (!overrides?.size) {
@@ -357,13 +384,13 @@ export function applyDiagramLayoutToXml(
     }
 
     const nodes = applyOverridesToNodes(diagram.nodes, overrides)
-    const diagramEl = findArchiDiagramElement(allElements, diagramId)
+    const diagramEl = findArchiDiagramElement(elementsById, diagramId)
     if (diagramEl) {
       syncArchiDiagramChildrenToXml(diagramEl, diagramEl, nodes, 0, 0)
       return
     }
 
-    const viewEl = findViewDiagramElement(allElements, diagramId)
+    const viewEl = findViewDiagramElement(elementsById, diagramId)
     if (viewEl) {
       syncViewDiagramNodesToXml(viewEl, viewEl, nodes, 0, 0)
     }
@@ -371,11 +398,15 @@ export function applyDiagramLayoutToXml(
 }
 
 /** Writes missing Archi DiagramModelReference children (`model` attr) from the in-memory model. */
-export function ensureDiagramReferencesInXml(documentNode: Document, model: ParsedModel): void {
+export function ensureDiagramReferencesInXml(
+  documentNode: Document,
+  model: ParsedModel,
+  index?: XmlElementIndex,
+): void {
   if (!model?.diagrams?.length) {
     return
   }
-  const allElements = Array.from(documentNode.getElementsByTagName('*'))
+  const elementsById = resolveIndex(documentNode, index)
 
   for (const diagram of model.diagrams) {
     const refs = flattenNodes(diagram.nodes).filter(
@@ -385,7 +416,7 @@ export function ensureDiagramReferencesInXml(documentNode: Document, model: Pars
       continue
     }
 
-    const diagramEl = findArchiDiagramElement(allElements, diagram.id)
+    const diagramEl = findArchiDiagramElement(elementsById, diagram.id)
     if (diagramEl) {
       for (const node of refs) {
         if (findDiagramObjectByIdInXml(diagramEl, node.id, 'child')) {
@@ -413,7 +444,7 @@ export function ensureDiagramReferencesInXml(documentNode: Document, model: Pars
       continue
     }
 
-    const viewEl = findViewDiagramElement(allElements, diagram.id)
+    const viewEl = findViewDiagramElement(elementsById, diagram.id)
     if (!viewEl) {
       continue
     }
@@ -463,6 +494,7 @@ export function removeDeletedFromXml(
   deletedElementIds: Set<string>,
   deletedRelationshipIds: Set<string>,
   deletedConnectionIds?: Set<string>,
+  index?: XmlElementIndex,
 ): void {
   const nodeSet = deletedDiagramNodeIds
   const elemSet = deletedElementIds
@@ -472,53 +504,53 @@ export function removeDeletedFromXml(
     return
   }
 
-  const all = Array.from(documentNode.getElementsByTagName('*'))
+  const elementsById = resolveIndex(documentNode, index)
   const toRemove: Element[] = []
-  for (const el of all) {
-    const id = el.getAttribute('id') ?? el.getAttribute('identifier') ?? ''
-    if (!id) {
-      continue
-    }
+
+  const collectByIds = (ids: Set<string>, match: (el: Element) => boolean) => {
+    ids.forEach((id) => {
+      for (const el of elementsForId(elementsById, id)) {
+        if (match(el)) {
+          toRemove.push(el)
+        }
+      }
+    })
+  }
+
+  collectByIds(
+    connSet,
+    (el) => el.localName === 'sourceConnection' || el.localName === 'connection',
+  )
+  collectByIds(
+    nodeSet,
+    (el) => el.localName === 'child' || el.localName === 'children' || el.localName === 'node',
+  )
+  collectByIds(relSet, (el) => {
     const ln = el.localName
     const t = getType(el, '')
-
-    if (connSet.has(id) && (ln === 'sourceConnection' || ln === 'connection')) {
-      toRemove.push(el)
-      continue
-    }
-
-    if (nodeSet.has(id) && (ln === 'child' || ln === 'children' || ln === 'node')) {
-      toRemove.push(el)
-      continue
-    }
-
-    if (
-      relSet.has(id) &&
-      (ln === 'relationship' || (ln === 'element' && t.includes('Relationship')))
-    ) {
-      toRemove.push(el)
-      continue
-    }
-
-    if (
-      elemSet.has(id) &&
+    return ln === 'relationship' || (ln === 'element' && t.includes('Relationship'))
+  })
+  collectByIds(elemSet, (el) => {
+    const ln = el.localName
+    const t = getType(el, '')
+    return (
       ln === 'element' &&
       t !== 'archimate:ArchimateDiagramModel' &&
       !t.includes('Relationship')
-    ) {
-      toRemove.push(el)
-    }
-  }
+    )
+  })
 
   for (const el of toRemove) {
     el.parentNode?.removeChild(el)
   }
 
   if (nodeSet.size) {
-    const connEls = Array.from(documentNode.getElementsByTagName('*')).filter(
-      (el) => el.localName === 'connection',
-    )
-    for (const el of connEls) {
+    const connEls = documentNode.getElementsByTagName('*')
+    for (let i = 0; i < connEls.length; i += 1) {
+      const el = connEls[i]
+      if (el.localName !== 'connection') {
+        continue
+      }
       const src = el.getAttribute('source') ?? ''
       const tgt = el.getAttribute('target') ?? ''
       if (nodeSet.has(src) || nodeSet.has(tgt)) {
@@ -529,7 +561,9 @@ export function removeDeletedFromXml(
 
   if (relSet.size) {
     const connectionTags = new Set(['sourceConnection', 'sourceConnections', 'connection'])
-    for (const el of Array.from(documentNode.getElementsByTagName('*'))) {
+    const all = documentNode.getElementsByTagName('*')
+    for (let i = 0; i < all.length; i += 1) {
+      const el = all[i]
       if (!connectionTags.has(el.localName)) {
         continue
       }

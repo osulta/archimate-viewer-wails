@@ -9,6 +9,7 @@
     "dev:api": "go run ./cmd/git-api",
     "dev:ui-only": "vite",
     "dev:wails": "wails dev",
+    "postinstall": "node ./scripts/strip-flatted-golang.mjs",
     "build": "vite build",
     "build:desktop": "vite build",
     "build:mac": "CGO_ENABLED=1 wails build -clean -platform darwin/universal -ldflags \"-w -s -extldflags '-framework UniformTypeIdentifiers'\"",

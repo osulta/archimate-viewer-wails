@@ -15,13 +15,14 @@ import (
 
 // App is exposed to the frontend via Wails bindings.
 type App struct {
-	ctx        context.Context
-	api        *apiserver.Server
-	apiBaseURL string
+	ctx         context.Context
+	api         *apiserver.Server
+	apiBaseURL  string
+	modelWrites *apiserver.ChunkedModelWriter
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{modelWrites: apiserver.NewChunkedModelWriter()}
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -85,6 +86,71 @@ func (a *App) SelectDirectory(title string) string {
 		return ""
 	}
 	return selected
+}
+
+// WriteModelFile writes model XML into an allowed path under the repo root.
+// Used by the desktop UI to avoid shipping multi‑MB XML through JSON HTTP bodies
+// (which freezes WebView2 on large models). Prefer Begin/Append/Commit for large files.
+func (a *App) WriteModelFile(relPath string, content string) map[string]any {
+	if a.api == nil {
+		return map[string]any{"ok": false, "error": "Локальный API не запущен"}
+	}
+	abs, rel, err := a.api.ResolveAllowedModelPath(relPath)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	if err := apiserver.WriteModelFileAtomic(abs, content); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "path": rel}
+}
+
+// BeginModelWrite starts a chunked write session for large model XML.
+func (a *App) BeginModelWrite(relPath string) map[string]any {
+	if a.api == nil || a.modelWrites == nil {
+		return map[string]any{"ok": false, "error": "Локальный API не запущен"}
+	}
+	abs, rel, err := a.api.ResolveAllowedModelPath(relPath)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	writeID, err := a.modelWrites.Begin(abs, rel)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "writeId": writeID}
+}
+
+// AppendModelWriteChunk appends a UTF-8 chunk to an open write session.
+func (a *App) AppendModelWriteChunk(writeID string, chunk string) map[string]any {
+	if a.modelWrites == nil {
+		return map[string]any{"ok": false, "error": "Локальный API не запущен"}
+	}
+	if err := a.modelWrites.Append(writeID, chunk); err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true}
+}
+
+// CommitModelWrite finishes a chunked write and atomically replaces the target file.
+func (a *App) CommitModelWrite(writeID string) map[string]any {
+	if a.modelWrites == nil {
+		return map[string]any{"ok": false, "error": "Локальный API не запущен"}
+	}
+	rel, err := a.modelWrites.Commit(writeID)
+	if err != nil {
+		return map[string]any{"ok": false, "error": err.Error()}
+	}
+	return map[string]any{"ok": true, "path": rel}
+}
+
+// AbortModelWrite cancels a chunked write session and removes the temp file.
+func (a *App) AbortModelWrite(writeID string) map[string]any {
+	if a.modelWrites == nil {
+		return map[string]any{"ok": false, "error": "Локальный API не запущен"}
+	}
+	a.modelWrites.Abort(writeID)
+	return map[string]any{"ok": true}
 }
 
 // appConfig is the small JSON settings file persisted in the user data dir.

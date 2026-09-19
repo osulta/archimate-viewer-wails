@@ -22,6 +22,8 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     model,
     setError,
     loadedXml,
+    loadedDocumentCacheRef,
+    lastBuiltDocumentCacheRef,
     diagramOverrides,
     relationshipOverrides,
     elementOverrides,
@@ -42,9 +44,10 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
     if (!model) {
       return null
     }
-    return buildEditedModelXml({
+    const result = buildEditedModelXml({
       model,
       loadedXml,
+      baseDocumentCache: loadedDocumentCacheRef.current,
       diagramOverrides,
       relationshipOverrides,
       elementOverrides,
@@ -57,6 +60,12 @@ export function useModelSave({ editState, git }: UseModelSaveOptions): ModelSave
       deletedRelationshipIds,
       deletedConnectionIds,
     })
+    if (!result) {
+      lastBuiltDocumentCacheRef.current = null
+      return null
+    }
+    lastBuiltDocumentCacheRef.current = result.documentCache
+    return result.xml
   }
 
   const handleReloadModel = useCallback(async () => {

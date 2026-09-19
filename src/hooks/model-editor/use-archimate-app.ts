@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import type { AppTab } from '../../app/types'
 import { deriveModelLoadState } from '../../lib/model-editor/apply-model-load'
 import {
+  bakeSavedModelEdits,
+  collectPersistedIds,
+} from '../../lib/model-editor/bake-saved-model-edits'
+import {
   navigationStatesEqual,
   readNavigationFromLocation,
   readNavigationHistoryState,
@@ -289,6 +293,7 @@ export function useArchimateApp() {
       editState.setDeletedConnectionIds(new Set())
       editState.setOriginalConnectionIds(derived.originalConnectionIds)
       editState.setLoadedXml(derived.loadedXml)
+      editState.setLoadedDocumentFromXml(derived.loadedXml)
       editState.setLoadedFilename(derived.loadedFilename)
       clearCanvasHistory()
     },
@@ -304,13 +309,54 @@ export function useArchimateApp() {
     },
     onModelSaved: (payload: ModelLoadPayload) => {
       try {
-        applyParsedModelFromPayload(payload, {
-          preserveDiagramId: selection.selectedDiagramId,
+        const model = editState.model
+        if (!model || typeof payload.content !== 'string') {
+          applyParsedModelFromPayload(payload, {
+            preserveDiagramId: selection.selectedDiagramId,
+          })
+          return
+        }
+        // Bake overlays into memory instead of re-parsing multi-MB XML (Windows freeze).
+        const baked = bakeSavedModelEdits({
+          model,
+          diagramOverrides: editState.diagramOverrides,
+          relationshipOverrides: editState.relationshipOverrides,
+          elementOverrides: editState.elementOverrides,
+          relationshipMetaOverrides: editState.relationshipMetaOverrides,
         })
+        const ids = collectPersistedIds(baked)
+        editState.setModel(baked)
+        editState.setLoadedXml(payload.content)
+        const builtCache = editState.lastBuiltDocumentCacheRef.current
+        if (builtCache) {
+          editState.adoptDocumentCache(builtCache)
+        } else {
+          editState.setLoadedDocumentFromXml(payload.content)
+        }
+        editState.setLoadedFilename(payload.filename || editState.loadedFilename)
+        editState.resetEditOverrides()
+        editState.setCreatedObjects([])
+        editState.setCreatedRelationships([])
+        editState.setCreatedDiagramIds(new Set())
+        editState.setCreatedDiagramFolderPaths(new Set())
+        editState.setDirtyDiagramFolderPaths(new Set())
+        editState.setOriginalDiagramFolderPaths(new Set(baked.diagramFolderPaths ?? []))
+        editState.setPendingLinkType(null)
+        editState.setLinkCreateSourceId(null)
+        editState.setOriginalDiagramNodeIds(ids.originalDiagramNodeIds)
+        editState.setOriginalElementIds(ids.originalElementIds)
+        editState.setOriginalRelationshipIds(ids.originalRelationshipIds)
+        editState.setOriginalConnectionIds(ids.originalConnectionIds)
+        editState.setDeletedDiagramNodeIds(new Set())
+        editState.setDeletedElementIds(new Set())
+        editState.setDeletedRelationshipIds(new Set())
+        editState.setDeletedConnectionIds(new Set())
+        clearCanvasHistory()
+        editState.setSaveStatusMessage('Модель сохранена')
       } catch (parseErr) {
         const msg =
           parseErr instanceof Error ? parseErr.message : String(parseErr)
-        editState.setError(`Файл записан на диск, но не удалось перечитать модель: ${msg}`)
+        editState.setError(`Файл записан на диск, но не удалось применить изменения в памяти: ${msg}`)
       }
     },
     onModelParseError: (message: string) => editState.setError(message),

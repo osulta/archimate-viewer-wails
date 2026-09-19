@@ -1,5 +1,6 @@
 import { apiUrl } from '../api-base'
 import { DEFAULT_GIT_WORK_FOLDER } from './git-helpers'
+import { WriteModelFileChunked, isWailsRuntime } from '../../../wailsjs/go/main/App'
 
 export const isWailsDesktopRuntime =
   typeof window !== 'undefined' && window.location.protocol === 'wails:'
@@ -171,6 +172,25 @@ export async function postModelWrite(
   path: string,
   content: string,
 ): Promise<{ response: Response; data: Record<string, unknown> }> {
+  // Desktop: avoid JSON-encoding multi-MB XML (WebView2 can freeze on stringify/parse).
+  if (isWailsRuntime()) {
+    try {
+      const data = await WriteModelFileChunked(path, content)
+      const ok = Boolean(data?.ok)
+      return {
+        response: { ok, status: ok ? 200 : 400 } as Response,
+        data: (data ?? {}) as Record<string, unknown>,
+      }
+    } catch (err) {
+      return {
+        response: { ok: false, status: 500 } as Response,
+        data: {
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      }
+    }
+  }
   const response = await postJson('/api/model/write', { path, content })
   return { response, data: await readJson(response) }
 }
